@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clip Details - YTClipper</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/gallery.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Clip Details</h1>
+            <div class="header-buttons">
+                <button class="icon-btn" id="backBtn" title="Back to Gallery">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                        <polyline points="12 19 5 12 12 5"></polyline>
+                    </svg>
+                </button>
+                <button class="icon-btn" id="homeBtn" title="Home">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+            <div class="spinner"></div>
+            <span>Loading clip...</span>
+        </div>
+
+        <div id="clipContainer" class="clip-detail-container" style="display: none;">
+            <!-- Video Player Section -->
+            <div class="video-section">
+                <video id="clipPlayer" controls preload="metadata">
+                    <source id="videoSource" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+                <div class="video-actions">
+                    <button class="action-btn" id="downloadBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Download Clip
+                    </button>
+                </div>
+            </div>
+
+            <!-- Copyable Content Section -->
+            <div class="copyable-section">
+                <div class="copyable-item">
+                    <div class="copyable-header">
+                        <h3>Title</h3>
+                        <button class="icon-btn-small copy-btn" data-target="title" title="Copy Title">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="copyable-content" id="contentTitle">Loading...</div>
+                </div>
+
+                <div class="copyable-item">
+                    <div class="copyable-header">
+                        <h3>Description</h3>
+                        <button class="icon-btn-small copy-btn" data-target="description" title="Copy Description">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="copyable-content" id="contentDescription">Loading...</div>
+                </div>
+
+                <div class="copyable-item">
+                    <div class="copyable-header">
+                        <h3>Tags</h3>
+                        <button class="icon-btn-small copy-btn" data-target="tags" title="Copy Tags">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="copyable-content" id="contentTags">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Info Section -->
+            <div class="info-section">
+                <div class="info-header">
+                    <h2>Clip Information</h2>
+                    <button class="icon-btn-small" id="copyInfoBtn" title="Copy All Info">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Filename:</span>
+                        <span class="info-value" id="clipFilename"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Project:</span>
+                        <span class="info-value" id="clipProject"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Format:</span>
+                        <span class="info-value" id="clipFormat"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Size:</span>
+                        <span class="info-value" id="clipSize"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Created:</span>
+                        <span class="info-value" id="clipCreated"></span>
+                    </div>
+                </div>
+
+                <!-- Metadata Code Block -->
+                <div class="metadata-section" id="metadataSection" style="display: none;">
+                    <div class="metadata-header">
+                        <h3>Metadata</h3>
+                        <button class="icon-btn-small" id="copyMetadataBtn" title="Copy Metadata">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <pre id="metadataContent" class="metadata-content"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/clip-detail.js"></script>
+</body>
+</html>

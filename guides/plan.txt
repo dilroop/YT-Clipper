@@ -1,0 +1,954 @@
+YOUTUBE CLIPPER - DETAILED TECHNICAL PLAN
+==========================================
+
+A. VIDEO DOWNLOADING
+-------------------
+
+1. Technology: yt-dlp (most reliable YouTube downloader)
+   - Command-line tool that can be called from Node.js/Python
+   - Supports all YouTube formats and quality options
+   - Handles authentication, age-restricted content, etc.
+
+2. Download Process:
+   Step 1: User pastes YouTube URL in input field
+   Step 2: Backend validates URL format and extracts video ID
+   Step 3: Fetch & display video thumbnail + metadata (title, duration, channel)
+   Step 4: User confirms video is correct → clicks download/process button
+   Step 5: yt-dlp fetches available formats/qualities
+   Step 6: Select highest quality video+audio format
+   Step 7: Download to temporary "downloads" folder
+   Step 8: Return video metadata (duration, title, file path)
+
+3. Thumbnail Preview (Pre-Download Verification):
+   - Fetch thumbnail WITHOUT downloading entire video
+   - Method 1: Use yt-dlp --get-thumbnail flag (fast, reliable)
+   - Method 2: YouTube thumbnail URL pattern:
+     * https://img.youtube.com/vi/{VIDEO_ID}/maxresdefault.jpg (1920x1080)
+     * https://img.youtube.com/vi/{VIDEO_ID}/hqdefault.jpg (480x360 fallback)
+   - Also fetch: Video title, duration, channel name, upload date
+   - Display in UI for user confirmation before processing
+   - This prevents wasting time on wrong videos
+
+4. Quality Selection Strategy:
+   - Prefer formats with video+audio combined (mp4)
+   - If separate, download best video + best audio and merge with ffmpeg
+   - Target: 1080p or higher if available
+   - Format priority: mp4 > webm > other
+
+5. File Management:
+   - Original downloads → "./Downloads" folder (in program's source directory)
+   - Temporary processing files → "./temp" folder
+   - Final clips → "./ToUpload/[VideoTitle_Date]/" folder structure:
+
+     Example structure:
+     /ToUpload
+       /JoeRogan_Episode123_2024-01-26
+         /original
+           - clip_001.mp4
+           - clip_001_info.txt
+           - clip_002.mp4
+           - clip_002_info.txt
+           - clip_003.mp4
+           - clip_003_info.txt
+         /reels
+           - reel_001.mp4
+           - reel_001_info.txt
+           - reel_002.mp4
+           - reel_002_info.txt
+           - reel_003.mp4
+           - reel_003_info.txt
+
+     Each _info.txt file contains:
+     - Video Title (for social media posts)
+     - Video Description (from YouTube - useful context & tags)
+     - Channel Name (credit the creator)
+     - Original YouTube URL (link back to source)
+     - Timestamp where clip was extracted from (e.g., "1:23 - 1:45")
+     - Full caption/transcript of words spoken in that specific clip
+     - Format type (original 16:9 or reels 9:16)
+
+     Example _info.txt format:
+     ================================
+     Title: Joe Rogan Experience #2091 - Tim Dillon
+     Channel: PowerfulJRE
+     Description: Tim Dillon is a standup comedian, actor, and host of "The Tim Dillon Show" podcast...
+     URL: https://www.youtube.com/watch?v=example123
+     Timestamp: 12:34 - 13:02 (28 seconds)
+     Format: Reels (9:16)
+
+     Caption:
+     This is absolutely incredible
+     I've never seen anything
+     like this before in my life
+     ================================
+
+
+B. IDENTIFYING INTERESTING SECTIONS
+-----------------------------------
+
+APPROACH 1: Audio Analysis (Primary Method)
+-------------------------------------------
+1. Extract Audio Track:
+   - Use ffmpeg to extract audio from video
+   - Convert to WAV format for processing
+
+2. Transcription:
+   - Use Whisper AI (OpenAI's speech-to-text model)
+   - Generates timestamped transcript of entire video
+   - Provides: text content + start/end times for each segment
+
+3. Interesting Section Detection:
+   a) Text Analysis:
+      - Keywords: excitement words ("amazing", "incredible", "wow", etc.)
+      - Questions and answers (conversation dynamics)
+      - Topic changes (new subjects = potentially interesting)
+      - Sentiment analysis (high positive/negative = engaging)
+
+   b) Audio Features:
+      - Volume spikes (excitement, emphasis)
+      - Speech rate changes (fast speech = excitement)
+      - Multiple speakers (conversation vs monologue)
+      - Laughter detection
+
+   c) Pattern Recognition:
+      - Silence detection (remove long pauses)
+      - Music/background score changes (editors add music to highlights)
+
+4. Scoring Algorithm:
+   - Each segment gets a score (0-100)
+   - Combine multiple factors:
+     * Keyword density: +20 points
+     * Volume variance: +15 points
+     * Speech rate above baseline: +15 points
+     * Multiple speakers detected: +20 points
+     * Sentiment extremes: +15 points
+     * Music presence: +15 points
+   - Segments scoring 60+ are marked as "interesting"
+
+5. Segment Merging & Constraints:
+   - If interesting sections are within 5 seconds, merge them
+   - Minimum clip length: 10 seconds
+   - Maximum clip length:
+     * Original format (16:9): 60 seconds (configurable)
+     * Reels format (9:16): 180 seconds (3 minutes max - platform requirement)
+   - Add 2-second buffer before/after for context
+   - If merged segment exceeds max length, split into multiple clips
+
+6. How It Works - Step by Step:
+
+   Example: Processing a 30-minute podcast
+
+   Step 1: Extract audio and transcribe with Whisper
+   - Output: Full transcript with timestamps
+   - "Hello everyone [0:00-0:02], today we're discussing [0:02-0:05],
+      this amazing new technology [0:05-0:08]..."
+
+   Step 2: Analyze transcript for interesting keywords
+   - Scan for: "amazing", "incredible", "wow", "unbelievable", "important"
+   - Questions: "How does...", "What if...", "Why would..."
+   - Found: "amazing new technology" at 0:05-0:08 (SCORE: +20)
+
+   Step 3: Analyze audio features
+   - Check volume levels: Is speaker louder/more excited? (+15 points)
+   - Check speech rate: Speaking faster than average? (+15 points)
+   - Check for laughter: Detected at 0:07? (+10 points)
+   - Segment 0:05-0:08 now has score of 60+ → MARKED AS INTERESTING
+
+   Step 4: Merge nearby interesting segments
+   - Found interesting at 0:05-0:08 and 0:10-0:15
+   - Only 2 seconds apart → MERGE into 0:05-0:15
+   - Add 2-second buffer → Final clip: 0:03-0:17 (14 seconds)
+
+   Step 5: Apply format constraints
+   - If original format selected: Keep as-is (14 seconds < 60 seconds ✓)
+   - If reels format selected: Keep as-is (14 seconds < 180 seconds ✓)
+   - If segment was 200 seconds: Split into multiple clips for reels
+
+   Step 6: User review
+   - Display all found segments with timestamps
+   - User can: Accept all, remove some, or manually adjust timestamps
+
+   Result: Automatically identified the most engaging parts of the video!
+
+
+APPROACH 2: Simplified Heuristic (Alternative/Fallback)
+--------------------------------------------------------
+If AI transcription is too slow/complex:
+
+1. Audio Energy Analysis:
+   - Divide video into 5-second windows
+   - Calculate audio energy (RMS, peak volume)
+   - Find segments with above-average energy
+
+2. Simple Rules:
+   - High volume variance = likely interesting
+   - Consistent speaking (no long silence) = engaging
+   - Multiple frequency peaks = conversation/music
+
+3. This is faster but less accurate than transcription approach
+
+
+RECOMMENDED: Use Approach 1 (Whisper + Analysis)
+Whisper runs locally, is free, and provides accurate results
+
+
+C. VIDEO CLIPPING PROCESS
+--------------------------
+
+1. Technology: ffmpeg (industry standard video processor)
+   - Fast, lossless cutting
+   - Preserves video quality
+   - Handles all formats
+
+2. Clipping Workflow:
+
+   Step 1: Receive interesting segments list
+   - Format: [{start: 45.2, end: 68.5}, {start: 120.0, end: 145.3}, ...]
+
+   Step 2: For each segment, execute ffmpeg cut
+   - Command: ffmpeg -i input.mp4 -ss START -to END -c copy output.mp4
+   - "-c copy" = no re-encoding (fast, lossless)
+   - "-ss" = start time, "-to" = end time
+
+   Step 3: Name output files meaningfully
+   - Format: "VideoTitle_clip_001.mp4", "VideoTitle_clip_002.mp4"
+   - Or: "VideoTitle_45s-68s.mp4" (with timestamps)
+
+   Step 4: Save to "./ToUpload" folder
+   - Organized by date or video name
+   - Include metadata.json with clip info
+
+3. Quality Preservation:
+   - Use "-c copy" flag (stream copy, no re-encode)
+   - If merging/transitions needed, use high-quality codec:
+     * Video: -c:v libx264 -crf 18 (near-lossless)
+     * Audio: -c:a aac -b:a 192k
+
+4. REELS FORMAT CONVERSION (9:16 VERTICAL) WITH AUTO-FOCUS
+   -----------------------------------------------------------
+
+   Problem: Podcast videos (16:9 landscape) have multiple people spread out.
+   When converting to reels format (9:16 vertical), not everyone fits in frame.
+
+   Solution: Smart Auto-Reframing - Dynamically crop to focus on active speaker
+
+   APPROACH 1: Fixed Position Cropping (RECOMMENDED - Simple & Reliable)
+
+   Assumption: Joe Rogan-style setup
+   - Person A always sits in same position (e.g., left side of frame)
+   - Person B always sits in same position (e.g., right side of frame)
+   - Only ONE person speaks at a time
+   - No need for smooth panning, just cut between positions
+
+   a) Initial Face Position Detection (One-Time Setup):
+      - Analyze first 10 seconds of video
+      - Use OpenCV to detect all faces and their positions
+      - Example result:
+        * Person A: x=400px (left third of frame)
+        * Person B: x=1520px (right third of frame)
+      - Store these FIXED positions for entire video
+
+   b) Active Speaker Detection:
+      - Use Whisper transcript with speaker diarization (if available)
+      - OR use audio channel analysis:
+        * Split stereo audio into left/right channels
+        * Measure energy in each channel
+        * Left channel louder = Person A speaking
+        * Right channel louder = Person B speaking
+      - OR use simple audio activity detection:
+        * If voice detected at timestamp X, check which position was used last
+        * Alternate between speakers based on pauses
+
+   c) Simple Cropping (No Complex Tracking):
+      - When Person A speaks: Crop to x=400px (center on left person)
+      - When Person B speaks: Crop to x=1520px (center on right person)
+      - Crop width = video_height * 9/16 (for vertical video)
+      - Keep face in upper-middle of frame (rule of thirds)
+      - Example:
+        * 0:00-0:30 → Person A speaking → Crop left (x=200)
+        * 0:30-1:15 → Person B speaking → Crop right (x=1320)
+        * 1:15-2:00 → Person A speaking → Crop left (x=200)
+
+   d) Implementation:
+      - Generate simple crop timeline (CSV/JSON):
+        ```
+        timestamp,crop_x
+        0.0,200
+        30.0,1320
+        75.0,200
+        ```
+      - Use ffmpeg with crop filter:
+        ```
+        ffmpeg -i input.mp4 -vf "crop=1080:1920:crop_x(t):0" output.mp4
+        ```
+      - crop_x(t) is calculated based on timestamp
+      - No interpolation needed (instant cuts like TV shows)
+
+   APPROACH 2: ffmpeg "zoompan" + Face Detection (Simpler Alternative)
+
+   - Detect faces once per second
+   - Use ffmpeg's zoompan filter to follow detected faces
+   - Less accurate but much faster to implement
+   - Command: ffmpeg -i input.mp4 -vf "crop=ih*9/16:ih:x_offset:0,scale=1080:1920"
+
+   APPROACH 3: AI-Powered Auto-Reframe (Most Advanced)
+
+   - Use pre-trained models like:
+     * Adobe Sensei Auto-Reframe (proprietary)
+     * Facebook's video understanding models
+     * Custom model trained on podcast data
+   - These understand context and predict important regions
+   - Most accurate but requires more resources
+
+   RECOMMENDED IMPLEMENTATION:
+
+   Step 1: Detect faces in first 10 seconds → Store fixed positions
+      - Person A at x=400px (left)
+      - Person B at x=1520px (right)
+
+   Step 2: Use Whisper transcript to detect speaker changes
+      - Analyze audio energy patterns
+      - Detect pauses (>0.5s silence = likely speaker change)
+      - OR use Whisper's speaker diarization feature
+
+   Step 3: Create crop position timeline:
+      ```json
+      {
+        "segments": [
+          {"start": 0.0, "end": 30.5, "speaker": "A", "crop_x": 400},
+          {"start": 30.5, "end": 75.2, "speaker": "B", "crop_x": 1520},
+          {"start": 75.2, "end": 120.0, "speaker": "A", "crop_x": 400}
+        ]
+      }
+      ```
+
+   Step 4: Apply ffmpeg crop filter
+      - For each segment, crop to the fixed position
+      - Instant cuts between speakers (like TV interview editing)
+
+   Step 5: Output 1080x1920 (9:16) vertical video
+
+   Fallback Strategy (if detection fails):
+   - Manual mode: Let user specify left/right positions
+   - Center crop: Just crop the middle (shows both people partially)
+   - 2-person default: Assume left speaker at 33%, right speaker at 67%
+
+   Additional Enhancements (Optional):
+   - Add 0.3 second crossfade when switching between speakers (smoother)
+   - Slight zoom when one person speaks for extended time (more engaging)
+   - Detect when guest list/slides appear → switch to center crop temporarily
+
+5. DYNAMIC CAPTIONS (SPOKEN WORDS ON SCREEN)
+   ------------------------------------------
+
+   Feature: Display 1-3 words at a time that appear/disappear as they're spoken
+   Popular on TikTok, Instagram Reels, YouTube Shorts
+
+   a) Caption Generation:
+      - Use Whisper transcription with WORD-LEVEL timestamps
+      - Whisper command: whisper audio.mp3 --word_timestamps True
+      - Output format: JSON with each word + start/end time
+      - Group words into 1-3 word chunks for display
+      - Example output:
+        [
+          {"text": "Hello there", "start": 0.5, "end": 1.2},
+          {"text": "my friend", "start": 1.2, "end": 1.8},
+          {"text": "how are you", "start": 1.8, "end": 2.5}
+        ]
+
+   b) Text Configuration (in Settings Modal):
+      - Font family (dropdown: Arial, Impact, Helvetica, Comic Sans, etc.)
+      - Font size (slider: 20-80px, default: 48px)
+      - Font color (color picker, default: white)
+      - Font weight (Bold/Normal, default: Bold)
+      - Text stroke/outline (color + width, default: black 3px)
+      - Background box (optional, semi-transparent)
+      - Text shadow (optional, for better readability)
+
+   c) Position Configuration (Percentage-Based):
+      - Horizontal Position: 0-100% (default: 50% = centered)
+        * 0% = left edge, 50% = center, 100% = right edge
+        * Calculation: x = (video_width * percentage / 100) - (text_width / 2)
+
+      - Vertical Position: 0-100% (default: 80% = near bottom)
+        * 0% = top edge, 50% = middle, 80% = lower third, 100% = bottom edge
+        * Calculation: y = video_height * percentage / 100
+        * Example: 2000px height, 80% = 1600px from top
+
+      - Alignment: Left, Center, Right (affects multi-line text)
+
+   d) ffmpeg Implementation:
+      Method 1: Using ASS Subtitle File (RECOMMENDED)
+      - Generate ASS file with styled subtitles and precise timing
+      - ASS format supports fonts, colors, positions, animations
+      - Command: ffmpeg -i input.mp4 -vf "ass=captions.ass" output.mp4
+      - ASS file example:
+        ```
+        [V4+ Styles]
+        Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,5,10,10,10,1
+
+        [Events]
+        Dialogue: 0,0:00:00.50,0:00:01.20,Default,,0,0,0,,Hello there
+        Dialogue: 0,0:00:01.20,0:00:01.80,Default,,0,0,0,,my friend
+        ```
+
+      Method 2: Using drawtext filter with multiple overlays
+      - More complex but gives fine-grained control
+      - Apply multiple drawtext filters, one per caption segment
+      - Command: ffmpeg -i input.mp4 -vf "drawtext=text='Hello there':enable='between(t,0.5,1.2)':x=(w-text_w)/2:y=h*0.8:fontsize=48:fontcolor=white:borderw=3:bordercolor=black" output.mp4
+
+   e) Settings UI (in Settings Modal):
+
+      SETTINGS MODAL - CAPTION STYLING SECTION:
+      ┌─────────────────────────────────┐
+      │  ═══ Caption Styling ═══        │
+      │                                 │
+      │  Note: Use the "Burn Captions   │
+      │  into Video" toggle on main     │
+      │  screen to enable/disable       │
+      │                                 │
+      │  Words Per Caption: [2▼] (1-3)  │
+      │                                 │
+      │  Font Settings:                 │
+      │  Family: [Impact ▼]             │
+      │  Size: [48] ━━●━━ (20-80)       │
+      │  Color: [⬜ White]              │
+      │  Outline: [⬛ Black] [3px▼]     │
+      │  ☑ Bold                         │
+      │  ☐ Background Box               │
+      │                                 │
+      │  Position:                      │
+      │  Horizontal: [50%] ━━●━━        │
+      │               (Center)          │
+      │  Vertical: [80%] ━━━━●━         │
+      │             (Lower Third)       │
+      │                                 │
+      │  Preview:                       │
+      │  ┌─────────────────┐            │
+      │  │                 │            │
+      │  │                 │            │
+      │  │   Sample Text   │ ← 80%     │
+      │  └─────────────────┘            │
+      │                                 │
+      └─────────────────────────────────┘
+
+   f) Processing Pipeline:
+      Step 1: Extract word-level transcript from Whisper
+      Step 2: Group words into 1-3 word captions
+      Step 3: Generate ASS subtitle file with user's style settings
+      Step 4: Apply during video processing:
+         - Cut video segment
+         - Convert to reels (if selected)
+         - Add captions (using ASS file)
+         - Add watermark (if configured)
+
+   g) Optimization for Readability:
+      - Auto-adjust text color based on video brightness
+      - Always add outline/stroke for contrast
+      - Option to add semi-transparent background box
+      - Cap words at 3 to prevent overcrowding
+      - Smart line breaking for longer phrases
+
+6. WATERMARKING FEATURE
+   ---------------------
+
+   Position: Top right corner with 100px gap from both sides
+   Types: Text watermark OR Image watermark
+
+   a) Text Watermark:
+      - User inputs custom text (e.g., "@username", "MyBrand", etc.)
+      - Customizable options:
+        * Font size (default: 32px)
+        * Font color (default: white with semi-transparent background)
+        * Font family (default: Arial Bold)
+      - ffmpeg command:
+        ffmpeg -i input.mp4 -vf "drawtext=text='TEXT':x=w-tw-100:y=100:fontsize=32:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=5" output.mp4
+      - x=w-tw-100 → width minus text_width minus 100px (right side with gap)
+      - y=100 → 100px from top
+
+   b) Image Watermark:
+      - User uploads image file (PNG with transparency recommended)
+      - Supported formats: PNG, JPG, GIF
+      - Automatically resize if too large (max 300x300px)
+      - ffmpeg command:
+        ffmpeg -i input.mp4 -i watermark.png -filter_complex "[1]scale=200:-1[wm];[0][wm]overlay=W-w-100:100" output.mp4
+      - W-w-100 → video_width minus watermark_width minus 100px
+      - 100 → 100px from top
+
+   c) Settings UI:
+      - Settings cog icon in top right corner of web app
+      - Clicking opens modal with watermark configuration:
+
+        MODAL LAYOUT:
+        ┌─────────────────────────────────┐
+        │  Watermark Settings        [X]  │
+        ├─────────────────────────────────┤
+        │                                 │
+        │  Watermark Type:                │
+        │  ○ None                         │
+        │  ○ Text                         │
+        │  ○ Image                        │
+        │                                 │
+        │  [IF TEXT SELECTED]             │
+        │  Text: [_______________]        │
+        │  Font Size: [32▼]               │
+        │  Color: [⬜ White]              │
+        │                                 │
+        │  [IF IMAGE SELECTED]            │
+        │  Upload Image: [Choose File]    │
+        │  Preview: [thumbnail]           │
+        │                                 │
+        │  Preview Position:              │
+        │  ┌─────────────────┐            │
+        │  │         [WM]    │            │
+        │  │                 │            │
+        │  └─────────────────┘            │
+        │                                 │
+        │       [Save Settings]           │
+        └─────────────────────────────────┘
+
+   d) Storage:
+      - Save watermark settings to local storage or config file
+      - Apply to ALL generated clips automatically
+      - User can toggle watermark on/off per session
+
+   e) Processing:
+      - Apply watermark during ffmpeg clipping process
+      - Combine with reels conversion if both selected
+      - Order: Cut → Convert to reels (if selected) → Add watermark
+
+7. Individual Clip Info File Generation:
+
+   Create a separate _info.txt file for EACH clip with:
+
+   Format (e.g., reel_001_info.txt):
+   ```
+   Original Video: https://youtube.com/watch?v=abc123
+   Title: Joe Rogan Experience #1234 - Guest Name
+   Channel: PowerfulJRE
+
+   Clip Timestamp: 0:45 - 1:12 (27 seconds)
+
+   =====================================
+   CAPTION / TRANSCRIPT
+   =====================================
+
+   So the amazing thing about this technology
+   is that it completely changes how we think
+   about artificial intelligence and its impact.
+   When you really look at what's happening here,
+   it's absolutely incredible how fast things
+   are evolving and transforming our world.
+   ```
+
+   Another example (reel_002_info.txt):
+   ```
+   Original Video: https://youtube.com/watch?v=abc123
+   Title: Joe Rogan Experience #1234 - Guest Name
+   Channel: PowerfulJRE
+
+   Clip Timestamp: 5:23 - 5:58 (35 seconds)
+
+   =====================================
+   CAPTION / TRANSCRIPT
+   =====================================
+
+   You know what's incredible? When you look at
+   the data, it's absolutely mind-blowing how
+   fast this is growing. We're talking about
+   exponential changes that most people don't
+   even realize are happening right now.
+   ```
+
+   This approach allows you to:
+   - Have caption paired with each video file
+   - Easy to copy/paste caption when uploading that specific reel
+   - See original source and timestamp for attribution
+   - Keep everything organized - video + info together
+
+8. Optimization:
+   - Process clips in parallel (multiple ffmpeg instances)
+   - Show progress bar for user feedback
+   - Validate each clip after creation (check file size, duration)
+
+
+COMPLETE WORKFLOW
+-----------------
+
+INITIAL SETUP (One-Time):
+1. Start server on computer: python server.py
+2. Get computer's local IP address (e.g., 192.168.1.105)
+3. Open Chrome on phone → http://192.168.1.105:5000
+4. Bookmark the page for easy access:
+   - Chrome menu (⋮) → Add bookmark
+   - Or add to home screen for quick access (optional)
+5. Configure settings (optional):
+   - Click settings cog → Configure captions, watermark
+   - Settings saved for all future videos
+
+DAILY USE (From Phone - Chrome):
+1. Find interesting YouTube video on phone (YouTube app, browser, etc.)
+2. Copy video URL (Share → Copy Link)
+3. Open Chrome → Open bookmarked YTClipper page (http://192.168.1.105:5000)
+4. Paste URL in input field (may auto-suggest from clipboard)
+5. Preview thumbnail + video info (confirm correct video)
+6. Select format: Original (16:9) or Reels (9:16)
+7. Toggle "Burn Captions into Video" (enabled by default)
+8. Tap "Process Video" button
+9. See real-time progress:
+   - Downloading... (XX%)
+   - Transcribing... (XX%)
+   - Finding interesting clips... (XX%)
+   - Processing clips... (X/Y complete)
+10. Can close Chrome tab and do other things (processing continues on computer)
+11. Come back later → Open Chrome → Reopen YTClipper → See completed clips
+12. For each clip:
+    - Tap Share button → Share directly to Instagram/TikTok/WhatsApp (if Web Share API works)
+    - OR tap Download → Save to phone
+13. Copy caption from _info.txt (if needed) for social media post
+
+BACKGROUND PROCESSING:
+- All processing happens on computer (fast, doesn't drain phone battery)
+- Phone just shows progress and lets you download results
+- Multiple videos can be queued and processed
+- History of all processed videos available
+
+DETAILED WORKFLOW (Technical):
+1. User pastes YouTube URL in input field
+2. Fetch & display video thumbnail + metadata (title, duration, channel)
+3. User confirms video is correct → makes selections:
+   - Output format: Original (16:9) or Reels (9:16) - with auto-focus on speaker (max 3 min)
+   - Burn Captions toggle: ON by default (can disable if don't want text on video)
+4. Click "Process Video" button
+5. Download video with yt-dlp (show progress)
+6. Extract audio + generate transcript with Whisper (with word-level timestamps)
+7. Analyze transcript + audio for interesting sections
+8. Group words into 1-3 word chunks with timing (for captions)
+9. Generate ASS subtitle file with user's style settings (from config)
+10. If Reels format selected:
+   - Detect faces and positions
+   - Map speakers to face positions using audio analysis
+   - Generate dynamic crop timeline
+11. Display found segments with timestamps to user
+12. User can review/edit selections (optional)
+13. Create output folder structure:
+    - Create folder: ToUpload/[VideoTitle_Date]/
+    - Create subfolders: /original and /reels (if needed)
+14. Cut videos with ffmpeg (multi-step processing):
+    - For EACH clip:
+      * Step 1: Standard cut (extract segment)
+      * Step 2: If reels selected → Smart crop to 9:16 following speaker
+      * Step 3: If "Burn Captions" toggle is ON → Burn in captions using ASS file
+      * Step 4: If watermark configured → Add watermark to top right
+      * Step 5: Save clip to appropriate subfolder (original or reels)
+      * Step 6: Generate individual _info.txt file for this clip with:
+        - Original YouTube URL
+        - Video title and channel
+        - Clip timestamp (start - end)
+        - Full transcript/caption of words spoken in this clip
+        - Note: _info.txt is ALWAYS created regardless of burn captions toggle
+15. Display success message with:
+    - Clip count
+    - Folder location
+    - List of all clips with download buttons
+    - Each clip shows both video file and its _info.txt file
+
+
+DEPLOYMENT & ACCESS SETUP
+--------------------------
+
+Local Network Access (Computer → Phone via Chrome):
+
+1. Server Setup:
+   - Run Flask/FastAPI server on computer
+   - Bind to 0.0.0.0 (allow network access, not just localhost)
+   - Example: flask run --host=0.0.0.0 --port=5000
+   - Server accessible at: http://192.168.1.X:5000 (computer's local IP)
+
+2. Finding Your Local IP:
+   - Mac: System Preferences → Network → IP Address
+   - Windows: ipconfig (look for IPv4)
+   - Linux: ifconfig or ip addr
+   - Example: 192.168.1.105
+
+3. Mobile Access via Chrome:
+   - Phone and computer must be on SAME WiFi network
+   - Open Chrome on phone → Navigate to http://192.168.1.105:5000
+   - Bookmark for easy access
+   - Mobile-optimized web interface (touch-friendly, large buttons)
+   - No app installation required - works directly in Chrome
+
+4. Background Processing:
+   - Videos process server-side (on computer)
+   - Can close Chrome tab/browser while processing
+   - Come back later to check progress/download clips
+   - Processing continues even if phone disconnects
+
+5. File Access:
+   - Clips saved to computer: /YTClipper/ToUpload/
+   - Download directly to phone via Chrome browser
+   - OR access from computer later (already organized)
+   - Optional: Set up Dropbox/Google Drive auto-sync
+
+
+TECHNOLOGY STACK RECOMMENDATION
+--------------------------------
+
+Backend: Python with Flask or FastAPI
+- Python: Better AI/ML library support (Whisper, OpenCV)
+- Flask: Simpler, easier to set up
+- FastAPI: Better for async operations, WebSocket support
+- RECOMMENDATION: FastAPI (for real-time progress updates)
+
+Frontend: HTML/CSS/JavaScript (Mobile-Optimized Web Interface)
+- **MOBILE-FIRST DESIGN** (primary target is Chrome on phone)
+- Access via Chrome browser at local URL (no app installation needed)
+- Optional PWA Features (if desired later):
+  * manifest.json for "Add to Home Screen" capability
+  * Service worker for offline capability and caching
+  * App icons (various sizes for iOS/Android)
+- Simple, clean interface (Google/Instagram-style centered input)
+- Responsive layout - mobile first, desktop compatible
+- Large touch-friendly buttons (min 44x44px tap targets)
+- Large input field with X clear button for easy URL pasting
+- Settings cog icon in top right corner (opens settings modal)
+- Settings modal with tabs/sections:
+  * Dynamic Captions (styling, position configuration)
+  * Watermark (text or image)
+  * Live preview for both captions and watermark
+- Video thumbnail preview with metadata on URL paste
+- Format selection (Original 16:9 or Reels 9:16) - large toggle/buttons
+- **"Burn Captions into Video" toggle** - displayed under video thumbnail
+  * ON by default (enabled)
+  * User can toggle OFF if they don't want captions burned into video
+  * When OFF, clips still have _info.txt with captions but video has no text overlay
+- Real-time progress updates (WebSocket or SSE)
+- Display thumbnails of generated clips in mobile-friendly grid
+- Large download buttons + native share button for each clip
+- Background processing (can close app, come back later)
+- Minimal scrolling - vertical layout optimized for one-handed phone use
+- Fast loading (minimal CSS/JS, no heavy frameworks)
+- Mobile-optimized interactions:
+  * Smooth animations and transitions
+  * Touch-friendly spacing (generous padding)
+  * No hover states (touch-only interactions)
+  * Large typography for readability
+  * Bottom-aligned action buttons (easy thumb reach)
+
+Mobile UI Considerations:
+- Input field with clear button:
+  * X button positioned inside input on right side
+  * Only visible when text is entered
+  * Large touch target (min 44x44px)
+  * Clears input and hides thumbnail preview on click
+- Paste functionality: Auto-detect clipboard on focus
+- Thumbnail: Large enough to see on phone (min 300px wide)
+- Progress bar: Prominent, visible without scrolling
+- Clips list: Vertical card layout with large thumbnails
+- Download: Native browser download or share sheet integration
+- Settings: Collapsible sections to reduce scrolling
+- Font sizes: Minimum 16px to prevent zoom on iOS
+- Spacing: Generous padding/margins for easy tapping
+
+Main Screen Layout (Mobile):
+┌─────────────────────────────────┐
+│  YTClipper          [⚙️ Settings]│
+├─────────────────────────────────┤
+│                                 │
+│  [Paste YouTube URL here... ✕ ]│
+│  [                             ]│
+│  (X button appears when text    │
+│   is entered, clears input)     │
+│                                 │
+│  ┌─────────────────────────┐   │
+│  │   [Video Thumbnail]     │   │
+│  │                         │   │
+│  └─────────────────────────┘   │
+│  Title: Video Title Here        │
+│  Channel: Channel Name          │
+│  Duration: 45:23                │
+│                                 │
+│  Format:                        │
+│  ○ Original (16:9)              │
+│  ● Reels (9:16)                 │
+│                                 │
+│  ☑ Burn Captions into Video     │
+│     (ON by default)             │
+│                                 │
+│  [    Process Video    ]        │
+│                                 │
+└─────────────────────────────────┘
+
+Required Tools:
+- yt-dlp (YouTube downloading)
+- ffmpeg (video processing, with libass for subtitle rendering)
+- Whisper AI (transcription with word-level timestamps) - or Whisper API
+- librosa or pydub (audio analysis)
+- OpenCV (face detection for reels auto-focus)
+- numpy (numerical processing for video analysis)
+- pysubs2 or ass library (for generating ASS subtitle files)
+
+Mobile-First Enhancements (Priority):
+- Touch gestures:
+  * Swipe down to refresh
+  * Pull to dismiss modals
+  * Tap thumbnail to preview larger
+- Mobile share integration:
+  * Share clips directly from app using native share sheet
+  * Share to Instagram/TikTok/WhatsApp directly
+- Auto-paste detection:
+  * When app opens and clipboard has YouTube URL, show paste suggestion
+- Haptic feedback on buttons (if supported)
+- Dark mode (easier on eyes, better battery on OLED)
+- Push notifications when processing complete (via web push API)
+
+Optional Enhancements:
+- PWA (Progressive Web App) features:
+  * "Add to Home Screen" for app-like experience
+  * Offline support with service worker
+  * App icons and splash screen
+- Video preview player for clips before saving (mobile-friendly)
+- Manual timestamp editing (fine-tune detected segments)
+- Batch processing (multiple URLs at once)
+- Progress tracking and resume capability
+- Export segments list to JSON/CSV
+- Adjust "interesting" detection sensitivity slider
+- Video queue management (process multiple videos sequentially)
+- History of processed videos with re-download option
+
+
+FILE STRUCTURE
+--------------
+/YTClipper
+  /backend
+    - server.py (Flask/FastAPI server)
+    - downloader.py (yt-dlp wrapper)
+    - analyzer.py (transcript + audio analysis)
+    - caption_generator.py (word-level timestamps + ASS file generation)
+    - clipper.py (ffmpeg wrapper for standard cuts)
+    - reels_processor.py (face detection + smart cropping for reels)
+    - speaker_detector.py (detect active speaker using audio/visual)
+    - watermark_processor.py (apply text/image watermarks)
+    - file_manager.py (creates folder structure + video_info.txt)
+  /frontend
+    - index.html (Mobile-first UI for Chrome)
+    - style.css (mobile-optimized, touch-friendly)
+    - script.js (main app logic)
+    - settings.js (settings modal logic for captions + watermark)
+    - (Optional PWA files for "Add to Home Screen" feature:)
+      - manifest.json (PWA manifest - app name, icons, colors)
+      - service-worker.js (offline support, caching)
+      /icons
+        - icon-192x192.png
+        - icon-512x512.png
+        - apple-touch-icon.png
+  /Downloads (temporary original videos - in source directory)
+  /ToUpload
+    /VideoTitle1_2024-01-26
+      /original
+        - clip_001.mp4
+        - clip_001_info.txt
+        - clip_002.mp4
+        - clip_002_info.txt
+      /reels
+        - reel_001.mp4
+        - reel_001_info.txt
+        - reel_002.mp4
+        - reel_002_info.txt
+    /AnotherVideo_2024-01-27
+      /original
+        - clip_001.mp4
+        - clip_001_info.txt
+      /reels
+        - reel_001.mp4
+        - reel_001_info.txt
+  /temp (processing files, transcripts, ASS files)
+  /watermarks (user uploaded watermark images)
+  - config.json (stores caption + watermark settings)
+  - requirements.txt (Python dependencies)
+  - package.json (if using Node.js frontend tools)
+
+
+NEXT STEPS
+----------
+PHASE 1: Basic Setup & Mobile-First Interface
+1. Install dependencies (yt-dlp, ffmpeg+libass, whisper, opencv, numpy, pysubs2)
+2. Set up FastAPI server with network access (bind to 0.0.0.0)
+3. Create mobile-first web interface (optimized for Chrome on phone):
+   - Large input field for URL pasting with X button inside (right side)
+   - X button only visible when text is entered, clears input on click
+   - Format selection (Original/Reels) - large touch-friendly toggles
+   - "Burn Captions into Video" toggle (ON by default)
+   - Large touch-friendly buttons (min 44x44px tap targets)
+   - Mobile-optimized layout (vertical, one-handed use)
+   - Bottom-aligned action buttons for easy thumb reach
+   - Settings cog in top right corner
+   - Responsive CSS for mobile (touch-friendly spacing)
+4. Test local network access from Chrome on phone
+5. Test on different phone screen sizes
+6. Implement thumbnail preview on URL paste
+
+PHASE 2: Core Functionality
+7. Implement YouTube download functionality
+8. Build analysis engine:
+   - Whisper transcription with word-level timestamps
+   - Interesting section detection algorithm
+9. Implement file_manager.py:
+   - Create video-specific folders with date
+   - Generate individual _info.txt files for each clip
+   - Organize clips into /original and /reels subfolders
+10. Implement standard clipping (16:9)
+11. Add real-time progress updates (WebSocket/SSE)
+12. Add native share button for mobile (Web Share API)
+13. Test end-to-end: URL paste → clips ready in organized folders
+
+PHASE 3: Video Enhancements
+14. Add settings modal:
+    - Caption styling configuration (font, color, position)
+    - Watermark configuration
+15. Implement caption generator:
+    - Group words into 1-3 word chunks
+    - Generate ASS subtitle files with user styling
+16. Implement caption burning:
+    - Check "Burn Captions" toggle state
+    - If ON: Apply ASS subtitles to video using ffmpeg
+    - If OFF: Skip caption burning (just create _info.txt)
+17. Implement watermark processor (text and image)
+
+PHASE 4: Reels Format
+18. Implement reels processor:
+    - Face detection (fixed positions)
+    - Speaker change detection
+    - Dynamic cropping to 9:16
+19. Test reels with Joe Rogan-style podcasts
+
+PHASE 5: Testing & Polish (Mobile Focus)
+20. Test complete pipeline from Chrome on phone:
+    - Open Chrome → Navigate to bookmarked URL
+    - Paste URL → Process → Download/Share clips
+    - Test video: https://www.youtube.com/watch?v=GRqPnRcfMIY
+21. Test mobile-specific features in Chrome:
+    - Touch interactions work smoothly (no lag)
+    - Buttons are easy to tap (thumb-reachable)
+    - Native share button works (share to Instagram/TikTok via Web Share API)
+    - Layout works on different phone screen sizes
+    - Works well on both iOS Chrome and Android Chrome
+22. Verify _info.txt contains correct data for each clip
+23. Test and refine interesting section detection
+24. Test position percentage calculation for different video sizes
+25. Test reels auto-focus with test video (Joe Rogan style format)
+26. Optimize for mobile performance:
+    - Fast loading on slow connections
+    - Progress indicators visible and smooth
+    - No lag on touch interactions
+27. Test with various video types and lengths
+28. Polish mobile UI based on real usage:
+    - Adjust spacing/sizing based on testing
+    - Add haptic feedback if needed
+    - Improve thumb-reachability of controls
+
+TEST VIDEO FOR DEVELOPMENT:
+- URL: https://www.youtube.com/watch?v=GRqPnRcfMIY
+- Use this video for testing during development
+- Good example of podcast/interview format for reels cropping
+- Test all features: download, transcription, clipping, captions, reels format

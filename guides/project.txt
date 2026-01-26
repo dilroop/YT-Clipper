@@ -1,0 +1,9 @@
+Your job is to create a web app that run locally.
+You will be creating a tool that takes the YouTube video url and download the video in highest quality possible.
+
+Generate the way to get interesting bits in the video like interesting conversation bits.
+
+Then cut it out into the original video and put it in the different folder "ToUpload"
+
+Web app's ui is like google.com with input and button in middle. 
+

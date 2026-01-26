@@ -1,0 +1,102 @@
+# Video files
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.flv
+*.wmv
+*.webm
+*.m4v
+*.mpg
+*.mpeg
+
+# Audio files
+*.mp3
+*.wav
+*.aac
+*.flac
+*.m4a
+
+# Generated clips and uploads
+ToUpload/
+downloads/
+Downloads/
+
+# Subtitle files
+*.srt
+*.ass
+*.vtt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+history.db
+
+# Logs
+*.log
+*.log.*
+logs/
+tmp/
+
+# Configuration (but keep example configs)
+config.json
+.env
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Whisper model cache
+~/.cache/whisper/
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp
+.cache/
+
+# FFmpeg temporary files
+*.ffmpeg.*

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a1a1a">
+    <title>YTClipper - YouTube Video Clipper</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>YTClipper</h1>
+            <div class="header-buttons">
+                <button class="icon-btn" id="galleryBtn" aria-label="Gallery" title="View All Clips">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                </button>
+                <button class="icon-btn" id="historyBtn" aria-label="History">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </button>
+                <button class="icon-btn" id="settingsBtn" aria-label="Settings">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <!-- URL Input Section -->
+            <div class="input-section">
+                <div class="input-wrapper">
+                    <input
+                        type="url"
+                        id="urlInput"
+                        placeholder="Paste YouTube URL here..."
+                        aria-label="YouTube URL"
+                    >
+                    <button class="clear-btn" id="clearBtn" aria-label="Clear input">✕</button>
+                </div>
+                <div class="loading-indicator" id="loadingIndicator" style="display: none;">
+                    <div class="spinner"></div>
+                    <span>Fetching video info...</span>
+                </div>
+            </div>
+
+            <!-- Video Preview Section (Hidden by default) -->
+            <div class="preview-section" id="previewSection" style="display: none;">
+                <div class="thumbnail-wrapper">
+                    <img id="thumbnail" src="" alt="Video thumbnail">
+                </div>
+                <div class="video-info">
+                    <h2 id="videoTitle">Video Title</h2>
+                    <p class="channel-name" id="channelName">Channel Name</p>
+                    <p class="duration" id="videoDuration">Duration: 0:00</p>
+                </div>
+
+                <!-- Format Selection -->
+                <div class="format-section">
+                    <h3>Format:</h3>
+                    <div class="format-buttons">
+                        <button class="format-btn active" data-format="reels">
+                            Reels (9:16)
+                        </button>
+                        <button class="format-btn" data-format="original">
+                            Original (16:9)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Burn Captions Toggle -->
+                <div class="toggle-section">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="burnCaptionsToggle" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Burn Captions into Video</span>
+                    </label>
+                </div>
+
+                <!-- Auto/Manual Workflow Buttons -->
+                <div class="workflow-buttons">
+                    <button class="workflow-btn auto-btn" id="autoCreateBtn">
+                        <span style="font-size: 24px;">🤖</span> Auto Create
+                    </button>
+                    <button class="workflow-btn manual-btn" id="manualChooseBtn">
+                        <span style="font-size: 24px;">🔨</span> Manually Choose
+                    </button>
+                </div>
+            </div>
+
+            <!-- Clip Selection Section (Hidden by default) -->
+            <div class="clip-selection-section" id="clipSelectionSection" style="display: none;">
+                <h3>Select Clips to Generate</h3>
+                <p class="selection-note">Choose which clips you want to create:</p>
+                <div class="clips-list" id="clipsList">
+                    <!-- Clips will be loaded here dynamically -->
+                </div>
+                <button class="generate-btn" id="generateBtn">
+                    Generate Selected Clips
+                </button>
+            </div>
+
+            <!-- Progress Section (Hidden by default) -->
+            <div class="progress-section" id="progressSection" style="display: none;">
+                <h3>Processing...</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p class="progress-text" id="progressText">Starting...</p>
+                <button class="cancel-btn" id="cancelBtn">Cancel Processing</button>
+            </div>
+
+            <!-- Results Section (Hidden by default) -->
+            <div class="results-section" id="resultsSection" style="display: none;">
+                <h3>✨ Clips Ready!</h3>
+                <div class="clips-grid" id="clipsGrid">
+                    <!-- Clips will be added here dynamically -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="modal-close" id="closeModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <!-- Caption Settings -->
+                <div class="setting-section">
+                    <h3>Caption Styling</h3>
+                    <p class="setting-note">Use the "Burn Captions" toggle on main screen to enable/disable</p>
+
+                    <div class="setting-item">
+                        <label>Words Per Caption:</label>
+                        <select id="wordsPerCaption">
+                            <option value="1">1 word</option>
+                            <option value="2" selected>2 words</option>
+                            <option value="3">3 words</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>Font Family:</label>
+                        <select id="fontFamily">
+                            <option value="Impact" selected>Impact</option>
+                            <option value="Montserrat-Bold">Montserrat Bold</option>
+                            <option value="Montserrat-ExtraBold">Montserrat Extra Bold</option>
+                            <option value="Roboto">Roboto</option>
+                            <option value="Open Sans">Open Sans</option>
+                            <option value="Arial">Arial</option>
+                            <option value="Helvetica">Helvetica</option>
+                            <option value="Comic Sans MS">Comic Sans</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>Font Size: <span id="fontSizeValue">48</span>px</label>
+                        <input type="range" id="fontSize" min="20" max="80" value="48">
+                    </div>
+
+                    <div class="setting-item">
+                        <label>Vertical Position: <span id="verticalPosValue">80</span>%</label>
+                        <input type="range" id="verticalPosition" min="0" max="100" value="80">
+                    </div>
+                </div>
+
+                <!-- Watermark Settings -->
+                <div class="setting-section">
+                    <h3>Watermark</h3>
+                    <p class="setting-note">Coming soon in Phase 3</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="save-btn" id="saveSettings">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal" id="historyModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>History</h2>
+                <button class="modal-close" id="closeHistoryModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="historyList">
+                    <!-- History items will be loaded here -->
+                </div>
+                <div class="empty-state" id="emptyHistory" style="display: none;">
+                    <p style="color: var(--text-secondary); text-align: center; padding: 40px 20px;">
+                        No history yet. Paste a YouTube URL to get started!
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="clear-history-btn" id="clearHistoryBtn">Clear History</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

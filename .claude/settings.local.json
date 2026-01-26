@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(brew install:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(kill:*)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(jobs:*)",
+      "Bash(open temp)",
+      "Bash(brew uninstall:*)",
+      "Bash(brew tap:*)",
+      "Bash(brew options:*)",
+      "Bash(brew search:*)",
+      "Bash(export:*)",
+      "Bash(/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg:*)",
+      "Bash(ln:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(chmod:*)",
+      "Bash(tree:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
