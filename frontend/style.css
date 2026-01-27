@@ -568,6 +568,11 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     line-height: 1.4;
 }
 
+/* Full-width card for results/errors - spans all grid columns */
+.clip-card-full-width {
+    grid-column: 1 / -1;
+}
+
 .clip-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;

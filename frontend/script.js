@@ -382,7 +382,7 @@ function showResults(data) {
         }
 
         clipsGrid.innerHTML = `
-            <div class="clip-card">
+            <div class="clip-card clip-card-full-width">
                 <h4>✅ Processing Complete!</h4>
                 <p style="color: var(--text-secondary); margin-bottom: 12px;">
                     Successfully processed ${data.clips_created || 0} clips!
@@ -398,7 +398,7 @@ function showResults(data) {
         `;
     } else {
         clipsGrid.innerHTML = `
-            <div class="clip-card">
+            <div class="clip-card clip-card-full-width">
                 <h4>❌ Processing Failed</h4>
                 <p style="color: var(--error-color);">
                     ${data.message || 'An error occurred during processing'}
