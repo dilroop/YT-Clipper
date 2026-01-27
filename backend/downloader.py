@@ -91,6 +91,11 @@ class VideoDownloader:
             'no_warnings': True,
             'progress_hooks': [progress_hook] if progress_callback else [],
             'nocheckcertificate': True,  # Skip SSL certificate verification
+            'socket_timeout': 30,  # 30 second timeout per chunk
+            'retries': 10,  # Retry up to 10 times on failure
+            'fragment_retries': 10,  # Retry fragments up to 10 times
+            'file_access_retries': 3,  # Retry file access operations
+            'extractor_retries': 3,  # Retry extractor operations
         }
 
         try:
