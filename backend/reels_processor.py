@@ -64,14 +64,14 @@ class ReelsProcessor:
             face_count = len(faces)
             timestamp = frame_idx / fps
 
-            # Store face positions
+            # Store face positions using corner points
             face_positions = []
             for (x, y, w, h) in faces:
                 face_positions.append({
-                    'x': x + w // 2,
-                    'y': y + h // 2,
-                    'w': w,
-                    'h': h
+                    'topLeft': {'x': x, 'y': y},
+                    'rightBottom': {'x': x + w, 'y': y + h},
+                    'width': w,
+                    'height': h
                 })
 
             # Start new segment or continue current one
@@ -161,14 +161,14 @@ class ReelsProcessor:
             if len(faces) == 2:
                 frames_with_two_faces += 1
 
-            # Store face positions with frame info
+            # Store face positions using corner points
             frame_faces = []
             for (x, y, w, h) in faces:
                 frame_faces.append({
-                    'x': x + w // 2,  # Face center x
-                    'y': y + h // 2,  # Face center y
-                    'w': w,
-                    'h': h
+                    'topLeft': {'x': x, 'y': y},
+                    'rightBottom': {'x': x + w, 'y': y + h},
+                    'width': w,
+                    'height': h
                 })
 
             if frame_faces:
@@ -192,18 +192,16 @@ class ReelsProcessor:
         all_faces = [face for frame_faces in face_positions for face in frame_faces]
 
         if all_faces:
-            avg_x = sum(f['x'] for f in all_faces) / len(all_faces)
-            avg_y = sum(f['y'] for f in all_faces) / len(all_faces)
-            avg_w = sum(f['w'] for f in all_faces) / len(all_faces)
-            avg_h = sum(f['h'] for f in all_faces) / len(all_faces)
+            # Calculate average face center for horizontal positioning
+            avg_center_x = sum((f['topLeft']['x'] + f['rightBottom']['x']) / 2 for f in all_faces) / len(all_faces)
 
             # Calculate crop parameters for 9:16 aspect ratio
             target_aspect = 9 / 16  # width / height for reels
             crop_height = height
             crop_width = int(crop_height * target_aspect)
 
-            # Center crop around detected face
-            crop_x = int(avg_x - crop_width // 2)
+            # Center crop horizontally around detected face
+            crop_x = int(avg_center_x - crop_width // 2)
 
             # Ensure crop stays within video bounds
             crop_x = max(0, min(crop_x, width - crop_width))
@@ -241,77 +239,85 @@ class ReelsProcessor:
             # Fallback to single face if we don't have dual-face data
             return self._get_default_crop_position(width, height)
 
-        # Calculate average positions for left and right faces
+        # Helper function to calculate average face and apply padding
+        def calculate_face_crop(faces):
+            # Average the corners
+            tl_x = sum(f['topLeft']['x'] for f in faces) / len(faces)
+            tl_y = sum(f['topLeft']['y'] for f in faces) / len(faces)
+            rb_x = sum(f['rightBottom']['x'] for f in faces) / len(faces)
+            rb_y = sum(f['rightBottom']['y'] for f in faces) / len(faces)
+            width = sum(f['width'] for f in faces) / len(faces)
+            height = sum(f['height'] for f in faces) / len(faces)
+
+            # Apply padding: Box.LT = Face.LT - (width, height/2)
+            #                Box.RB = Face.RB + (width, height*0.75)
+            box_lt_x = int(tl_x - width)
+            box_lt_y = int(tl_y - (height / 2))
+            box_rb_x = int(rb_x + width)
+            box_rb_y = int(rb_y + (height * 0.75))
+
+            return {
+                'box_lt_x': box_lt_x,
+                'box_lt_y': box_lt_y,
+                'box_width': box_rb_x - box_lt_x,
+                'box_height': box_rb_y - box_lt_y,
+                'center_x': (tl_x + rb_x) / 2,
+                'avg_width': width,
+                'avg_height': height
+            }
+
+        # Separate left and right faces
         left_faces = []
         right_faces = []
-
         for frame in dual_face_frames:
-            # Sort by x position to identify left/right
-            sorted_faces = sorted(frame, key=lambda f: f['x'])
+            sorted_faces = sorted(frame, key=lambda f: f['topLeft']['x'])
             left_faces.append(sorted_faces[0])
             right_faces.append(sorted_faces[1])
 
-        # Average positions (center of face)
-        left_x = sum(f['x'] for f in left_faces) / len(left_faces)
-        left_y = sum(f['y'] for f in left_faces) / len(left_faces)
-        right_x = sum(f['x'] for f in right_faces) / len(right_faces)
-        right_y = sum(f['y'] for f in right_faces) / len(right_faces)
+        # Calculate crop boxes for both faces
+        left = calculate_face_crop(left_faces)
+        right = calculate_face_crop(right_faces)
 
-        # Average face sizes
-        left_w_avg = sum(f['w'] for f in left_faces) / len(left_faces)
-        left_h_avg = sum(f['h'] for f in left_faces) / len(left_faces)
-        right_w_avg = sum(f['w'] for f in right_faces) / len(right_faces)
-        right_h_avg = sum(f['h'] for f in right_faces) / len(right_faces)
+        # Use average box width, conform to 9:8 ratio
+        avg_box_width = (left['box_width'] + right['box_width']) // 2
+        final_crop_width = avg_box_width
+        final_crop_height = int(final_crop_width * 8 / 9)
 
-        # Target: Face should be 40% of the crop width for nice padding
-        # If face_width = 0.4 * crop_width, then crop_width = face_width / 0.4 = face_width * 2.5
-        avg_face_width = (left_w_avg + right_w_avg) / 2
-        desired_crop_width = int(avg_face_width * 2.5)
+        # Adjust if height exceeds width (maintain proper aspect)
+        if final_crop_height > final_crop_width:
+            final_crop_width = int(final_crop_height * 9 / 8)
 
-        # For 9:8 aspect ratio: height = width * 8/9
-        desired_crop_height = int(desired_crop_width * 8 / 9)
+        # Ensure crop doesn't exceed video dimensions
+        if final_crop_width > width:
+            final_crop_width = width
+            final_crop_height = int(final_crop_width * 8 / 9)
+        if final_crop_height > height:
+            final_crop_height = height
+            final_crop_width = int(final_crop_height * 9 / 8)
 
-        # CONSTRAINT: Crop height can't exceed half video height (since we stack two)
-        # This is a hard constraint for maintaining proper stacking
-        max_crop_height = height // 2
-        max_crop_width = int(max_crop_height * 9 / 8)
+        # Calculate final crop positions (centered horizontally, top anchored)
+        left_crop_x = int(left['center_x'] - final_crop_width // 2)
+        left_crop_y = left['box_lt_y']
 
-        # If desired dimensions exceed video bounds, use maximum allowed dimensions
-        if desired_crop_height > max_crop_height or desired_crop_width > max_crop_width:
-            # Use maximum dimensions that fit while maintaining 9:8 ratio
-            final_crop_height = max_crop_height
-            final_crop_width = max_crop_width
+        right_crop_x = int(right['center_x'] - final_crop_width // 2)
+        right_crop_y = right['box_lt_y']
 
-            # In this case, faces will occupy more than 40% of the box
-            # This happens when faces are very large relative to video size
-            print(f"[DEBUG] Faces are large relative to video - using max crop dimensions")
-            print(f"[DEBUG] Desired: {desired_crop_width}x{desired_crop_height}, Using: {final_crop_width}x{final_crop_height}")
-        else:
-            # We can achieve 40% face occupancy
-            final_crop_width = desired_crop_width
-            final_crop_height = desired_crop_height
-
-        # Calculate crop positions centered around each face
-        # Horizontal position (centered on face x)
-        left_crop_x = int(left_x - final_crop_width // 2)
-        right_crop_x = int(right_x - final_crop_width // 2)
-
-        # Vertical position (centered on face y)
-        left_crop_y = int(left_y - final_crop_height // 2)
-        right_crop_y = int(right_y - final_crop_height // 2)
-
-        # Ensure crops stay within bounds horizontally
+        # Clamp to video boundaries for FFmpeg processing
         left_crop_x = max(0, min(left_crop_x, width - final_crop_width))
-        right_crop_x = max(0, min(right_crop_x, width - final_crop_width))
-
-        # Ensure crops stay within bounds vertically
         left_crop_y = max(0, min(left_crop_y, height - final_crop_height))
+
+        right_crop_x = max(0, min(right_crop_x, width - final_crop_width))
         right_crop_y = max(0, min(right_crop_y, height - final_crop_height))
 
-        print(f"[DEBUG] Dual-face crop: width={final_crop_width}, height={final_crop_height} (ratio={final_crop_width/final_crop_height:.3f}, should be 1.125 for 9:8)")
-        print(f"[DEBUG] Left face: avg_width={left_w_avg:.0f}, occupies {(left_w_avg/final_crop_width)*100:.1f}% of box width")
-        print(f"[DEBUG] Right face: avg_width={right_w_avg:.0f}, occupies {(right_w_avg/final_crop_width)*100:.1f}% of box width")
-        print(f"[DEBUG] Stacked output will be {final_crop_width}x{final_crop_height*2} (ratio={final_crop_width/(final_crop_height*2):.3f}, should be 0.5625 for 9:16)")
+        # Scaling to target output (1080x1920)
+        target_output_width = 1080
+        target_output_height = int(target_output_width * 8 / 9)
+        scale_factor = target_output_width / final_crop_width
+
+        print(f"[DEBUG] Dual-face crop: {final_crop_width}x{final_crop_height} (ratio={final_crop_width/final_crop_height:.3f})")
+        print(f"[DEBUG] Scale: {final_crop_width}x{final_crop_height} -> {target_output_width}x{target_output_height} ({scale_factor:.2f}x)")
+        print(f"[DEBUG] Left face: {left['avg_width']:.0f}px = {(left['avg_width']/final_crop_width)*100:.1f}% of crop")
+        print(f"[DEBUG] Right face: {right['avg_width']:.0f}px = {(right['avg_width']/final_crop_width)*100:.1f}% of crop")
 
         return {
             'mode': 'dual',
@@ -328,8 +334,10 @@ class ReelsProcessor:
                 'width': final_crop_width,
                 'height': final_crop_height
             },
-            'output_width': final_crop_width,
-            'output_height': final_crop_height * 2
+            'scale_width': target_output_width,
+            'scale_height': target_output_height,
+            'output_width': target_output_width,
+            'output_height': target_output_height * 2
         }
 
     def _get_default_crop_position(self, width: int, height: int, position: str = "left") -> Dict:
@@ -465,20 +473,36 @@ class ReelsProcessor:
         """Convert to reels with dual-face split-screen"""
         left = crop_params['left_face']
         right = crop_params['right_face']
+        scale_w = crop_params.get('scale_width')
+        scale_h = crop_params.get('scale_height')
 
         # Create complex filter for dual split-screen:
         # 1. Split input into 2 streams
         # 2. Crop left face from first stream
-        # 3. Crop right face from second stream
-        # 4. Stack them vertically
-        # 5. Scale to 1080x1920
-        vf_filter = (
-            f"[0:v]split=2[left][right];"
-            f"[left]crop={left['width']}:{left['height']}:{left['x']}:{left['y']}[left_crop];"
-            f"[right]crop={right['width']}:{right['height']}:{right['x']}:{right['y']}[right_crop];"
-            f"[left_crop][right_crop]vstack[stacked];"
-            f"[stacked]scale=1080:1920"
-        )
+        # 3. Scale left crop to target dimensions
+        # 4. Crop right face from second stream
+        # 5. Scale right crop to target dimensions
+        # 6. Stack them vertically (should now be 1080x1920)
+
+        if scale_w and scale_h:
+            # Scale each crop to target dimensions before stacking
+            vf_filter = (
+                f"[0:v]split=2[left][right];"
+                f"[left]crop={left['width']}:{left['height']}:{left['x']}:{left['y']}[left_crop];"
+                f"[left_crop]scale={scale_w}:{scale_h}[left_scaled];"
+                f"[right]crop={right['width']}:{right['height']}:{right['x']}:{right['y']}[right_crop];"
+                f"[right_crop]scale={scale_w}:{scale_h}[right_scaled];"
+                f"[left_scaled][right_scaled]vstack"
+            )
+        else:
+            # No scaling needed, just crop and stack, then scale final
+            vf_filter = (
+                f"[0:v]split=2[left][right];"
+                f"[left]crop={left['width']}:{left['height']}:{left['x']}:{left['y']}[left_crop];"
+                f"[right]crop={right['width']}:{right['height']}:{right['x']}:{right['y']}[right_crop];"
+                f"[left_crop][right_crop]vstack[stacked];"
+                f"[stacked]scale=1080:1920"
+            )
 
         # Build ffmpeg command
         cmd = [
@@ -590,17 +614,31 @@ class ReelsProcessor:
                         crop_params = self._process_dual_face_crop(seg['faces'], width, height)
                         processed_path = temp_dir / f"segment_{i:03d}_processed.mp4"
 
-                        # Apply dual-face crop
+                        # Apply dual-face crop with scaling
                         left = crop_params['left_face']
                         right = crop_params['right_face']
+                        scale_w = crop_params.get('scale_width')
+                        scale_h = crop_params.get('scale_height')
 
-                        vf_filter = (
-                            f"[0:v]split=2[left][right];"
-                            f"[left]crop={left['width']}:{left['height']}:{left['x']}:{left['y']}[left_crop];"
-                            f"[right]crop={right['width']}:{right['height']}:{right['x']}:{right['y']}[right_crop];"
-                            f"[left_crop][right_crop]vstack[stacked];"
-                            f"[stacked]scale=1080:1920"
-                        )
+                        if scale_w and scale_h:
+                            # Scale each crop to target dimensions before stacking
+                            vf_filter = (
+                                f"[0:v]split=2[left][right];"
+                                f"[left]crop={left['width']}:{left['height']}:{left['x']}:{left['y']}[left_crop];"
+                                f"[left_crop]scale={scale_w}:{scale_h}[left_scaled];"
+                                f"[right]crop={right['width']}:{right['height']}:{right['x']}:{right['y']}[right_crop];"
+                                f"[right_crop]scale={scale_w}:{scale_h}[right_scaled];"
+                                f"[left_scaled][right_scaled]vstack"
+                            )
+                        else:
+                            # No scaling, just crop and stack then scale final
+                            vf_filter = (
+                                f"[0:v]split=2[left][right];"
+                                f"[left]crop={left['width']}:{left['height']}:{left['x']}:{left['y']}[left_crop];"
+                                f"[right]crop={right['width']}:{right['height']}:{right['x']}:{right['y']}[right_crop];"
+                                f"[left_crop][right_crop]vstack[stacked];"
+                                f"[stacked]scale=1080:1920"
+                            )
 
                         process_cmd = [
                             'ffmpeg',
@@ -617,14 +655,14 @@ class ReelsProcessor:
                         # Single-face or no-face mode
                         # Get crop params for single face (or default if no faces)
                         if seg['face_count'] == 1 and len(seg['faces']) > 0:
-                            # Calculate average face position for single face
+                            # Calculate average face center for single face
                             all_faces = [face for frame_faces in seg['faces'] for face in frame_faces]
-                            avg_x = sum(f['x'] for f in all_faces) / len(all_faces)
+                            avg_center_x = sum((f['topLeft']['x'] + f['rightBottom']['x']) / 2 for f in all_faces) / len(all_faces)
 
                             target_aspect = 9 / 16
                             crop_height = height
                             crop_width = int(crop_height * target_aspect)
-                            crop_x = int(avg_x - crop_width // 2)
+                            crop_x = int(avg_center_x - crop_width // 2)
                             crop_x = max(0, min(crop_x, width - crop_width))
 
                             crop_params = {
