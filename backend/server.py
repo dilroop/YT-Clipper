@@ -570,10 +570,13 @@ async def process_video(request: ProcessVideoRequest):
 
         # Filter clips if selected_clips is provided (manual mode)
         if request.selected_clips is not None:
+            print(f"[DEBUG] Before filtering: {len(interesting_clips)} clips")
+            print(f"[DEBUG] selected_clips indices: {request.selected_clips}")
             interesting_clips = [
                 clip for i, clip in enumerate(interesting_clips)
                 if i in request.selected_clips
             ]
+            print(f"[DEBUG] After filtering: {len(interesting_clips)} clips")
 
         # Step 4: Create project folder
         project_folder = file_mgr.create_project_folder(video_info['title'])
@@ -584,7 +587,9 @@ async def process_video(request: ProcessVideoRequest):
         temp_files = []
         processed_clips = []
 
+        print(f"[DEBUG] Starting clipping loop with {len(interesting_clips)} clips")
         for i, clip in enumerate(interesting_clips):
+            print(f"[DEBUG] Processing clip {i+1}/{len(interesting_clips)}: {clip.get('start')} -> {clip.get('end')}")
             clip_progress = 50 + (i / len(interesting_clips)) * 35
             await update_progress({
                 'stage': 'clipping',
@@ -599,10 +604,13 @@ async def process_video(request: ProcessVideoRequest):
                 end_time=clip['end']
             )
 
+            print(f"[DEBUG] create_clip result: success={clip_result['success']}")
             if not clip_result['success']:
+                print(f"[DEBUG] Clip creation failed, skipping clip {i+1}")
                 continue
 
             clip_path = clip_result['clip_path']
+            print(f"[DEBUG] Clip created at: {clip_path}")
             temp_files.append(clip_path)
 
             # Convert to reels format FIRST if requested (before captions)
@@ -662,7 +670,9 @@ async def process_video(request: ProcessVideoRequest):
 
         # Step 6: Organize clips based on selected format
         await update_progress({'stage': 'organizing', 'percent': 90, 'message': 'Organizing files...'})
+        print(f"[DEBUG] Organizing {len(processed_clips)} clips to {project_folder}")
         file_mgr.organize_clips(processed_clips, project_folder, video_info, request.format)
+        print(f"[DEBUG] Organization complete")
 
         # Step 8: Cleanup
         await update_progress({'stage': 'cleanup', 'percent': 95, 'message': 'Cleaning up...'})
