@@ -208,6 +208,17 @@ Then conform to 9:8 ratio, scale to 1080px width
 
 **Dynamic mode:** Checks faces every 8 frames and switches between dual/single mode as needed
 
+**False detection prevention:** Added face size validation to filter out false positives
+- OpenCV Haar Cascade can falsely detect microphones, hands, or background elements as faces
+- Validation rule: Both faces must be within 50% size ratio of each other
+- If one "face" is < 50% the width of the other, treat as single face
+- Applied in 3 locations:
+  1. `detect_speaker_position()` - Initial sampling (lines 170-178)
+  2. `detect_face_segments()` - Dynamic segmentation (lines 76-86)
+  3. `_process_dual_face_crop()` - Final processing (lines 242-260)
+- Debug logs show: `"Filtered out X frames with mismatched face sizes"`
+- Prevents single-person videos from incorrectly using split-screen dual-face mode
+
 ### AI Metadata Utilization
 **Location:** `backend/server.py` (lines 673-685), `backend/file_manager.py` (lines 104-129)
 
