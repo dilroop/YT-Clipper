@@ -224,7 +224,7 @@ class ReelsProcessor:
         """
         Process dual-face detection for split-screen effect
         Creates two 9:8 crops stacked vertically to make 9:16
-        Ensures faces are centered in their respective boxes
+        Face should occupy 40% of the 9:8 box and be centered
 
         Args:
             face_positions: List of frames, each containing list of face dicts
@@ -257,47 +257,61 @@ class ReelsProcessor:
         right_x = sum(f['x'] for f in right_faces) / len(right_faces)
         right_y = sum(f['y'] for f in right_faces) / len(right_faces)
 
-        # Average face sizes for padding calculation
+        # Average face sizes
         left_w_avg = sum(f['w'] for f in left_faces) / len(left_faces)
+        left_h_avg = sum(f['h'] for f in left_faces) / len(left_faces)
         right_w_avg = sum(f['w'] for f in right_faces) / len(right_faces)
+        right_h_avg = sum(f['h'] for f in right_faces) / len(right_faces)
 
-        # Calculate 9:8 crop dimensions (half of 9:16 vertically)
-        # Each box is 9:8, stacked = 9:16
-        # Add 2x padding around faces for better framing
-        half_height = height // 2
-        crop_width = int(half_height * 9 / 8)
+        # Target: Face should be 40% of the crop width for nice padding
+        # If face_width = 0.4 * crop_width, then crop_width = face_width / 0.4 = face_width * 2.5
+        avg_face_width = (left_w_avg + right_w_avg) / 2
+        desired_crop_width = int(avg_face_width * 2.5)
 
-        # Increase crop area by 2x to add padding around faces
-        # This gives more context and makes the framing less claustrophobic
-        padding_multiplier = 2.0
+        # For 9:8 aspect ratio: height = width * 8/9
+        desired_crop_height = int(desired_crop_width * 8 / 9)
 
-        # Calculate padded crop dimensions based on face size
-        left_padded_width = int(left_w_avg * padding_multiplier)
-        right_padded_width = int(right_w_avg * padding_multiplier)
+        # CONSTRAINT: Crop height can't exceed half video height (since we stack two)
+        # This is a hard constraint for maintaining proper stacking
+        max_crop_height = height // 2
+        max_crop_width = int(max_crop_height * 9 / 8)
 
-        # Use the larger of: crop_width or padded_width (to ensure we don't crop too tight)
-        left_crop_width = max(crop_width, left_padded_width)
-        right_crop_width = max(crop_width, right_padded_width)
+        # If desired dimensions exceed video bounds, use maximum allowed dimensions
+        if desired_crop_height > max_crop_height or desired_crop_width > max_crop_width:
+            # Use maximum dimensions that fit while maintaining 9:8 ratio
+            final_crop_height = max_crop_height
+            final_crop_width = max_crop_width
+
+            # In this case, faces will occupy more than 40% of the box
+            # This happens when faces are very large relative to video size
+            print(f"[DEBUG] Faces are large relative to video - using max crop dimensions")
+            print(f"[DEBUG] Desired: {desired_crop_width}x{desired_crop_height}, Using: {final_crop_width}x{final_crop_height}")
+        else:
+            # We can achieve 40% face occupancy
+            final_crop_width = desired_crop_width
+            final_crop_height = desired_crop_height
 
         # Calculate crop positions centered around each face
         # Horizontal position (centered on face x)
-        left_crop_x = int(left_x - left_crop_width // 2)
-        right_crop_x = int(right_x - right_crop_width // 2)
+        left_crop_x = int(left_x - final_crop_width // 2)
+        right_crop_x = int(right_x - final_crop_width // 2)
 
-        # Vertical position (centered on face y with extra vertical padding)
-        left_crop_y = int(left_y - half_height // 2)
-        right_crop_y = int(right_y - half_height // 2)
+        # Vertical position (centered on face y)
+        left_crop_y = int(left_y - final_crop_height // 2)
+        right_crop_y = int(right_y - final_crop_height // 2)
 
         # Ensure crops stay within bounds horizontally
-        left_crop_x = max(0, min(left_crop_x, width - left_crop_width))
-        right_crop_x = max(0, min(right_crop_x, width - right_crop_width))
+        left_crop_x = max(0, min(left_crop_x, width - final_crop_width))
+        right_crop_x = max(0, min(right_crop_x, width - final_crop_width))
 
         # Ensure crops stay within bounds vertically
-        left_crop_y = max(0, min(left_crop_y, height - half_height))
-        right_crop_y = max(0, min(right_crop_y, height - half_height))
+        left_crop_y = max(0, min(left_crop_y, height - final_crop_height))
+        right_crop_y = max(0, min(right_crop_y, height - final_crop_height))
 
-        # Use consistent crop width for final output (use the larger one)
-        final_crop_width = max(left_crop_width, right_crop_width)
+        print(f"[DEBUG] Dual-face crop: width={final_crop_width}, height={final_crop_height} (ratio={final_crop_width/final_crop_height:.3f}, should be 1.125 for 9:8)")
+        print(f"[DEBUG] Left face: avg_width={left_w_avg:.0f}, occupies {(left_w_avg/final_crop_width)*100:.1f}% of box width")
+        print(f"[DEBUG] Right face: avg_width={right_w_avg:.0f}, occupies {(right_w_avg/final_crop_width)*100:.1f}% of box width")
+        print(f"[DEBUG] Stacked output will be {final_crop_width}x{final_crop_height*2} (ratio={final_crop_width/(final_crop_height*2):.3f}, should be 0.5625 for 9:16)")
 
         return {
             'mode': 'dual',
@@ -306,16 +320,16 @@ class ReelsProcessor:
                 'x': left_crop_x,
                 'y': left_crop_y,
                 'width': final_crop_width,
-                'height': half_height
+                'height': final_crop_height
             },
             'right_face': {
                 'x': right_crop_x,
                 'y': right_crop_y,
                 'width': final_crop_width,
-                'height': half_height
+                'height': final_crop_height
             },
             'output_width': final_crop_width,
-            'output_height': height
+            'output_height': final_crop_height * 2
         }
 
     def _get_default_crop_position(self, width: int, height: int, position: str = "left") -> Dict:
