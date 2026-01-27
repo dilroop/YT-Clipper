@@ -657,7 +657,7 @@ async def process_video(request: ProcessVideoRequest):
                 clip_path = watermark_result['output_path']
                 temp_files.append(clip_path)
 
-            # Store processed clip info
+            # Store processed clip info (including AI-generated metadata)
             processed_clips.append({
                 'clip_number': i + 1,
                 'clip_path': clip_path,
@@ -665,7 +665,10 @@ async def process_video(request: ProcessVideoRequest):
                 'end_time': clip['end'],
                 'duration': clip['end'] - clip['start'],
                 'text': clip['text'],
-                'caption_text': caption_text
+                'caption_text': caption_text,
+                'title': clip.get('title', 'Interesting Clip'),
+                'reason': clip.get('reason', ''),
+                'keywords': clip.get('keywords', [])
             })
 
         # Step 6: Organize clips based on selected format

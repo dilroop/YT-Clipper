@@ -101,16 +101,30 @@ class FileManager:
         # Determine format type
         format_type = "Reels (9:16)" if "reels" in str(clip_path) else "Original (16:9)"
 
+        # Get AI-generated clip metadata
+        clip_title = clip_info.get('title', 'Interesting Clip')
+        clip_reason = clip_info.get('reason', '')
+        clip_keywords = clip_info.get('keywords', [])
+        keywords_str = ', '.join(clip_keywords) if clip_keywords else 'N/A'
+
         # Create info file content
         content = f"""================================
-Title: {video_info['title']}
-Channel: {video_info['channel']}
-Description: {video_info.get('description', 'N/A')[:500]}...
-URL: {video_info['url']}
-Timestamp: {start_time} - {end_time} ({duration:.0f} seconds)
-Format: {format_type}
+CLIP TITLE: {clip_title}
 
-Caption:
+CLIP DESCRIPTION:
+{clip_reason}
+
+KEYWORDS: {keywords_str}
+
+================================
+VIDEO TITLE: {video_info['title']}
+CHANNEL: {video_info['channel']}
+DESCRIPTION: {video_info.get('description', 'N/A')[:500]}...
+URL: {video_info['url']}
+TIMESTAMP: {start_time} - {end_time} ({duration:.0f} seconds)
+FORMAT: {format_type}
+
+TRANSCRIPT:
 {caption_text}
 ================================"""
 
@@ -171,7 +185,7 @@ Caption:
             # Copy clip to new location
             shutil.copy2(clip['clip_path'], new_path)
 
-            # Create info file
+            # Create info file (including AI-generated metadata)
             info_path = self.create_info_file(
                 clip_path=str(new_path),
                 video_info=video_info,
@@ -179,7 +193,10 @@ Caption:
                     'start_time': clip['start_time'],
                     'end_time': clip['end_time'],
                     'duration': clip['duration'],
-                    'clip_number': clip_number
+                    'clip_number': clip_number,
+                    'title': clip.get('title', 'Interesting Clip'),
+                    'reason': clip.get('reason', ''),
+                    'keywords': clip.get('keywords', [])
                 },
                 caption_text=clip.get('caption_text', clip.get('text', ''))
             )
