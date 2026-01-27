@@ -101,8 +101,8 @@ class AudioTranscriber:
                     'message': 'Transcription complete!'
                 })
 
-            # Clean up audio file
-            Path(audio_path).unlink()
+            # Don't clean up audio file immediately - let caller handle cleanup
+            # This allows reusing the audio file if needed and ensures cleanup only on success
 
             # Process segments with word-level timestamps
             segments = []
@@ -130,7 +130,8 @@ class AudioTranscriber:
                 'success': True,
                 'language': result.get('language', 'unknown'),
                 'segments': segments,
-                'full_text': result['text']
+                'full_text': result['text'],
+                'audio_path': audio_path  # Return audio path for cleanup by caller
             }
 
         except Exception as e:

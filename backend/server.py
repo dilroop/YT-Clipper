@@ -546,6 +546,11 @@ async def process_video(request: ProcessVideoRequest):
 
         segments = transcript_result['segments']
 
+        # Track audio file for cleanup (will be cleaned up with temp_files at the end)
+        audio_path = transcript_result.get('audio_path')
+        if audio_path:
+            print(f"[DEBUG] Audio extracted to: {audio_path} (will be cleaned up after processing)")
+
         # Step 3: Find interesting clips
         await update_progress({'stage': 'analyzing', 'percent': 40, 'message': 'Finding interesting clips...'})
 
@@ -585,6 +590,10 @@ async def process_video(request: ProcessVideoRequest):
         await update_progress({'stage': 'clipping', 'percent': 50, 'message': 'Creating clips...'})
 
         temp_files = []
+        # Add audio file to temp files for cleanup
+        if audio_path:
+            temp_files.append(audio_path)
+
         processed_clips = []
 
         print(f"[DEBUG] Starting clipping loop with {len(interesting_clips)} clips")
