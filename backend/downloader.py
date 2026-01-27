@@ -96,6 +96,13 @@ class VideoDownloader:
             'fragment_retries': 10,  # Retry fragments up to 10 times
             'file_access_retries': 3,  # Retry file access operations
             'extractor_retries': 3,  # Retry extractor operations
+            # Headers to bypass YouTube bot detection
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            },
         }
 
         try:
