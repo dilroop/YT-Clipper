@@ -8,8 +8,6 @@ const clipContainer = document.getElementById('clipContainer');
 const clipPlayer = document.getElementById('clipPlayer');
 const videoSource = document.getElementById('videoSource');
 const downloadBtn = document.getElementById('downloadBtn');
-const copyInfoBtn = document.getElementById('copyInfoBtn');
-const copyMetadataBtn = document.getElementById('copyMetadataBtn');
 const backBtn = document.getElementById('backBtn');
 const homeBtn = document.getElementById('homeBtn');
 
@@ -61,19 +59,6 @@ document.querySelectorAll('.copy-btn').forEach(btn => {
             copyToClipboard(textToCopy, 'Copied!');
         }
     });
-});
-
-copyInfoBtn.addEventListener('click', () => {
-    if (currentClip) {
-        const info = formatClipInfo(currentClip);
-        copyToClipboard(info, 'Info copied!');
-    }
-});
-
-copyMetadataBtn.addEventListener('click', () => {
-    if (currentClip && currentClip.info_text) {
-        copyToClipboard(currentClip.info_text, 'Metadata copied!');
-    }
 });
 
 // Load clip on page load

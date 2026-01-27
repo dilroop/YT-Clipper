@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clip Details - YTClipper</title>
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="stylesheet" href="/static/clip-detail.css?v=2">
+    <link rel="stylesheet" href="/static/clip-detail.css?v=4">
 </head>
 <body>
     <div class="container">
@@ -51,8 +51,10 @@
                 </div>
             </div>
 
-            <!-- Column 2: Copyable Content Section -->
-            <div class="copyable-section">
+            <!-- Column 2: Content wrapper -->
+            <div class="column-2-wrapper">
+                <!-- Copyable Content Section -->
+                <div class="copyable-section">
                 <div class="copyable-item">
                     <div class="copyable-header">
                         <h3>Title</h3>
@@ -93,16 +95,10 @@
                 </div>
             </div>
 
-            <!-- Column 3: Info Section -->
+            <!-- Column 2: Info Section -->
             <div class="info-section">
                 <div class="info-header">
                     <h2>Clip Information</h2>
-                    <button class="icon-btn-small" id="copyInfoBtn" title="Copy All Info">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                        </svg>
-                    </button>
                 </div>
 
                 <div class="info-grid">
@@ -127,20 +123,15 @@
                         <span class="info-value" id="clipCreated"></span>
                     </div>
                 </div>
+            </div>
+            </div>
 
-                <!-- Metadata Code Block -->
-                <div class="metadata-section" id="metadataSection" style="display: none;">
-                    <div class="metadata-header">
-                        <h3>Metadata</h3>
-                        <button class="icon-btn-small" id="copyMetadataBtn" title="Copy Metadata">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                            </svg>
-                        </button>
-                    </div>
-                    <pre id="metadataContent" class="metadata-content"></pre>
+            <!-- Column 3: Metadata Section -->
+            <div class="metadata-section" id="metadataSection" style="display: none;">
+                <div class="metadata-header">
+                    <h3>Metadata</h3>
                 </div>
+                <pre id="metadataContent" class="metadata-content"></pre>
             </div>
         </div>
     </div>

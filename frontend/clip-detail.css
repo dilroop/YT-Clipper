@@ -189,9 +189,9 @@
 
 /* Metadata Section */
 .metadata-section {
-    margin-top: 20px;
-    border-top: 1px solid var(--border-color);
-    padding-top: 20px;
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 20px;
 }
 
 .metadata-header {
@@ -234,6 +234,7 @@
     /* Column 1: Video Section */
     .video-section {
         grid-column: 1 !important;
+        grid-row: 1 !important;
         margin-bottom: 0;
     }
 
@@ -244,17 +245,29 @@
         object-fit: contain;
     }
 
-    /* Column 2: Copyable section */
-    .copyable-section {
+    /* Column 2: Wrapper for natural flow */
+    .column-2-wrapper {
         grid-column: 2 !important;
+        grid-row: 1 !important;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .copyable-section {
         display: flex;
         flex-direction: column;
         gap: 16px;
     }
 
-    /* Column 3: Info section */
     .info-section {
+        /* Natural flow within wrapper */
+    }
+
+    /* Column 3: Metadata section */
+    .metadata-section {
         grid-column: 3 !important;
+        grid-row: 1 !important;
     }
 }
 
