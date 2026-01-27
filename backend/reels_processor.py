@@ -702,7 +702,7 @@ class ReelsProcessor:
     def _merge_segments(self, segments: List[Dict]) -> List[Dict]:
         """
         Merge consecutive segments with same face count
-        This reduces jitter from temporary detection changes
+        Also filters out very short segments (< 1 second) that are likely detection errors
 
         Args:
             segments: List of segments from detect_face_segments()
@@ -713,10 +713,35 @@ class ReelsProcessor:
         if not segments:
             return []
 
-        merged = []
-        current = segments[0].copy()
+        # First pass: filter out very short segments (< 1 second)
+        # These are usually false detections
+        min_segment_duration = 1.0
+        filtered = []
 
-        for seg in segments[1:]:
+        for i, seg in enumerate(segments):
+            duration = seg['end_time'] - seg['start_time']
+
+            # Keep segment if it's long enough OR if it's the last segment
+            if duration >= min_segment_duration or i == len(segments) - 1:
+                filtered.append(seg)
+            else:
+                # Very short segment - merge it with previous if possible
+                if filtered:
+                    # Extend the previous segment to cover this short one
+                    filtered[-1]['end_time'] = seg['end_time']
+                    filtered[-1]['end_frame'] = seg['end_frame']
+                    if 'faces' in seg and 'faces' in filtered[-1]:
+                        filtered[-1]['faces'].extend(seg['faces'])
+                    print(f"[DEBUG] Filtered out short segment ({duration:.1f}s) with {seg['face_count']} faces at {seg['start_time']:.1f}s")
+                else:
+                    # First segment is short, keep it anyway
+                    filtered.append(seg)
+
+        # Second pass: merge consecutive segments with same face count
+        merged = []
+        current = filtered[0].copy()
+
+        for seg in filtered[1:]:
             if seg['face_count'] == current['face_count']:
                 # Merge with current segment
                 current['end_time'] = seg['end_time']
