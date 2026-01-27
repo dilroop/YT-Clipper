@@ -61,7 +61,6 @@ class ReelsProcessor:
                 minSize=(30, 30)
             )
 
-            face_count = len(faces)
             timestamp = frame_idx / fps
 
             # Store face positions using corner points
@@ -73,6 +72,18 @@ class ReelsProcessor:
                     'width': w,
                     'height': h
                 })
+
+            # Validate face count - if 2 faces, check if sizes are similar
+            # This filters out false detections (microphone, hands, etc.)
+            face_count = len(face_positions)
+            if face_count == 2:
+                face1_width = face_positions[0]['width']
+                face2_width = face_positions[1]['width']
+                size_ratio = min(face1_width, face2_width) / max(face1_width, face2_width)
+
+                # If sizes are too different (< 50% ratio), treat as single face
+                if size_ratio < 0.5:
+                    face_count = 1
 
             # Start new segment or continue current one
             if current_segment is None or current_segment['face_count'] != face_count:
@@ -157,10 +168,6 @@ class ReelsProcessor:
                 minSize=(30, 30)
             )
 
-            # Track when we detect exactly 2 faces
-            if len(faces) == 2:
-                frames_with_two_faces += 1
-
             # Store face positions using corner points
             frame_faces = []
             for (x, y, w, h) in faces:
@@ -170,6 +177,16 @@ class ReelsProcessor:
                     'width': w,
                     'height': h
                 })
+
+            # Track when we detect exactly 2 valid faces (similar sizes)
+            if len(frame_faces) == 2:
+                face1_width = frame_faces[0]['width']
+                face2_width = frame_faces[1]['width']
+                size_ratio = min(face1_width, face2_width) / max(face1_width, face2_width)
+
+                # Both faces should be within reasonable size of each other (at least 50% ratio)
+                if size_ratio >= 0.5:
+                    frames_with_two_faces += 1
 
             if frame_faces:
                 face_positions.append(frame_faces)
@@ -238,6 +255,26 @@ class ReelsProcessor:
         if not dual_face_frames:
             # Fallback to single face if we don't have dual-face data
             return self._get_default_crop_position(width, height)
+
+        # Filter out false detections - both faces should be similar in size
+        # If one face is less than 50% the width of the other, it's likely a false detection
+        valid_dual_face_frames = []
+        for frame in dual_face_frames:
+            face1_width = frame[0]['width']
+            face2_width = frame[1]['width']
+            size_ratio = min(face1_width, face2_width) / max(face1_width, face2_width)
+
+            # Both faces should be within reasonable size of each other (at least 50% ratio)
+            if size_ratio >= 0.5:
+                valid_dual_face_frames.append(frame)
+
+        # If we don't have enough valid dual-face frames after filtering, use single-face mode
+        if len(valid_dual_face_frames) < len(dual_face_frames) * 0.5:
+            print(f"[DEBUG] Filtered out {len(dual_face_frames) - len(valid_dual_face_frames)} frames with mismatched face sizes")
+            print(f"[DEBUG] Only {len(valid_dual_face_frames)}/{len(dual_face_frames)} frames have valid dual faces - using single-face mode")
+            return self._get_default_crop_position(width, height)
+
+        dual_face_frames = valid_dual_face_frames
 
         # Helper function to calculate average face and apply padding
         def calculate_face_crop(faces):
