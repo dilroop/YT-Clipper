@@ -36,7 +36,10 @@ class AudioTranscriber:
         video_path = Path(video_path)
 
         if output_path is None:
-            output_path = video_path.parent / f"{video_path.stem}_audio.wav"
+            # Use dedicated temp folder for audio extraction
+            temp_dir = Path(__file__).parent.parent / "temp"
+            temp_dir.mkdir(exist_ok=True)
+            output_path = temp_dir / f"{video_path.stem}_audio.wav"
         else:
             output_path = Path(output_path)
 

@@ -43,6 +43,10 @@ app.add_middleware(
 # Base directory
 BASE_DIR = Path(__file__).parent.parent
 
+# Temp directory for intermediate files
+TEMP_DIR = BASE_DIR / "temp"
+TEMP_DIR.mkdir(exist_ok=True)
+
 # Database path
 DB_PATH = BASE_DIR / "history.db"
 
@@ -639,8 +643,8 @@ async def process_video(request: ProcessVideoRequest):
 
             # NOW burn captions onto the clip (after reels conversion if applicable)
             if request.burn_captions:
-                # Create ASS subtitles
-                ass_path = Path(clip_path).parent / f"clip_{i+1}.ass"
+                # Create ASS subtitles in temp folder
+                ass_path = TEMP_DIR / f"clip_{i+1}.ass"
                 caption_gen.create_ass_subtitles(
                     words=clip['words'],
                     output_path=str(ass_path),
@@ -648,8 +652,8 @@ async def process_video(request: ProcessVideoRequest):
                 )
                 temp_files.append(str(ass_path))
 
-                # Burn captions
-                captioned_path = Path(clip_path).parent / f"clip_{i+1}_captioned.mp4"
+                # Burn captions (output also in temp folder)
+                captioned_path = TEMP_DIR / f"clip_{i+1}_captioned.mp4"
                 burn_result = caption_gen.burn_captions(
                     video_path=clip_path,
                     subtitle_path=str(ass_path),
