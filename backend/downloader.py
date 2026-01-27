@@ -82,26 +82,52 @@ class VideoDownloader:
                     })
                     print(f"Progress hook error: {e}")
 
-        # Configure yt-dlp options - limit to 1080p max to keep file sizes reasonable
+        # Configure yt-dlp options with advanced bot detection bypass
         ydl_opts = {
-            'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]',
+            # Format selection with multiple fallbacks
+            'format': (
+                'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
+                'bestvideo[height<=1080]+bestaudio/'
+                'best[height<=1080][ext=mp4]/'
+                'best[height<=1080]/'
+                'best'
+            ),
             'outtmpl': str(self.download_dir / '%(id)s.%(ext)s'),
             'merge_output_format': 'mp4',
             'quiet': True,
             'no_warnings': True,
             'progress_hooks': [progress_hook] if progress_callback else [],
-            'nocheckcertificate': True,  # Skip SSL certificate verification
-            'socket_timeout': 30,  # 30 second timeout per chunk
-            'retries': 10,  # Retry up to 10 times on failure
-            'fragment_retries': 10,  # Retry fragments up to 10 times
-            'file_access_retries': 3,  # Retry file access operations
-            'extractor_retries': 3,  # Retry extractor operations
-            # Headers to bypass YouTube bot detection
+
+            # Network and retry settings
+            'nocheckcertificate': True,
+            'socket_timeout': 30,
+            'retries': 10,
+            'fragment_retries': 10,
+            'file_access_retries': 3,
+            'extractor_retries': 3,
+
+            # Advanced bot detection bypass
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],  # Try multiple clients
+                    'skip': ['dash', 'hls'],  # Skip problematic formats
+                }
+            },
+
+            # Comprehensive browser headers
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
                 'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
             },
         }
 
@@ -152,9 +178,31 @@ class VideoDownloader:
                 }
 
         except Exception as e:
+            error_msg = str(e)
+
+            # Provide helpful error messages based on error type
+            if '403' in error_msg or 'Forbidden' in error_msg:
+                error_msg += '\n\n⚠️ YouTube is blocking the download. This can happen due to:\n'
+                error_msg += '  • Rate limiting - Too many requests in a short time\n'
+                error_msg += '  • Regional restrictions - Video not available in your region\n'
+                error_msg += '  • Age restrictions - Video requires sign-in to view\n'
+                error_msg += '  • Private/unlisted video - Requires authentication\n\n'
+                error_msg += '💡 Solutions:\n'
+                error_msg += '  • Wait 10-15 minutes before trying again\n'
+                error_msg += '  • Try a different video to test if it\'s account-specific\n'
+                error_msg += '  • Check if the video plays in your browser without sign-in\n'
+                error_msg += '  • Update yt-dlp: pip install -U yt-dlp'
+
+            elif 'timeout' in error_msg.lower():
+                error_msg += '\n\n⚠️ Network timeout occurred.\n'
+                error_msg += '💡 This is usually temporary - try again in a moment.'
+
+            elif 'video unavailable' in error_msg.lower():
+                error_msg += '\n\n⚠️ Video is unavailable or deleted.'
+
             return {
                 'success': False,
-                'error': str(e)
+                'error': error_msg
             }
 
     def cleanup_video(self, video_path: str):
