@@ -156,6 +156,14 @@ saveSettings.addEventListener('click', async () => {
     hideElement(settingsModal);
 });
 
+// View Logs button
+const viewLogsBtn = document.getElementById('viewLogsBtn');
+if (viewLogsBtn) {
+    viewLogsBtn.addEventListener('click', () => {
+        window.location.href = '/logs.html';
+    });
+}
+
 // History modal
 historyBtn.addEventListener('click', () => {
     showElement(historyModal);
@@ -689,6 +697,27 @@ async function generateSelectedClips() {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('YTClipper loaded! 🎬');
 
+    // Center input section on initial load
+    const inputSection = document.querySelector('.input-section');
+    if (inputSection) {
+        inputSection.classList.add('input-section-centered');
+    }
+
     // Focus input on load
     urlInput.focus();
 });
+
+// Remove centered class when user interacts
+function removeCenteredState() {
+    const inputSection = document.querySelector('.input-section');
+    if (inputSection) {
+        inputSection.classList.remove('input-section-centered');
+    }
+}
+
+// Listen for when preview section shows
+const originalFetchThumbnail = fetchThumbnail;
+fetchThumbnail = async function(url) {
+    removeCenteredState();
+    return originalFetchThumbnail.call(this, url);
+};

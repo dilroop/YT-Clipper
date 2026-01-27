@@ -210,7 +210,7 @@
 
 /* Clip Detail Page */
 .clip-detail-container {
-    max-width: 800px;
+    max-width: 1000px;
     margin: 0 auto;
 }
 
@@ -437,6 +437,59 @@
     margin: 0 auto;
 }
 
+/* Desktop Responsive for Clip Detail */
+@media (min-width: 1200px) {
+    .clip-detail-container {
+        max-width: 1200px;
+    }
+
+    /* Side-by-side layout for video and copyable content on ultra-wide */
+    .video-section {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    /* Make video section and copyable section use more horizontal space */
+    .copyable-section {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+
+    .copyable-item {
+        grid-column: span 1;
+    }
+
+    /* First item (title) spans full width */
+    .copyable-item:first-child {
+        grid-column: span 2;
+    }
+}
+
+@media (min-width: 1024px) and (max-width: 1199px) {
+    .clip-detail-container {
+        max-width: 1000px;
+    }
+
+    /* Two-column layout for copyable items */
+    .copyable-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    .copyable-item:first-child {
+        grid-column: span 2;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+    .clip-detail-container {
+        max-width: 800px;
+    }
+}
+
 /* Mobile Responsive */
 @media (max-width: 1200px) {
     .clips-grid {
@@ -451,5 +504,17 @@
 
     .gallery-stats {
         flex-direction: column;
+    }
+
+    .clip-detail-container {
+        max-width: 100%;
+    }
+
+    .video-actions {
+        flex-direction: column;
+    }
+
+    .action-btn {
+        width: 100%;
     }
 }

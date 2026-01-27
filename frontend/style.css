@@ -29,7 +29,7 @@ body {
 .container {
     min-height: 100vh;
     padding: 20px;
-    max-width: 600px;
+    max-width: 1400px;
     margin: 0 auto;
 }
 
@@ -598,7 +598,7 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     background: var(--bg-card);
     border-radius: 20px;
     width: 90%;
-    max-width: 600px;
+    max-width: 700px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -722,6 +722,37 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     transform: scale(0.98);
 }
 
+.logs-btn {
+    width: 100%;
+    padding: 14px 20px;
+    background: #21262d;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.logs-btn svg {
+    flex-shrink: 0;
+}
+
+.logs-btn:hover {
+    background: #2d333b;
+    border-color: #58a6ff;
+}
+
+.logs-btn:active {
+    transform: scale(0.98);
+}
+
 .clear-history-btn {
     width: 100%;
     padding: 16px;
@@ -817,4 +848,148 @@ input[type="checkbox"]:checked + .toggle-slider::before {
 .progress-section,
 .results-section {
     animation: fadeIn 0.3s ease;
+}
+
+/* Responsive Layout for Large Screens */
+/* Content Wrappers for Smart Width Control */
+.content-wrapper {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Desktop Layout - Multi-column for larger screens */
+@media (min-width: 1024px) {
+    /* Input section takes moderate width */
+    .input-section {
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
+        margin-bottom: 40px;
+    }
+
+    /* Preview section with better spacing */
+    .preview-section {
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
+        margin-bottom: 30px;
+    }
+
+    /* Clip selection can be wider for better readability */
+    .clip-selection-section {
+        max-width: 1200px;
+        margin-left: auto;
+        margin-right: auto;
+        margin-bottom: 30px;
+    }
+
+    /* Progress section centered and compact */
+    .progress-section {
+        max-width: 700px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    /* Results section uses full width for grid layout */
+    .results-section {
+        max-width: 1400px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    /* Clips grid - 3 columns on large screens */
+    .results-section .clips-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+    }
+
+    /* Format buttons and workflow buttons side by side if space allows */
+    .format-section {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 20px;
+        align-items: center;
+    }
+
+    .format-section h3 {
+        margin-bottom: 0;
+        white-space: nowrap;
+    }
+
+    .format-buttons {
+        grid-template-columns: repeat(2, minmax(140px, 200px));
+        gap: 12px;
+        justify-content: start;
+    }
+
+    /* Two-column clip list on large screens */
+    .clips-list {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+}
+
+/* Extra large screens - even wider layouts */
+@media (min-width: 1400px) {
+    .input-section {
+        max-width: 1000px;
+    }
+
+    .preview-section {
+        max-width: 1000px;
+    }
+
+    .clip-selection-section {
+        max-width: 1400px;
+    }
+
+    /* Header with better spacing */
+    header {
+        max-width: 1400px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
+/* Tablet Layout - 2 columns for results */
+@media (min-width: 768px) and (max-width: 1023px) {
+    .input-section,
+    .preview-section,
+    .progress-section {
+        max-width: 700px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .clip-selection-section {
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .results-section .clips-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+}
+
+/* Mobile Layout - Single column, full width */
+@media (max-width: 767px) {
+    .container {
+        padding: 16px;
+    }
+
+    header {
+        margin-bottom: 24px;
+    }
+
+    h1 {
+        font-size: 24px;
+    }
+
+    .results-section .clips-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
 }

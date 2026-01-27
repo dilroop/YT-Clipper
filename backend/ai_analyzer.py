@@ -134,6 +134,12 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
 
             result = response.choices[0].message.content.strip()
 
+            # Log the raw OpenAI response
+            print(f"\n📝 Raw OpenAI Response:")
+            print("="*80)
+            print(result)
+            print("="*80)
+
             # Clean response if it has markdown code blocks
             if result.startswith("```"):
                 result = re.sub(r"```json?\n?", "", result)
@@ -177,6 +183,18 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
                 print(highlights)
                 print("="*80)
                 return []
+
+            # Log what AI suggested before filtering
+            print(f"\n🤖 AI Suggested {len(highlights)} clips before filtering:")
+            for i, clip in enumerate(highlights, 1):
+                if isinstance(clip, dict) and 'start_time' in clip and 'end_time' in clip:
+                    start = self._parse_timestamp(clip['start_time'])
+                    end = self._parse_timestamp(clip['end_time'])
+                    duration = end - start
+                    print(f"   Clip {i}: {clip['start_time']} - {clip['end_time']} ({duration:.1f}s) | {clip.get('title', 'N/A')}")
+                else:
+                    print(f"   Clip {i}: Invalid format")
+            print()
 
             # Filter by duration
             valid_clips = []
@@ -231,6 +249,21 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
 
                     if len(valid_clips) >= num_clips:
                         break
+                else:
+                    # Log duration violations
+                    if duration < self.min_clip_duration:
+                        print(f"\n⚠️  Skipping clip {i+1}: Duration {duration:.1f}s is too short (minimum: {self.min_clip_duration}s)")
+                    else:
+                        print(f"\n⚠️  Skipping clip {i+1}: Duration {duration:.1f}s is too long (maximum: {self.max_clip_duration}s)")
+                    print(f"   Title: {highlight.get('title', 'N/A')}")
+                    print(f"   Time: {highlight['start_time']} - {highlight['end_time']}")
+
+            # Log filtering summary
+            filtered_count = len(highlights) - len(valid_clips)
+            if filtered_count > 0:
+                print(f"\n✅ Kept {len(valid_clips)} clips, filtered out {filtered_count} clips due to duration constraints")
+            else:
+                print(f"\n✅ Kept all {len(valid_clips)} clips")
 
             # Sort by timestamp
             valid_clips.sort(key=lambda x: x['start'])

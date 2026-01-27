@@ -25,6 +25,8 @@ import re
 from typing import Optional
 import sqlite3
 from datetime import datetime
+import asyncio
+import sys
 
 # Initialize FastAPI app
 app = FastAPI(title="YTClipper", version="1.0.0")
@@ -43,6 +45,40 @@ BASE_DIR = Path(__file__).parent.parent
 
 # Database path
 DB_PATH = BASE_DIR / "history.db"
+
+# Log file path
+LOG_FILE = BASE_DIR / "logs" / "ytclipper.log"
+
+# Ensure logs directory exists
+LOG_FILE.parent.mkdir(exist_ok=True)
+
+# Tee class to write to both file and console
+class TeeOutput:
+    """Write to both console and log file"""
+    def __init__(self, file_path, original_stream):
+        self.file = open(file_path, 'a', encoding='utf-8')
+        self.original_stream = original_stream
+
+    def write(self, message):
+        # Write to console
+        self.original_stream.write(message)
+        self.original_stream.flush()
+        # Write to file with timestamp
+        if message.strip():  # Only log non-empty messages
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.file.write(f"[{timestamp}] {message}")
+            self.file.flush()
+
+    def flush(self):
+        self.original_stream.flush()
+        self.file.flush()
+
+    def isatty(self):
+        return self.original_stream.isatty()
+
+# Redirect stdout and stderr to also write to log file
+sys.stdout = TeeOutput(LOG_FILE, sys.stdout)
+sys.stderr = TeeOutput(LOG_FILE, sys.stderr)
 
 # Mount static files (frontend)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "frontend")), name="static")
@@ -222,6 +258,12 @@ async def gallery():
 async def clip_detail():
     """Serve the clip detail HTML page"""
     return FileResponse(str(BASE_DIR / "frontend" / "clip-detail.html"))
+
+
+@app.get("/logs.html")
+async def logs():
+    """Serve the logs HTML page"""
+    return FileResponse(str(BASE_DIR / "frontend" / "logs.html"))
 
 
 @app.post("/api/thumbnail")
@@ -706,6 +748,83 @@ async def get_history_endpoint(limit: int = 50):
         return {"success": True, "history": history, "count": len(history)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching history: {str(e)}")
+
+
+@app.get("/api/logs")
+async def get_logs(lines: int = 500):
+    """Get the last N lines from the log file"""
+    try:
+        # Ensure logs directory exists
+        LOG_FILE.parent.mkdir(exist_ok=True)
+
+        if not LOG_FILE.exists():
+            return {"success": True, "logs": [], "count": 0}
+
+        # Read the last N lines efficiently
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            # Read all lines
+            all_lines = f.readlines()
+            # Get last N lines
+            last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+        return {
+            "success": True,
+            "logs": last_lines,
+            "count": len(last_lines),
+            "total_lines": len(all_lines)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading logs: {str(e)}")
+
+
+@app.websocket("/ws/logs")
+async def websocket_logs(websocket: WebSocket):
+    """WebSocket for live log streaming"""
+    await websocket.accept()
+    print(f"🔌 WebSocket connected from logs panel")
+
+    try:
+        # Send initial log content (last 500 lines)
+        if LOG_FILE.exists():
+            print(f"📂 Log file exists, reading last 500 lines...")
+            with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                all_lines = f.readlines()
+                last_lines = all_lines[-500:] if len(all_lines) > 500 else all_lines
+                print(f"📤 Sending {len(last_lines)} initial log lines...")
+                for line in last_lines:
+                    await websocket.send_json({"type": "history", "line": line.rstrip()})
+                print(f"✅ Sent all initial log lines")
+        else:
+            print(f"⚠️ Log file does not exist yet")
+
+        # Track the last position in the file
+        last_position = LOG_FILE.stat().st_size if LOG_FILE.exists() else 0
+
+        # Stream new log lines as they appear
+        while True:
+            await asyncio.sleep(0.5)  # Check every 500ms
+
+            if not LOG_FILE.exists():
+                continue
+
+            current_size = LOG_FILE.stat().st_size
+
+            if current_size > last_position:
+                # File has grown, read new content
+                with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                    f.seek(last_position)
+                    new_lines = f.readlines()
+
+                    for line in new_lines:
+                        await websocket.send_json({"type": "new", "line": line.rstrip()})
+
+                last_position = current_size
+
+    except WebSocketDisconnect:
+        print("Log viewer disconnected")
+    except Exception as e:
+        print(f"Error in log stream: {e}")
 
 
 @app.delete("/api/history")

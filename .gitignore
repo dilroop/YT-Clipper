@@ -63,6 +63,7 @@ history.db
 *.log.*
 logs/
 tmp/
+/logs/
 
 # Configuration (but keep example configs)
 config.json
