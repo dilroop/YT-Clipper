@@ -31,7 +31,11 @@
       "Bash(git pull:*)",
       "Bash(ls:*)",
       "Bash(cat:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(ping:*)",
+      "Bash(ffprobe:*)",
+      "Bash(open:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []

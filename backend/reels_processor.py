@@ -17,6 +17,100 @@ class ReelsProcessor:
         cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         self.face_cascade = cv2.CascadeClassifier(cascade_path)
 
+    def detect_face_segments(self, video_path: str, check_every_n_frames: int = 8) -> List[Dict]:
+        """
+        Detect faces throughout video and create segments with different face counts
+
+        Args:
+            video_path: Path to video
+            check_every_n_frames: Check faces every N frames (default: 8)
+
+        Returns:
+            List of segments with face count and timestamps
+        """
+        cap = cv2.VideoCapture(str(video_path))
+
+        if not cap.isOpened():
+            raise Exception(f"Cannot open video: {video_path}")
+
+        # Get video properties
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        segments = []
+        current_segment = None
+
+        frame_idx = 0
+        while frame_idx < total_frames:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+
+            if not ret:
+                break
+
+            # Convert to grayscale for face detection
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            # Detect faces
+            faces = self.face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=(30, 30)
+            )
+
+            face_count = len(faces)
+            timestamp = frame_idx / fps
+
+            # Store face positions
+            face_positions = []
+            for (x, y, w, h) in faces:
+                face_positions.append({
+                    'x': x + w // 2,
+                    'y': y + h // 2,
+                    'w': w,
+                    'h': h
+                })
+
+            # Start new segment or continue current one
+            if current_segment is None or current_segment['face_count'] != face_count:
+                # Save previous segment
+                if current_segment is not None:
+                    current_segment['end_time'] = timestamp
+                    current_segment['end_frame'] = frame_idx
+                    segments.append(current_segment)
+
+                # Start new segment
+                current_segment = {
+                    'face_count': face_count,
+                    'start_time': timestamp,
+                    'start_frame': frame_idx,
+                    'faces': [face_positions] if face_positions else []
+                }
+            else:
+                # Add face positions to current segment
+                if face_positions:
+                    current_segment['faces'].append(face_positions)
+
+            frame_idx += check_every_n_frames
+
+        # Close last segment
+        if current_segment is not None:
+            current_segment['end_time'] = total_frames / fps
+            current_segment['end_frame'] = total_frames
+            segments.append(current_segment)
+
+        cap.release()
+
+        print(f"[DEBUG] Detected {len(segments)} segments:")
+        for i, seg in enumerate(segments):
+            duration = seg['end_time'] - seg['start_time']
+            print(f"  Segment {i+1}: {seg['face_count']} faces, {seg['start_time']:.1f}s - {seg['end_time']:.1f}s ({duration:.1f}s)")
+
+        return segments
+
     def detect_speaker_position(self, video_path: str, sample_frames: int = 10) -> Dict:
         """
         Detect speaker position in video by sampling frames
@@ -266,16 +360,19 @@ class ReelsProcessor:
         self,
         video_path: str,
         output_path: str = None,
-        auto_detect: bool = True
+        auto_detect: bool = True,
+        dynamic_mode: bool = True
     ) -> Dict:
         """
         Convert video to reels format with smart cropping
         Supports single-face and dual-face split-screen modes
+        Can dynamically switch between modes based on face detection
 
         Args:
             video_path: Path to input video
             output_path: Optional output path
             auto_detect: Use face detection for cropping
+            dynamic_mode: Enable dynamic mode switching (check faces every 8 frames)
 
         Returns:
             dict with result
@@ -287,6 +384,11 @@ class ReelsProcessor:
         else:
             output_path = Path(output_path)
 
+        # If dynamic mode is enabled, use segment-based conversion
+        if dynamic_mode and auto_detect:
+            return self._convert_to_reels_dynamic(video_path, output_path)
+
+        # Otherwise use the original static mode detection
         # Detect speaker position(s)
         if auto_detect:
             crop_params = self.detect_speaker_position(str(video_path))
@@ -392,3 +494,227 @@ class ReelsProcessor:
                 'success': False,
                 'error': f"Error converting to dual-face reels: {e.stderr.decode()}"
             }
+
+    def _convert_to_reels_dynamic(self, video_path: Path, output_path: Path) -> Dict:
+        """
+        Convert to reels with dynamic mode switching based on face detection
+        Checks faces every 8 frames and switches between dual/single mode as needed
+
+        Args:
+            video_path: Path to input video
+            output_path: Path for output
+
+        Returns:
+            dict with result
+        """
+        try:
+            import tempfile
+            import shutil
+
+            # Get video dimensions
+            cap = cv2.VideoCapture(str(video_path))
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap.release()
+
+            # Detect face segments (check every 8 frames)
+            print("[DEBUG] Detecting face segments for dynamic conversion...")
+            segments = self.detect_face_segments(str(video_path), check_every_n_frames=8)
+
+            if not segments:
+                # No segments detected, fall back to simple single mode
+                print("[DEBUG] No segments detected, using default single-face mode")
+                crop_params = self._get_default_crop_position(width, height, "center")
+                return self._convert_single_face_reels(video_path, output_path, crop_params)
+
+            # Merge consecutive segments with same face count to reduce jitter
+            merged_segments = self._merge_segments(segments)
+            print(f"[DEBUG] Merged into {len(merged_segments)} segments")
+
+            # If only one segment, use simple conversion
+            if len(merged_segments) == 1:
+                seg = merged_segments[0]
+                if seg['face_count'] == 2:
+                    print("[DEBUG] Single segment with 2 faces, using dual mode")
+                    crop_params = self._process_dual_face_crop(seg['faces'], width, height)
+                    return self._convert_dual_face_reels(video_path, output_path, crop_params)
+                else:
+                    print("[DEBUG] Single segment with single/no face, using single mode")
+                    crop_params = self._get_default_crop_position(width, height, "center")
+                    return self._convert_single_face_reels(video_path, output_path, crop_params)
+
+            # Multiple segments - need to process each and concatenate
+            print(f"[DEBUG] Processing {len(merged_segments)} segments with mode switching")
+            temp_dir = Path(tempfile.mkdtemp())
+            segment_files = []
+
+            try:
+                # Process each segment
+                for i, seg in enumerate(merged_segments):
+                    print(f"[DEBUG] Processing segment {i+1}/{len(merged_segments)}: "
+                          f"{seg['face_count']} faces, {seg['start_time']:.1f}s-{seg['end_time']:.1f}s")
+
+                    # Extract segment from original video
+                    # Use re-encoding instead of copy to handle short segments properly
+                    segment_path = temp_dir / f"segment_{i:03d}_raw.mp4"
+                    extract_cmd = [
+                        'ffmpeg',
+                        '-i', str(video_path),
+                        '-ss', str(seg['start_time']),
+                        '-to', str(seg['end_time']),
+                        '-c:v', 'libx264',
+                        '-c:a', 'aac',
+                        '-preset', 'ultrafast',  # Fast encoding for temp segments
+                        '-y',
+                        str(segment_path)
+                    ]
+                    subprocess.run(extract_cmd, check=True, capture_output=True)
+
+                    # Determine crop parameters for this segment
+                    if seg['face_count'] == 2 and len(seg['faces']) > 0:
+                        # Dual-face mode
+                        crop_params = self._process_dual_face_crop(seg['faces'], width, height)
+                        processed_path = temp_dir / f"segment_{i:03d}_processed.mp4"
+
+                        # Apply dual-face crop
+                        left = crop_params['left_face']
+                        right = crop_params['right_face']
+
+                        vf_filter = (
+                            f"[0:v]split=2[left][right];"
+                            f"[left]crop={left['width']}:{left['height']}:{left['x']}:{left['y']}[left_crop];"
+                            f"[right]crop={right['width']}:{right['height']}:{right['x']}:{right['y']}[right_crop];"
+                            f"[left_crop][right_crop]vstack[stacked];"
+                            f"[stacked]scale=1080:1920"
+                        )
+
+                        process_cmd = [
+                            'ffmpeg',
+                            '-i', str(segment_path),
+                            '-filter_complex', vf_filter,
+                            '-c:v', 'libx264',
+                            '-c:a', 'aac',
+                            '-preset', 'medium',
+                            '-crf', '23',
+                            '-y',
+                            str(processed_path)
+                        ]
+                    else:
+                        # Single-face or no-face mode
+                        # Get crop params for single face (or default if no faces)
+                        if seg['face_count'] == 1 and len(seg['faces']) > 0:
+                            # Calculate average face position for single face
+                            all_faces = [face for frame_faces in seg['faces'] for face in frame_faces]
+                            avg_x = sum(f['x'] for f in all_faces) / len(all_faces)
+
+                            target_aspect = 9 / 16
+                            crop_height = height
+                            crop_width = int(crop_height * target_aspect)
+                            crop_x = int(avg_x - crop_width // 2)
+                            crop_x = max(0, min(crop_x, width - crop_width))
+
+                            crop_params = {
+                                'x': crop_x,
+                                'y': 0,
+                                'width': crop_width,
+                                'height': crop_height
+                            }
+                        else:
+                            # No face or multiple faces - use default center crop
+                            crop_params = self._get_default_crop_position(width, height, "center")
+
+                        processed_path = temp_dir / f"segment_{i:03d}_processed.mp4"
+
+                        crop_filter = f"crop={crop_params['width']}:{crop_params['height']}:{crop_params['x']}:{crop_params['y']}"
+                        vf_filter = f"{crop_filter},scale=1080:1920"
+
+                        process_cmd = [
+                            'ffmpeg',
+                            '-i', str(segment_path),
+                            '-vf', vf_filter,
+                            '-c:v', 'libx264',
+                            '-c:a', 'aac',
+                            '-preset', 'medium',
+                            '-crf', '23',
+                            '-y',
+                            str(processed_path)
+                        ]
+
+                    subprocess.run(process_cmd, check=True, capture_output=True)
+                    segment_files.append(processed_path)
+
+                # Concatenate all segments
+                print(f"[DEBUG] Concatenating {len(segment_files)} processed segments")
+                concat_list_path = temp_dir / "concat_list.txt"
+                with open(concat_list_path, 'w') as f:
+                    for seg_file in segment_files:
+                        f.write(f"file '{seg_file}'\n")
+
+                concat_cmd = [
+                    'ffmpeg',
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', str(concat_list_path),
+                    '-c', 'copy',
+                    '-y',
+                    str(output_path)
+                ]
+                subprocess.run(concat_cmd, check=True, capture_output=True)
+
+                print(f"[DEBUG] Dynamic conversion complete: {output_path}")
+
+                return {
+                    'success': True,
+                    'output_path': str(output_path),
+                    'mode': 'dynamic',
+                    'segments': len(merged_segments)
+                }
+
+            finally:
+                # Cleanup temp directory
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+        except subprocess.CalledProcessError as e:
+            return {
+                'success': False,
+                'error': f"Error in dynamic conversion: {e.stderr.decode()}"
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Error in dynamic conversion: {str(e)}"
+            }
+
+    def _merge_segments(self, segments: List[Dict]) -> List[Dict]:
+        """
+        Merge consecutive segments with same face count
+        This reduces jitter from temporary detection changes
+
+        Args:
+            segments: List of segments from detect_face_segments()
+
+        Returns:
+            Merged list of segments
+        """
+        if not segments:
+            return []
+
+        merged = []
+        current = segments[0].copy()
+
+        for seg in segments[1:]:
+            if seg['face_count'] == current['face_count']:
+                # Merge with current segment
+                current['end_time'] = seg['end_time']
+                current['end_frame'] = seg['end_frame']
+                if 'faces' in seg and 'faces' in current:
+                    current['faces'].extend(seg['faces'])
+            else:
+                # Save current and start new segment
+                merged.append(current)
+                current = seg.copy()
+
+        # Add the last segment
+        merged.append(current)
+
+        return merged

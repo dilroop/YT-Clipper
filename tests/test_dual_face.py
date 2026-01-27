@@ -7,7 +7,7 @@ Tests on video files from downloads folder
 import sys
 import subprocess
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent / 'backend'))
+sys.path.insert(0, str(Path(__file__).parent.parent / 'backend'))
 
 from reels_processor import ReelsProcessor
 
@@ -60,15 +60,19 @@ def test_face_detection(video_path: Path):
 
     processor = ReelsProcessor()
 
-    # Detect faces
-    print("\n1. Detecting faces...")
+    # Detect face segments (every 8 frames)
+    print("\n1. Detecting face segments (checking every 8 frames)...")
+    segments = processor.detect_face_segments(str(video_path), check_every_n_frames=8)
+
+    # Detect overall mode
+    print("\n2. Detecting overall speaker position...")
     crop_params = processor.detect_speaker_position(str(video_path))
 
     # Display results
     mode = crop_params.get('mode', 'unknown')
     face_detected = crop_params.get('face_detected', False)
 
-    print(f"\n   Mode: {mode.upper()}")
+    print(f"\n   Overall Mode: {mode.upper()}")
     print(f"   Face Detected: {face_detected}")
 
     if mode == 'dual':
@@ -119,7 +123,7 @@ def main():
     print("="*60)
 
     # Find the video file
-    downloads_dir = Path(__file__).parent / 'downloads'
+    downloads_dir = Path(__file__).parent.parent / 'downloads'
     video_file = downloads_dir / '6g-qJ4QZ6Sk.mp4'
 
     if not video_file.exists():
