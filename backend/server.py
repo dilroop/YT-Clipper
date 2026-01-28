@@ -179,14 +179,27 @@ def init_database():
 
 
 def save_to_history(url: str, video_id: str, title: str, channel: str, duration: int, thumbnail: str, description: str = ''):
-    """Save a video to history"""
+    """Save a video to history (updates timestamp if already exists)"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("""
-        INSERT INTO history (url, video_id, title, channel, duration, description, thumbnail, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (url, video_id, title, channel, duration, description, thumbnail, datetime.now().isoformat()))
+    # Check if video_id already exists
+    cursor.execute("SELECT id FROM history WHERE video_id = ?", (video_id,))
+    existing = cursor.fetchone()
+
+    if existing:
+        # Update existing entry with new timestamp
+        cursor.execute("""
+            UPDATE history
+            SET url = ?, title = ?, channel = ?, duration = ?, description = ?, thumbnail = ?, timestamp = ?
+            WHERE video_id = ?
+        """, (url, title, channel, duration, description, thumbnail, datetime.now().isoformat(), video_id))
+    else:
+        # Insert new entry
+        cursor.execute("""
+            INSERT INTO history (url, video_id, title, channel, duration, description, thumbnail, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (url, video_id, title, channel, duration, description, thumbnail, datetime.now().isoformat()))
 
     conn.commit()
     conn.close()

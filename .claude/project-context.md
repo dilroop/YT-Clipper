@@ -4,6 +4,18 @@ Mobile-first web application for clipping YouTube videos with AI-powered analysi
 
 ---
 
+## User Preferences & Development Workflow
+
+### Git Workflow
+**IMPORTANT:** Do NOT create git commits automatically unless explicitly requested by the user.
+
+- User prefers to control when commits happen
+- Only run `git add` and `git commit` commands when the user specifically asks to commit changes
+- This applies to all code changes, regardless of size or scope
+- User will request commits with phrases like "commit this" or "create a commit"
+
+---
+
 ## API Endpoints
 
 ### Core Processing

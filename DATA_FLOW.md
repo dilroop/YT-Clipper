@@ -42,6 +42,11 @@ This document describes all data properties tracked throughout the YTClipper app
   )
   ```
 
+**History Uniqueness:**
+- Only unique videos (by `video_id`) are stored in history
+- If the same video is accessed again, the existing entry is updated with a new timestamp
+- This ensures the history shows only unique links, with the most recent access time
+
 ---
 
 ## 2. Analysis Phase
