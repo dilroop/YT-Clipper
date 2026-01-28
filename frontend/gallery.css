@@ -210,8 +210,20 @@
 
 /* Container max-width for better desktop viewing */
 .container {
-    max-width: 1600px;
+    max-width: 1400px;
     margin: 0 auto;
+    padding: 20px;
+}
+
+/* Ensure header doesn't overflow */
+header {
+    max-width: 100%;
+}
+
+/* Gallery-specific layout */
+.gallery-stats,
+.filter-bar {
+    max-width: 100%;
 }
 
 /* Mobile Responsive */
@@ -222,12 +234,18 @@
 }
 
 @media (max-width: 768px) {
+    .container {
+        padding: 16px;
+    }
+
     .clips-grid {
         grid-template-columns: 1fr;
+        gap: 16px;
     }
 
     .gallery-stats {
         flex-direction: column;
+        gap: 12px;
+        margin-bottom: 20px;
     }
-
 }

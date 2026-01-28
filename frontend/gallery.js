@@ -9,13 +9,13 @@ const loadingIndicator = document.getElementById('loadingIndicator');
 const emptyState = document.getElementById('emptyState');
 const totalClipsEl = document.getElementById('totalClips');
 const totalSizeEl = document.getElementById('totalSize');
-const homeBtn = document.getElementById('homeBtn');
+const backBtn = document.getElementById('backBtn');
 const refreshBtn = document.getElementById('refreshBtn');
 const goHomeBtn = document.getElementById('goHomeBtn');
 const filterBtns = document.querySelectorAll('.filter-btn');
 
 // Event Listeners
-homeBtn.addEventListener('click', () => {
+backBtn.addEventListener('click', () => {
     window.location.href = '/';
 });
 

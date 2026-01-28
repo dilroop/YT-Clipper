@@ -9,7 +9,6 @@ const clipPlayer = document.getElementById('clipPlayer');
 const videoSource = document.getElementById('videoSource');
 const downloadBtn = document.getElementById('downloadBtn');
 const backBtn = document.getElementById('backBtn');
-const homeBtn = document.getElementById('homeBtn');
 
 // Copyable content elements
 const contentTitle = document.getElementById('contentTitle');
@@ -28,10 +27,6 @@ const metadataContent = document.getElementById('metadataContent');
 // Event Listeners
 backBtn.addEventListener('click', () => {
     window.location.href = '/gallery.html';
-});
-
-homeBtn.addEventListener('click', () => {
-    window.location.href = '/';
 });
 
 downloadBtn.addEventListener('click', () => {
@@ -108,7 +103,7 @@ function showError(message) {
     window.location.href = '/gallery.html';
 }
 
-function parseInfoFile(infoText) {
+function parseInfoData(clip) {
     const parsed = {
         title: 'N/A',
         description: 'N/A',
@@ -116,30 +111,64 @@ function parseInfoFile(infoText) {
         tags: []
     };
 
-    if (!infoText) return parsed;
+    // Check if we have new JSON format
+    if (clip.info_data) {
+        const data = clip.info_data;
+        parsed.title = data.clip?.title || 'N/A';
+        parsed.description = data.clip?.description || 'N/A';
+        parsed.caption = data.transcript || 'N/A';
+
+        // Tags from keywords
+        if (data.clip?.keywords && Array.isArray(data.clip.keywords) && data.clip.keywords.length > 0) {
+            parsed.tags = data.clip.keywords;
+        } else {
+            // Fallback: extract from transcript
+            const capsWords = parsed.caption.match(/\b[A-Z]{2,}\b/g) || [];
+            const hashtags = parsed.caption.match(/#\w+/g) || [];
+            parsed.tags = [...new Set([...capsWords, ...hashtags])].slice(0, 10);
+        }
+
+        return parsed;
+    }
+
+    // Old text format (backward compatibility)
+    if (!clip.info_text) return parsed;
+
+    const infoText = clip.info_text;
 
     // Parse title (single line)
-    const titleMatch = infoText.match(/Title:\s*(.+?)(?:\n|$)/);
+    const titleMatch = infoText.match(/CLIP TITLE:\s*(.+?)(?:\n|$)/);
     if (titleMatch) {
         parsed.title = titleMatch[1].trim();
     }
 
-    // Parse description (single line only, not multiline)
-    const descMatch = infoText.match(/Description:\s*(.+?)(?:\n|$)/);
+    // Parse description (multiline after "CLIP DESCRIPTION:")
+    const descMatch = infoText.match(/CLIP DESCRIPTION:\s*\n(.+?)(?:\n\nKEYWORDS:|$)/s);
     if (descMatch) {
         parsed.description = descMatch[1].trim();
     }
 
-    // Parse caption (everything after "Caption:" until end or separator)
-    const captionMatch = infoText.match(/Caption:\s*\n(.+?)(?:\n={20,}|$)/s);
-    if (captionMatch) {
-        parsed.caption = captionMatch[1].trim();
+    // Parse keywords
+    const keywordsMatch = infoText.match(/KEYWORDS:\s*(.+?)(?:\n|$)/);
+    if (keywordsMatch) {
+        const keywordsStr = keywordsMatch[1].trim();
+        if (keywordsStr !== 'N/A') {
+            parsed.tags = keywordsStr.split(',').map(k => k.trim()).filter(k => k);
+        }
     }
 
-    // Extract potential tags from caption text (words in ALL CAPS or hashtags)
-    const capsWords = parsed.caption.match(/\b[A-Z]{2,}\b/g) || [];
-    const hashtags = parsed.caption.match(/#\w+/g) || [];
-    parsed.tags = [...new Set([...capsWords, ...hashtags])].slice(0, 10); // Limit to 10 unique tags
+    // Parse transcript
+    const transcriptMatch = infoText.match(/TRANSCRIPT:\s*\n(.+?)(?:\n={20,}|$)/s);
+    if (transcriptMatch) {
+        parsed.caption = transcriptMatch[1].trim();
+    }
+
+    // If no tags found, extract from transcript
+    if (parsed.tags.length === 0) {
+        const capsWords = parsed.caption.match(/\b[A-Z]{2,}\b/g) || [];
+        const hashtags = parsed.caption.match(/#\w+/g) || [];
+        parsed.tags = [...new Set([...capsWords, ...hashtags])].slice(0, 10);
+    }
 
     return parsed;
 }
@@ -163,8 +192,8 @@ function renderClipDetails() {
     clipCreated.textContent = date.toLocaleString();
 
     // Parse and populate copyable content
-    if (currentClip.has_info && currentClip.info_text) {
-        const parsed = parseInfoFile(currentClip.info_text);
+    if (currentClip.has_info) {
+        const parsed = parseInfoData(currentClip);
 
         contentTitle.textContent = parsed.title;
         contentDescription.textContent = parsed.description;
@@ -178,7 +207,13 @@ function renderClipDetails() {
 
         // Show metadata
         metadataSection.style.display = 'block';
-        metadataContent.textContent = currentClip.info_text;
+        if (currentClip.info_data) {
+            // New JSON format - pretty print
+            metadataContent.textContent = JSON.stringify(currentClip.info_data, null, 2);
+        } else if (currentClip.info_text) {
+            // Old text format
+            metadataContent.textContent = currentClip.info_text;
+        }
     } else {
         contentTitle.textContent = 'N/A';
         contentDescription.textContent = 'N/A';

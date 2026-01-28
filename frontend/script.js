@@ -253,8 +253,11 @@ async function processVideo() {
         showElement(progressSection);
         hideElement(resultsSection);
 
+        // Reset progress stages
+        resetProgressStages();
+
         // Connect to WebSocket for real-time progress
-        connectWebSocket();
+        await connectWebSocketAndWait();
 
         // Start processing
         updateProgress(0, 'Starting...');
@@ -305,34 +308,57 @@ async function processVideo() {
     }
 }
 
-function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-
-    ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-        console.log('WebSocket connected');
-    };
-
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'progress') {
-            const percent = data.percent || 0;
-            const message = data.message || 'Processing...';
-            updateProgress(percent, message);
+function connectWebSocketAndWait() {
+    return new Promise((resolve, reject) => {
+        // Close existing connection if any
+        if (ws && ws.readyState !== WebSocket.CLOSED) {
+            console.log('🔄 Closing existing WebSocket connection');
+            ws.close();
+            ws = null;
         }
-    };
 
-    ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-    };
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
 
-    ws.onclose = () => {
-        console.log('WebSocket closed');
-        ws = null;
-    };
+        console.log('🔌 Connecting to WebSocket:', wsUrl);
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('✅ WebSocket connected successfully');
+            resolve(); // Resolve promise when connection is established
+        };
+
+        ws.onmessage = (event) => {
+            console.log('📨 WebSocket message received:', event.data);
+            const data = JSON.parse(event.data);
+            console.log('📦 Parsed data:', data);
+
+            if (data.type === 'progress') {
+                const percent = data.percent || 0;
+                const message = data.message || 'Processing...';
+                const stage = data.stage || null;
+                console.log('🎯 Progress update:', { percent, message, stage });
+                updateProgress(percent, message, stage);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('❌ WebSocket error:', error);
+            reject(error);
+        };
+
+        ws.onclose = (event) => {
+            console.log('🔌 WebSocket closed', { code: event.code, reason: event.reason });
+            ws = null;
+        };
+
+        // Add timeout to prevent hanging forever
+        setTimeout(() => {
+            if (ws.readyState !== WebSocket.OPEN) {
+                reject(new Error('WebSocket connection timeout'));
+            }
+        }, 5000); // 5 second timeout
+    });
 }
 
 function cancelProcessing() {
@@ -354,9 +380,125 @@ function cancelProcessing() {
     alert('Processing cancelled. Note: Downloaded files may remain in downloads folder.');
 }
 
-function updateProgress(percent, text) {
+// Track progress state
+let currentStage = null;
+let completedStages = new Set();
+
+function updateProgress(percent, message, stage) {
+    console.log('🔄 updateProgress called:', { percent, message, stage });
+
+    // Update overall progress bar
     progressFill.style.width = percent + '%';
-    progressText.textContent = text;
+    document.getElementById('progressPercent').textContent = Math.round(percent) + '%';
+
+    // Update stage-based progress
+    if (stage) {
+        console.log('🎬 Stage detected:', stage);
+        currentStage = stage;
+
+        // Mark previous stages as completed
+        const stageOrder = ['downloading', 'transcribing', 'analyzing', 'clipping', 'organizing'];
+        const currentIndex = stageOrder.indexOf(stage);
+
+        stageOrder.forEach((s, index) => {
+            const stageElem = document.querySelector(`[data-stage="${s}"]`);
+            if (!stageElem) {
+                console.warn(`⚠️ Stage element not found: ${s}`);
+                return;
+            }
+
+            if (index < currentIndex) {
+                // Previous stages - mark as completed
+                console.log(`✅ Marking stage as completed: ${s}`);
+                stageElem.classList.remove('active');
+                stageElem.classList.add('completed');
+                completedStages.add(s);
+                document.getElementById(`status-${s}`).textContent = 'Completed ✓';
+            } else if (index === currentIndex) {
+                // Current stage - mark as active
+                console.log(`⚡ Marking stage as active: ${s}`);
+                stageElem.classList.add('active');
+                stageElem.classList.remove('completed');
+                updateStageStatus(stage, message);
+            } else {
+                // Future stages - reset
+                stageElem.classList.remove('active', 'completed');
+                document.getElementById(`status-${s}`).textContent = 'Waiting...';
+                document.getElementById(`details-${s}`).textContent = '';
+            }
+        });
+    }
+
+    // Handle completion
+    if (percent >= 100 || stage === 'complete') {
+        const stageOrder = ['downloading', 'transcribing', 'analyzing', 'clipping', 'organizing'];
+        stageOrder.forEach(s => {
+            const stageElem = document.querySelector(`[data-stage="${s}"]`);
+            if (stageElem) {
+                stageElem.classList.remove('active');
+                stageElem.classList.add('completed');
+                document.getElementById(`status-${s}`).textContent = 'Completed ✓';
+            }
+        });
+    }
+}
+
+function updateStageStatus(stage, message) {
+    console.log(`📋 updateStageStatus called for stage: ${stage}, message: ${message}`);
+    const statusElem = document.getElementById(`status-${stage}`);
+    const detailsElem = document.getElementById(`details-${stage}`);
+
+    if (!statusElem || !detailsElem) {
+        console.warn(`⚠️ Status/details element not found for stage: ${stage}`);
+        return;
+    }
+
+    // Extract meaningful status from message
+    if (stage === 'downloading') {
+        statusElem.textContent = 'Downloading...';
+        // Show download details (size, speed, etc.)
+        detailsElem.textContent = message;
+    } else if (stage === 'transcribing') {
+        statusElem.textContent = 'Transcribing...';
+        detailsElem.textContent = message;
+    } else if (stage === 'analyzing') {
+        statusElem.textContent = 'Analyzing...';
+        if (message.includes('OpenAI') || message.includes('AI') || message.includes('GPT')) {
+            detailsElem.textContent = 'Using AI to find interesting clips...';
+        } else {
+            detailsElem.textContent = message;
+        }
+    } else if (stage === 'clipping') {
+        statusElem.textContent = 'Processing...';
+        // Parse clip number from message
+        const clipMatch = message.match(/clip (\d+)\/(\d+)/i);
+        if (clipMatch) {
+            detailsElem.textContent = `Processing clip ${clipMatch[1]} of ${clipMatch[2]}`;
+        } else {
+            detailsElem.textContent = message;
+        }
+    } else if (stage === 'organizing') {
+        statusElem.textContent = 'Organizing...';
+        detailsElem.textContent = message;
+    } else {
+        statusElem.textContent = 'Processing...';
+        detailsElem.textContent = message;
+    }
+}
+
+function resetProgressStages() {
+    // Reset all stages to initial state
+    const stages = ['downloading', 'transcribing', 'analyzing', 'clipping', 'organizing'];
+    stages.forEach(stage => {
+        const stageElem = document.querySelector(`[data-stage="${stage}"]`);
+        if (stageElem) {
+            stageElem.classList.remove('active', 'completed');
+            document.getElementById(`status-${stage}`).textContent = 'Waiting...';
+            document.getElementById(`details-${stage}`).textContent = '';
+        }
+    });
+    currentStage = null;
+    completedStages.clear();
 }
 
 function showResults(data) {
@@ -556,8 +698,11 @@ async function analyzeAndShowClips() {
         showElement(progressSection);
         hideElement(resultsSection);
 
+        // Reset progress stages
+        resetProgressStages();
+
         // Connect to WebSocket for real-time progress
-        connectWebSocket();
+        await connectWebSocketAndWait();
         updateProgress(0, 'Starting analysis...');
 
         const response = await fetch('/api/analyze', {
@@ -659,9 +804,15 @@ async function generateSelectedClips() {
         showElement(progressSection);
         hideElement(resultsSection);
 
+        // Reset progress stages
+        resetProgressStages();
+
         // Connect to WebSocket
-        connectWebSocket();
+        await connectWebSocketAndWait();
         updateProgress(0, 'Starting...');
+
+        // Get the selected clips data (not just indices)
+        const selectedClipsData = selectedClipIndices.map(index => analyzedClips[index]);
 
         const response = await fetch('/api/process', {
             method: 'POST',
@@ -670,7 +821,8 @@ async function generateSelectedClips() {
                 url: urlInput.value.trim(),
                 format: selectedFormat,
                 burn_captions: burnCaptionsToggle.checked,
-                selected_clips: selectedClipIndices
+                selected_clips: selectedClipIndices,
+                preanalyzed_clips: selectedClipsData  // Pass the full clip data to skip re-analysis
             }),
         });
 

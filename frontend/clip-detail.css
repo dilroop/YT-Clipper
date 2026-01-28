@@ -1,5 +1,17 @@
 /* Clip Detail Page Styles */
 
+/* Container with proper padding */
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Ensure header doesn't overflow */
+header {
+    max-width: 100%;
+}
+
 /* Base Layout */
 .clip-detail-container {
     display: block;
@@ -280,6 +292,10 @@
 
 /* Mobile Responsive */
 @media (max-width: 768px) {
+    .container {
+        padding: 16px;
+    }
+
     .clip-detail-container {
         display: block;
     }

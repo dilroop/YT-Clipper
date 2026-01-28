@@ -8,6 +8,7 @@ import shutil
 from datetime import datetime
 from typing import List, Dict
 import re
+import json
 
 
 class FileManager:
@@ -79,7 +80,7 @@ class FileManager:
         caption_text: str
     ) -> str:
         """
-        Create _info.txt file for a clip
+        Create _info.json file for a clip
 
         Args:
             clip_path: Path to clip file
@@ -91,7 +92,7 @@ class FileManager:
             Path to created info file
         """
         clip_path = Path(clip_path)
-        info_path = clip_path.parent / f"{clip_path.stem}_info.txt"
+        info_path = clip_path.parent / f"{clip_path.stem}_info.json"
 
         # Format timestamp
         start_time = self._format_timestamp(clip_info['start_time'])
@@ -105,32 +106,30 @@ class FileManager:
         clip_title = clip_info.get('title', 'Interesting Clip')
         clip_reason = clip_info.get('reason', '')
         clip_keywords = clip_info.get('keywords', [])
-        keywords_str = ', '.join(clip_keywords) if clip_keywords else 'N/A'
 
-        # Create info file content
-        content = f"""================================
-CLIP TITLE: {clip_title}
+        # Create structured JSON data
+        info_data = {
+            "clip": {
+                "title": clip_title,
+                "description": clip_reason,
+                "keywords": clip_keywords,
+                "start_time": start_time,
+                "end_time": end_time,
+                "duration_seconds": duration,
+                "format": format_type
+            },
+            "video": {
+                "title": video_info['title'],
+                "channel": video_info['channel'],
+                "description": video_info.get('description', 'N/A')[:500],
+                "url": video_info['url']
+            },
+            "transcript": caption_text
+        }
 
-CLIP DESCRIPTION:
-{clip_reason}
-
-KEYWORDS: {keywords_str}
-
-================================
-VIDEO TITLE: {video_info['title']}
-CHANNEL: {video_info['channel']}
-DESCRIPTION: {video_info.get('description', 'N/A')[:500]}...
-URL: {video_info['url']}
-TIMESTAMP: {start_time} - {end_time} ({duration:.0f} seconds)
-FORMAT: {format_type}
-
-TRANSCRIPT:
-{caption_text}
-================================"""
-
-        # Write to file
+        # Write to JSON file
         with open(info_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+            json.dump(info_data, f, indent=2, ensure_ascii=False)
 
         return str(info_path)
 

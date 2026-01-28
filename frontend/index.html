@@ -11,7 +11,9 @@
     <div class="container">
         <!-- Header -->
         <header>
-            <h1>YTClipper</h1>
+            <div class="header-left">
+                <a href="/" class="title-link"><h1>YTClipper</h1></a>
+            </div>
             <div class="header-buttons">
                 <button class="icon-btn" id="galleryBtn" aria-label="Gallery" title="View All Clips">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -114,10 +116,66 @@
             <!-- Progress Section (Hidden by default) -->
             <div class="progress-section" id="progressSection" style="display: none;">
                 <h3>Processing...</h3>
+
+                <!-- Overall Progress Bar -->
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
+                    <span class="progress-percent" id="progressPercent">0%</span>
                 </div>
-                <p class="progress-text" id="progressText">Starting...</p>
+
+                <!-- Detailed Progress Stages -->
+                <div class="progress-stages">
+                    <!-- Stage 1: Downloading -->
+                    <div class="progress-stage" data-stage="downloading">
+                        <div class="stage-header">
+                            <span class="stage-icon">📥</span>
+                            <span class="stage-name">Downloading Video</span>
+                            <span class="stage-status" id="status-downloading">Waiting...</span>
+                        </div>
+                        <div class="stage-details" id="details-downloading"></div>
+                    </div>
+
+                    <!-- Stage 2: Transcribing -->
+                    <div class="progress-stage" data-stage="transcribing">
+                        <div class="stage-header">
+                            <span class="stage-icon">🎤</span>
+                            <span class="stage-name">Transcribing Audio</span>
+                            <span class="stage-status" id="status-transcribing">Waiting...</span>
+                        </div>
+                        <div class="stage-details" id="details-transcribing"></div>
+                    </div>
+
+                    <!-- Stage 3: Analyzing -->
+                    <div class="progress-stage" data-stage="analyzing">
+                        <div class="stage-header">
+                            <span class="stage-icon">🤖</span>
+                            <span class="stage-name">AI Analysis</span>
+                            <span class="stage-status" id="status-analyzing">Waiting...</span>
+                        </div>
+                        <div class="stage-details" id="details-analyzing"></div>
+                    </div>
+
+                    <!-- Stage 4: Clipping -->
+                    <div class="progress-stage" data-stage="clipping">
+                        <div class="stage-header">
+                            <span class="stage-icon">✂️</span>
+                            <span class="stage-name">Creating Clips</span>
+                            <span class="stage-status" id="status-clipping">Waiting...</span>
+                        </div>
+                        <div class="stage-details" id="details-clipping"></div>
+                    </div>
+
+                    <!-- Stage 5: Organizing -->
+                    <div class="progress-stage" data-stage="organizing">
+                        <div class="stage-header">
+                            <span class="stage-icon">📁</span>
+                            <span class="stage-name">Organizing Files</span>
+                            <span class="stage-status" id="status-organizing">Waiting...</span>
+                        </div>
+                        <div class="stage-details" id="details-organizing"></div>
+                    </div>
+                </div>
+
                 <button class="cancel-btn" id="cancelBtn">Cancel Processing</button>
             </div>
 

@@ -104,9 +104,11 @@ class ProcessVideoRequest(BaseModel):
     format: str  # "original" or "reels"
     burn_captions: bool = True
     selected_clips: Optional[list] = None  # List of clip indices to process (for manual mode)
+    preanalyzed_clips: Optional[list] = None  # Pre-analyzed clip data from /api/analyze (skips transcription & analysis)
 
 
 class ConfigUpdate(BaseModel):
+    downloader_backend: Optional[str] = None
     caption_settings: Optional[dict] = None
     watermark_settings: Optional[dict] = None
 
@@ -230,16 +232,29 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        print(f"🔌 WebSocket connected. Total connections: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        print(f"🔌 WebSocket disconnected. Total connections: {len(self.active_connections)}")
 
     async def broadcast(self, message: dict):
+        print(f"📡 Broadcasting to {len(self.active_connections)} connection(s): {message.get('stage', 'unknown')} - {message.get('message', '')}")
+
+        disconnected = []
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except:
-                pass
+                print(f"✅ Message sent successfully to connection")
+            except Exception as e:
+                print(f"❌ Failed to send to connection: {e}")
+                disconnected.append(connection)
+
+        # Remove disconnected connections
+        for conn in disconnected:
+            if conn in self.active_connections:
+                self.active_connections.remove(conn)
 
 
 manager = ConnectionManager()
@@ -336,14 +351,26 @@ async def analyze_video(request: VideoURLRequest):
     try:
         # Import processing modules
         from downloader import VideoDownloader
+        from pytube_downloader import PytubeDownloader
         from transcriber import AudioTranscriber
         from ai_analyzer import AIAnalyzer
         from analyzer import SectionAnalyzer
 
         video_id = extract_video_id(request.url)
 
+        # Load config to determine downloader backend
+        config = load_config()
+        downloader_backend = config.get('downloader_backend', 'yt-dlp')
+
+        # Initialize downloader based on config
+        if downloader_backend == 'pytube':
+            downloader = PytubeDownloader()
+            print(f"Using pytube downloader")
+        else:
+            downloader = VideoDownloader()
+            print(f"Using yt-dlp downloader")
+
         # Initialize modules
-        downloader = VideoDownloader()
         transcriber = AudioTranscriber(model_name="base")
 
         # Use AI analyzer if API key is available
@@ -432,7 +459,8 @@ async def analyze_video(request: VideoURLRequest):
                 'reason': clip.get('reason', ''),
                 'text': clip['text'],
                 'youtube_link': f"{request.url}&t={start_seconds}",
-                'keywords': clip.get('keywords', [])
+                'keywords': clip.get('keywords', []),
+                'words': clip.get('words', [])  # Include word-level timing for captions
             })
 
         await update_progress({'stage': 'complete', 'percent': 100, 'message': 'Analysis complete!'})
@@ -466,6 +494,7 @@ async def process_video(request: ProcessVideoRequest):
     try:
         # Import processing modules
         from downloader import VideoDownloader
+        from pytube_downloader import PytubeDownloader
         from transcriber import AudioTranscriber
         from analyzer import SectionAnalyzer
         from ai_analyzer import AIAnalyzer
@@ -481,9 +510,17 @@ async def process_video(request: ProcessVideoRequest):
         config = load_config()
         caption_config = config.get('caption_settings', {})
         watermark_config = config.get('watermark_settings', {})
+        downloader_backend = config.get('downloader_backend', 'yt-dlp')
+
+        # Initialize downloader based on config
+        if downloader_backend == 'pytube':
+            downloader = PytubeDownloader()
+            print(f"Using pytube downloader")
+        else:
+            downloader = VideoDownloader()
+            print(f"Using yt-dlp downloader")
 
         # Initialize modules
-        downloader = VideoDownloader()
         transcriber = AudioTranscriber(model_name="base")
 
         # Use AI analyzer if API key is available, otherwise fall back to simple analyzer
@@ -541,51 +578,72 @@ async def process_video(request: ProcessVideoRequest):
             'url': request.url
         }
 
-        # Step 2: Transcribe audio
-        await update_progress({'stage': 'transcribing', 'percent': 20, 'message': 'Transcribing audio...'})
-        transcript_result = transcriber.transcribe(video_path, update_progress_sync)
+        # Check if we have pre-analyzed clips (from manual workflow)
+        if request.preanalyzed_clips:
+            print(f"✅ Using pre-analyzed clips (skipping transcription & AI analysis)")
+            await update_progress({'stage': 'analyzing', 'percent': 60, 'message': 'Using pre-analyzed clips...'})
 
-        if not transcript_result['success']:
-            raise Exception(transcript_result['error'])
+            # Convert frontend clip format to backend format
+            interesting_clips = []
+            for clip_data in request.preanalyzed_clips:
+                interesting_clips.append({
+                    'start': clip_data['start'],
+                    'end': clip_data['end'],
+                    'text': clip_data['text'],
+                    'title': clip_data.get('title', 'Interesting Clip'),
+                    'reason': clip_data.get('reason', ''),
+                    'keywords': clip_data.get('keywords', []),
+                    'words': clip_data.get('words', [])  # Word-level timing for captions
+                })
 
-        segments = transcript_result['segments']
+            audio_path = None  # No audio extraction needed
+        else:
+            # Original workflow: transcribe and analyze
+            # Step 2: Transcribe audio
+            await update_progress({'stage': 'transcribing', 'percent': 20, 'message': 'Transcribing audio...'})
+            transcript_result = transcriber.transcribe(video_path, update_progress_sync)
 
-        # Track audio file for cleanup (will be cleaned up with temp_files at the end)
-        audio_path = transcript_result.get('audio_path')
-        if audio_path:
-            print(f"[DEBUG] Audio extracted to: {audio_path} (will be cleaned up after processing)")
+            if not transcript_result['success']:
+                raise Exception(transcript_result['error'])
 
-        # Step 3: Find interesting clips
-        await update_progress({'stage': 'analyzing', 'percent': 40, 'message': 'Finding interesting clips...'})
+            segments = transcript_result['segments']
 
-        try:
-            # AI analyzer can use video info for better context
-            if isinstance(analyzer, AIAnalyzer):
-                interesting_clips = analyzer.find_interesting_clips(
-                    segments,
-                    num_clips=5,
-                    video_info=video_info
-                )
-            else:
-                interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
-                # Adjust timing with padding (only for simple analyzer)
-                interesting_clips = [analyzer.adjust_clip_timing(clip) for clip in interesting_clips]
-        except Exception as e:
-            error_msg = str(e)
-            # Check for OpenAI quota error
-            if "OPENAI_QUOTA_ERROR" in error_msg:
-                raise Exception("OPENAI_QUOTA_ERROR: " + error_msg.split("OPENAI_QUOTA_ERROR: ", 1)[1])
-            raise
+            # Track audio file for cleanup (will be cleaned up with temp_files at the end)
+            audio_path = transcript_result.get('audio_path')
+            if audio_path:
+                print(f"[DEBUG] Audio extracted to: {audio_path} (will be cleaned up after processing)")
 
-        # Filter clips if selected_clips is provided (manual mode)
-        if request.selected_clips is not None:
-            print(f"[DEBUG] Before filtering: {len(interesting_clips)} clips")
-            print(f"[DEBUG] selected_clips indices: {request.selected_clips}")
-            interesting_clips = [
-                clip for i, clip in enumerate(interesting_clips)
-                if i in request.selected_clips
-            ]
-            print(f"[DEBUG] After filtering: {len(interesting_clips)} clips")
+            # Step 3: Find interesting clips
+            await update_progress({'stage': 'analyzing', 'percent': 40, 'message': 'Finding interesting clips...'})
+
+            try:
+                # AI analyzer can use video info for better context
+                if isinstance(analyzer, AIAnalyzer):
+                    interesting_clips = analyzer.find_interesting_clips(
+                        segments,
+                        num_clips=5,
+                        video_info=video_info
+                    )
+                else:
+                    interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
+                    # Adjust timing with padding (only for simple analyzer)
+                    interesting_clips = [analyzer.adjust_clip_timing(clip) for clip in interesting_clips]
+            except Exception as e:
+                error_msg = str(e)
+                # Check for OpenAI quota error
+                if "OPENAI_QUOTA_ERROR" in error_msg:
+                    raise Exception("OPENAI_QUOTA_ERROR: " + error_msg.split("OPENAI_QUOTA_ERROR: ", 1)[1])
+                raise
+
+            # Filter clips if selected_clips is provided (manual mode)
+            if request.selected_clips is not None:
+                print(f"[DEBUG] Before filtering: {len(interesting_clips)} clips")
+                print(f"[DEBUG] selected_clips indices: {request.selected_clips}")
+                interesting_clips = [
+                    clip for i, clip in enumerate(interesting_clips)
+                    if i in request.selected_clips
+                ]
+                print(f"[DEBUG] After filtering: {len(interesting_clips)} clips")
 
         # Step 4: Create project folder
         project_folder = file_mgr.create_project_folder(video_info['title'])
@@ -738,6 +796,9 @@ async def update_config(config_update: ConfigUpdate):
     try:
         config = load_config()
 
+        if config_update.downloader_backend is not None:
+            config['downloader_backend'] = config_update.downloader_backend
+
         if config_update.caption_settings:
             config['caption_settings'] = {**config.get('caption_settings', {}), **config_update.caption_settings}
 
@@ -755,15 +816,32 @@ async def update_config(config_update: ConfigUpdate):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket for real-time progress updates"""
+    print("🎯 WebSocket connection request received")
     await manager.connect(websocket)
+    print("✅ WebSocket connection established and added to manager")
+
     try:
+        # Keep connection alive - ping/pong to prevent timeout
+        # The manager.broadcast() will send progress updates asynchronously
+        ping_count = 0
         while True:
-            # Keep connection alive
-            data = await websocket.receive_text()
-            # Echo back (for testing)
-            await websocket.send_json({"type": "echo", "message": data})
+            # Send a heartbeat ping every 5 seconds to keep connection alive
+            try:
+                ping_count += 1
+                await websocket.send_json({"type": "ping"})
+                print(f"💓 Heartbeat ping #{ping_count} sent")
+                await asyncio.sleep(5)
+            except Exception as e:
+                print(f"❌ WebSocket send error (breaking loop): {e}")
+                break
     except WebSocketDisconnect:
+        print("🔌 WebSocket disconnected by client")
         manager.disconnect(websocket)
+    except Exception as e:
+        print(f"❌ WebSocket error: {e}")
+        manager.disconnect(websocket)
+    finally:
+        print("🔚 WebSocket connection closed")
 
 
 @app.get("/api/history")
@@ -899,8 +977,10 @@ async def get_all_clips():
 
                 # Find all video files
                 for video_file in format_folder.glob("*.mp4"):
-                    # Look for corresponding _info.txt file
-                    info_file = video_file.parent / f"{video_file.stem}_info.txt"
+                    # Look for corresponding _info.json (new) or _info.txt (old)
+                    info_json = video_file.parent / f"{video_file.stem}_info.json"
+                    info_txt = video_file.parent / f"{video_file.stem}_info.txt"
+                    info_file = info_json if info_json.exists() else info_txt if info_txt.exists() else None
 
                     clip_info = {
                         "filename": video_file.name,
@@ -909,21 +989,29 @@ async def get_all_clips():
                         "path": str(video_file.relative_to(BASE_DIR)),
                         "size": video_file.stat().st_size,
                         "created": datetime.fromtimestamp(video_file.stat().st_mtime).isoformat(),
-                        "has_info": info_file.exists(),
+                        "has_info": info_file is not None and info_file.exists(),
                         "title": None
                     }
 
-                    # Read info file if it exists and extract title
-                    if info_file.exists():
-                        with open(info_file, 'r', encoding='utf-8') as f:
-                            info_text = f.read()
-                            clip_info["info_text"] = info_text
+                    # Read info file if it exists
+                    if info_file and info_file.exists():
+                        if info_file.suffix == '.json':
+                            # New JSON format
+                            with open(info_file, 'r', encoding='utf-8') as f:
+                                info_data = json.load(f)
+                                clip_info["info_data"] = info_data
+                                clip_info["title"] = info_data.get("clip", {}).get("title")
+                        else:
+                            # Old text format (backward compatibility)
+                            with open(info_file, 'r', encoding='utf-8') as f:
+                                info_text = f.read()
+                                clip_info["info_text"] = info_text
 
-                            # Extract title from info file
-                            import re
-                            title_match = re.search(r'Title:\s*(.+?)(?:\n|$)', info_text)
-                            if title_match:
-                                clip_info["title"] = title_match.group(1).strip()
+                                # Extract title from old text format
+                                import re
+                                title_match = re.search(r'CLIP TITLE:\s*(.+?)(?:\n|$)', info_text)
+                                if title_match:
+                                    clip_info["title"] = title_match.group(1).strip()
 
                     clips.append(clip_info)
 
@@ -942,7 +1030,11 @@ async def get_clip_details(project: str, format: str, filename: str):
     try:
         upload_dir = BASE_DIR / "ToUpload"
         video_path = upload_dir / project / format / filename
-        info_path = video_path.parent / f"{video_path.stem}_info.txt"
+
+        # Check for JSON format first (new), then text format (old)
+        info_json = video_path.parent / f"{video_path.stem}_info.json"
+        info_txt = video_path.parent / f"{video_path.stem}_info.txt"
+        info_path = info_json if info_json.exists() else info_txt if info_txt.exists() else None
 
         if not video_path.exists():
             raise HTTPException(status_code=404, detail="Clip not found")
@@ -954,13 +1046,19 @@ async def get_clip_details(project: str, format: str, filename: str):
             "path": str(video_path.relative_to(BASE_DIR)),
             "size": video_path.stat().st_size,
             "created": datetime.fromtimestamp(video_path.stat().st_mtime).isoformat(),
-            "has_info": info_path.exists(),
-            "info_text": ""
+            "has_info": info_path is not None and info_path.exists()
         }
 
-        if info_path.exists():
-            with open(info_path, 'r', encoding='utf-8') as f:
-                clip_details["info_text"] = f.read()
+        # Load info file data
+        if info_path and info_path.exists():
+            if info_path.suffix == '.json':
+                # New JSON format
+                with open(info_path, 'r', encoding='utf-8') as f:
+                    clip_details["info_data"] = json.load(f)
+            else:
+                # Old text format (backward compatibility)
+                with open(info_path, 'r', encoding='utf-8') as f:
+                    clip_details["info_text"] = f.read()
 
         return {"success": True, "clip": clip_details}
 
