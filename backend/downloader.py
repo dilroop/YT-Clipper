@@ -106,12 +106,13 @@ class VideoDownloader:
             'file_access_retries': 3,
             'extractor_retries': 3,
 
-            # Advanced bot detection bypass - workaround for YouTube player changes
-            # See: https://github.com/yt-dlp/yt-dlp/issues/14680
+            # Advanced bot detection bypass - workaround for YouTube player changes and SABR streaming
+            # See: https://github.com/yt-dlp/yt-dlp/issues/14680 and https://github.com/yt-dlp/yt-dlp/issues/12482
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['default', 'web_safari'],  # Use Safari client to bypass restrictions
-                    'player_js_version': 'actual',  # Use actual player version
+                    # Use android client to bypass SABR streaming and bot detection
+                    # Note: Without PO token, may be limited to lower quality formats (360p-720p)
+                    'player_client': ['android'],
                 }
             },
 
