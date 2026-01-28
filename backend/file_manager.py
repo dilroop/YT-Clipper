@@ -66,9 +66,8 @@ class FileManager:
 
         project_folder.mkdir(parents=True, exist_ok=True)
 
-        # Create subfolders
-        (project_folder / "original").mkdir(exist_ok=True)
-        (project_folder / "reels").mkdir(exist_ok=True)
+        # Note: Format subfolders (original/reels) will be created dynamically
+        # when organize_clips() is called, based on the selected format
 
         return project_folder
 
@@ -172,6 +171,10 @@ class FileManager:
             List of organized clips with new paths
         """
         format_folder = project_folder / format_type
+
+        # Create format folder if it doesn't exist
+        format_folder.mkdir(parents=True, exist_ok=True)
+
         organized_clips = []
 
         for clip in clips:
@@ -237,8 +240,9 @@ class FileManager:
         original_folder = project_folder / "original"
         reels_folder = project_folder / "reels"
 
-        original_clips = list(original_folder.glob("clip_*.mp4"))
-        reels_clips = list(reels_folder.glob("clip_*.mp4"))
+        # Only scan folders that exist
+        original_clips = list(original_folder.glob("clip_*.mp4")) if original_folder.exists() else []
+        reels_clips = list(reels_folder.glob("clip_*.mp4")) if reels_folder.exists() else []
 
         return {
             'project_folder': str(project_folder),
