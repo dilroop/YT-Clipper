@@ -212,23 +212,38 @@ h1 {
     margin-bottom: 20px;
 }
 
-.thumbnail-wrapper {
-    width: 100%;
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 16px;
+/* Video Header: Thumbnail + Info Side by Side */
+.video-header {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    align-items: flex-start;
 }
 
-.thumbnail-wrapper img {
+.thumbnail-wrapper-compact {
+    flex-shrink: 0;
+    width: 200px;
+    max-width: 200px;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.thumbnail-wrapper-compact img {
     width: 100%;
     height: auto;
     display: block;
 }
 
-.video-info h2 {
-    font-size: 20px;
+.video-info-compact {
+    flex: 1;
+    min-width: 0;
+}
+
+.video-info-compact h2 {
+    font-size: 18px;
     margin-bottom: 8px;
     line-height: 1.3;
+    word-wrap: break-word;
 }
 
 .channel-name {
@@ -242,34 +257,51 @@ h1 {
     font-size: 14px;
 }
 
-/* Format Selection */
-.format-section {
-    margin-top: 24px;
+/* Options Grid (2 columns) */
+.options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
 }
 
-.format-section h3 {
-    font-size: 16px;
+.option-card {
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.option-card h3 {
+    font-size: 14px;
+    font-weight: 600;
     margin-bottom: 12px;
     color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
+.option-card-full {
+    grid-column: 1 / -1;
+}
+
+/* Format Buttons inside Option Card */
 .format-buttons {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 8px;
 }
 
 .format-btn {
-    padding: 16px;
-    background: var(--bg-dark);
+    padding: 12px;
+    background: var(--bg-card);
     border: 2px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: 8px;
     color: var(--text-primary);
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
-    min-height: 56px;
 }
 
 .format-btn.active {
@@ -279,11 +311,6 @@ h1 {
 
 .format-btn:active {
     transform: scale(0.98);
-}
-
-/* Toggle Section */
-.toggle-section {
-    margin-top: 24px;
 }
 
 .toggle-label {
@@ -331,6 +358,46 @@ input[type="checkbox"]:checked + .toggle-slider::before {
 .toggle-text {
     font-size: 16px;
     font-weight: 500;
+}
+
+/* AI Strategy Dropdown */
+.strategy-section {
+    margin-top: 24px;
+}
+
+.strategy-section h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+}
+
+.strategy-dropdown {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 20px;
+    padding-right: 44px;
+}
+
+.strategy-dropdown:hover {
+    border-color: var(--primary-color);
+}
+
+.strategy-dropdown:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
 }
 
 /* Workflow Buttons */
@@ -937,6 +1004,19 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     position: relative;
 }
 
+.view-count-badge {
+    display: inline-block;
+    background: rgba(139, 92, 246, 0.2);
+    color: #a78bfa;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 6px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
 .history-item:active {
     transform: scale(0.98);
     background: var(--border-color);
@@ -1170,6 +1250,26 @@ input[type="checkbox"]:checked + .toggle-slider::before {
 
     h1 {
         font-size: 24px;
+    }
+
+    /* Stack video header vertically on mobile */
+    .video-header {
+        flex-direction: column;
+    }
+
+    .thumbnail-wrapper-compact {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    /* Single column options grid on mobile */
+    .options-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .option-card-full {
+        grid-column: 1;
     }
 
     .results-section .clips-grid {

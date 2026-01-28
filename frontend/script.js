@@ -262,6 +262,10 @@ async function processVideo() {
         // Start processing
         updateProgress(0, 'Starting...');
 
+        // Get selected AI strategy
+        const strategyDropdown = document.getElementById('aiStrategySelect');
+        const selectedStrategy = strategyDropdown ? strategyDropdown.value : 'viral-moments';
+
         const response = await fetch('/api/process', {
             method: 'POST',
             headers: {
@@ -271,6 +275,7 @@ async function processVideo() {
                 url: urlInput.value.trim(),
                 format: selectedFormat,
                 burn_captions: burnCaptionsToggle.checked,
+                ai_strategy: selectedStrategy,
             }),
         });
 
@@ -611,21 +616,23 @@ async function loadHistory() {
 
         if (data.history && data.history.length > 0) {
             historyList.innerHTML = data.history.map(item => {
-                const date = new Date(item.timestamp);
+                const date = new Date(item.last_viewed);
                 const timeAgo = formatTimeAgo(date);
+                const viewCount = item.view_count || 1;
+                const viewBadge = viewCount > 1 ? `<span class="view-count-badge" title="Viewed ${viewCount} times">👁️ ${viewCount}</span>` : '';
 
                 return `
                     <div class="history-item" data-url="${item.url}">
                         <img class="history-thumbnail" src="${item.thumbnail}" alt="${item.title}" onerror="this.src='${item.thumbnail}'">
                         <div class="history-info">
-                            <div class="history-title">${item.title}</div>
+                            <div class="history-title">${item.title} ${viewBadge}</div>
                             <div class="history-meta">${item.channel} • ${formatDuration(item.duration)}</div>
                             <div class="history-time">${timeAgo}</div>
                         </div>
                         <button class="history-copy-btn" data-url="${item.url}" title="Copy link" aria-label="Copy link">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 4 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                             </svg>
                         </button>
                     </div>
@@ -741,10 +748,17 @@ async function analyzeAndShowClips() {
         await connectWebSocketAndWait();
         updateProgress(0, 'Starting analysis...');
 
+        // Get selected AI strategy
+        const strategyDropdown = document.getElementById('aiStrategySelect');
+        const selectedStrategy = strategyDropdown ? strategyDropdown.value : 'viral-moments';
+
         const response = await fetch('/api/analyze', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ url: urlInput.value.trim() }),
+            body: JSON.stringify({
+                url: urlInput.value.trim(),
+                ai_strategy: selectedStrategy
+            }),
         });
 
         if (!response.ok) {
@@ -881,9 +895,54 @@ async function generateSelectedClips() {
     }
 }
 
+// Load AI strategies from server
+async function loadStrategies() {
+    try {
+        const response = await fetch('/api/strategies');
+        const data = await response.json();
+
+        if (data.success && data.strategies) {
+            const dropdown = document.getElementById('aiStrategySelect');
+            if (dropdown) {
+                // Clear existing options
+                dropdown.innerHTML = '';
+
+                // Add strategies as options with nice labels
+                data.strategies.forEach(strategy => {
+                    const option = document.createElement('option');
+                    option.value = strategy;
+                    // Convert kebab-case to Title Case
+                    option.textContent = strategy
+                        .split('-')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
+                    dropdown.appendChild(option);
+                });
+
+                // Load last selected strategy from localStorage
+                const lastStrategy = localStorage.getItem('ytclipper_ai_strategy');
+                if (lastStrategy && data.strategies.includes(lastStrategy)) {
+                    dropdown.value = lastStrategy;
+                }
+
+                // Save selection when changed
+                dropdown.addEventListener('change', () => {
+                    localStorage.setItem('ytclipper_ai_strategy', dropdown.value);
+                    console.log('AI Strategy changed to:', dropdown.value);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error loading strategies:', error);
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     console.log('YTClipper loaded! 🎬');
+
+    // Load available AI strategies
+    loadStrategies();
 
     // Center input section on initial load
     const inputSection = document.querySelector('.input-section');

@@ -36,20 +36,29 @@ class AIAnalyzer:
         self.min_clip_duration = min_clip_duration
         self.max_clip_duration = max_clip_duration
 
-    def get_system_prompt(self, num_clips: int, video_info: Dict = None) -> str:
+    def get_system_prompt(self, num_clips: int, video_info: Dict = None, strategy: str = "viral-moments") -> str:
         """
-        Generate system prompt for GPT by reading from InterestFetchingPrompt.txt
+        Generate system prompt for GPT by reading from ai-prompt-strategy folder
 
         Args:
             num_clips: Number of clips to find
             video_info: Optional video metadata (title, description, etc.)
+            strategy: Strategy name (filename without .txt extension)
 
         Returns:
             Formatted prompt string
         """
         # Get project root directory (parent of backend)
         project_root = Path(__file__).parent.parent
-        prompt_file = project_root / "InterestFetchingPrompt.txt"
+        strategy_folder = project_root / "ai-prompt-strategy"
+        prompt_file = strategy_folder / f"{strategy}.txt"
+
+        # Fallback to old location if strategy file not found
+        if not prompt_file.exists():
+            old_prompt_file = project_root / "InterestFetchingPrompt.txt"
+            if old_prompt_file.exists():
+                prompt_file = old_prompt_file
+                print(f"⚠️ Strategy '{strategy}' not found, using legacy InterestFetchingPrompt.txt")
 
         # Read prompt from file
         try:
@@ -92,7 +101,8 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
         self,
         segments: List[Dict],
         num_clips: int = 5,
-        video_info: Dict = None
+        video_info: Dict = None,
+        strategy: str = "viral-moments"
     ) -> List[Dict]:
         """
         Use AI to find the most interesting clips from transcript
@@ -101,6 +111,7 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
             segments: List of transcript segments with text and timestamps
             num_clips: Number of clips to extract
             video_info: Optional video metadata
+            strategy: AI strategy to use (viral-moments, context-rich, educational)
 
         Returns:
             List of clip metadata (start, end, text, score, title, reason)
@@ -118,8 +129,9 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
         # Request extra clips to ensure we get enough valid ones
         request_clips = num_clips + 3
 
-        # Generate prompt
-        system_prompt = self.get_system_prompt(request_clips, video_info)
+        # Generate prompt with selected strategy
+        system_prompt = self.get_system_prompt(request_clips, video_info, strategy)
+        print(f"\n🎯 Using AI Strategy: {strategy}")
 
         # Format full prompt
         full_prompt = f"{system_prompt}\n\nTranscript:\n{transcript}"

@@ -23,10 +23,20 @@ import os
 from pathlib import Path
 import re
 from typing import Optional
-import sqlite3
 from datetime import datetime
 import asyncio
 import sys
+
+# Import database module
+from database import (
+    init_database,
+    migrate_database,
+    save_to_history,
+    get_history,
+    clear_history,
+    delete_history_entry,
+    get_video_stats
+)
 
 # Initialize FastAPI app
 app = FastAPI(title="YTClipper", version="1.0.0")
@@ -46,9 +56,6 @@ BASE_DIR = Path(__file__).parent.parent
 # Temp directory for intermediate files
 TEMP_DIR = BASE_DIR / "temp"
 TEMP_DIR.mkdir(exist_ok=True)
-
-# Database path
-DB_PATH = BASE_DIR / "history.db"
 
 # Log file path
 LOG_FILE = BASE_DIR / "logs" / "ytclipper.log"
@@ -99,12 +106,18 @@ class VideoURLRequest(BaseModel):
     url: str
 
 
+class AnalyzeVideoRequest(BaseModel):
+    url: str
+    ai_strategy: Optional[str] = "viral-moments"  # AI strategy to use
+
+
 class ProcessVideoRequest(BaseModel):
     url: str
     format: str  # "original" or "reels"
     burn_captions: bool = True
     selected_clips: Optional[list] = None  # List of clip indices to process (for manual mode)
     preanalyzed_clips: Optional[list] = None  # Pre-analyzed clip data from /api/analyze (skips transcription & analysis)
+    ai_strategy: Optional[str] = "viral-moments"  # AI strategy to use (viral-moments, context-rich, educational)
 
 
 class ConfigUpdate(BaseModel):
@@ -154,87 +167,9 @@ def save_config(config: dict):
         json.dump(config, f, indent=2)
 
 
-# Database functions
-def init_database():
-    """Initialize SQLite database for history tracking"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT NOT NULL,
-            video_id TEXT NOT NULL,
-            title TEXT,
-            channel TEXT,
-            duration INTEGER,
-            description TEXT,
-            thumbnail TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-def save_to_history(url: str, video_id: str, title: str, channel: str, duration: int, thumbnail: str, description: str = ''):
-    """Save a video to history (updates timestamp if already exists)"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    # Check if video_id already exists
-    cursor.execute("SELECT id FROM history WHERE video_id = ?", (video_id,))
-    existing = cursor.fetchone()
-
-    if existing:
-        # Update existing entry with new timestamp
-        cursor.execute("""
-            UPDATE history
-            SET url = ?, title = ?, channel = ?, duration = ?, description = ?, thumbnail = ?, timestamp = ?
-            WHERE video_id = ?
-        """, (url, title, channel, duration, description, thumbnail, datetime.now().isoformat(), video_id))
-    else:
-        # Insert new entry
-        cursor.execute("""
-            INSERT INTO history (url, video_id, title, channel, duration, description, thumbnail, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (url, video_id, title, channel, duration, description, thumbnail, datetime.now().isoformat()))
-
-    conn.commit()
-    conn.close()
-
-
-def get_history(limit: int = 50):
-    """Get history from database"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT id, url, video_id, title, channel, duration, description, thumbnail, timestamp
-        FROM history
-        ORDER BY timestamp DESC
-        LIMIT ?
-    """, (limit,))
-
-    rows = cursor.fetchall()
-    conn.close()
-
-    return [dict(row) for row in rows]
-
-
-def clear_history():
-    """Clear all history"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM history")
-    conn.commit()
-    conn.close()
-
-
-# Initialize database on startup
+# Initialize database on startup and migrate if needed
 init_database()
+migrate_database()
 
 
 # WebSocket manager
@@ -354,7 +289,7 @@ async def get_thumbnail(request: VideoURLRequest):
 
 
 @app.post("/api/analyze")
-async def analyze_video(request: VideoURLRequest):
+async def analyze_video(request: AnalyzeVideoRequest):
     """
     Analyze video and return AI-suggested clips WITHOUT creating them
     Used for manual clip selection workflow
@@ -447,7 +382,8 @@ async def analyze_video(request: VideoURLRequest):
             interesting_clips = analyzer.find_interesting_clips(
                 segments,
                 num_clips=5,
-                video_info=video_info
+                video_info=video_info,
+                strategy=request.ai_strategy or "viral-moments"
             )
         else:
             interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
@@ -635,7 +571,8 @@ async def process_video(request: ProcessVideoRequest):
                     interesting_clips = analyzer.find_interesting_clips(
                         segments,
                         num_clips=5,
-                        video_info=video_info
+                        video_info=video_info,
+                        strategy=request.ai_strategy or "viral-moments"
                     )
                 else:
                     interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
@@ -824,6 +761,34 @@ async def update_config(config_update: ConfigUpdate):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating config: {str(e)}")
+
+
+@app.get("/api/strategies")
+async def get_strategies():
+    """Get list of available AI prompt strategies"""
+    try:
+        strategy_folder = BASE_DIR / "ai-prompt-strategy"
+
+        if not strategy_folder.exists():
+            return {"success": True, "strategies": ["viral-moments"], "count": 1}
+
+        # Find all .txt files in the strategy folder
+        strategy_files = list(strategy_folder.glob("*.txt"))
+
+        # Extract strategy names (filename without extension)
+        strategies = [f.stem for f in strategy_files]
+
+        # Sort alphabetically for consistent ordering
+        strategies.sort()
+
+        return {
+            "success": True,
+            "strategies": strategies,
+            "count": len(strategies)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching strategies: {str(e)}")
 
 
 @app.websocket("/ws")

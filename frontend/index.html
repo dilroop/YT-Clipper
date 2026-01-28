@@ -59,35 +59,50 @@
 
             <!-- Video Preview Section (Hidden by default) -->
             <div class="preview-section" id="previewSection" style="display: none;">
-                <div class="thumbnail-wrapper">
-                    <img id="thumbnail" src="" alt="Video thumbnail">
-                </div>
-                <div class="video-info">
-                    <h2 id="videoTitle">Video Title</h2>
-                    <p class="channel-name" id="channelName">Channel Name</p>
-                    <p class="duration" id="videoDuration">Duration: 0:00</p>
-                </div>
-
-                <!-- Format Selection -->
-                <div class="format-section">
-                    <h3>Format:</h3>
-                    <div class="format-buttons">
-                        <button class="format-btn active" data-format="reels">
-                            Reels (9:16)
-                        </button>
-                        <button class="format-btn" data-format="original">
-                            Original (16:9)
-                        </button>
+                <!-- Video Header: Thumbnail + Info -->
+                <div class="video-header">
+                    <div class="thumbnail-wrapper-compact">
+                        <img id="thumbnail" src="" alt="Video thumbnail">
+                    </div>
+                    <div class="video-info-compact">
+                        <h2 id="videoTitle">Video Title</h2>
+                        <p class="channel-name" id="channelName">Channel Name</p>
+                        <p class="duration" id="videoDuration">Duration: 0:00</p>
                     </div>
                 </div>
 
-                <!-- Burn Captions Toggle -->
-                <div class="toggle-section">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="burnCaptionsToggle" checked>
-                        <span class="toggle-slider"></span>
-                        <span class="toggle-text">Burn Captions into Video</span>
-                    </label>
+                <!-- Options Grid (2 columns) -->
+                <div class="options-grid">
+                    <!-- Format Card -->
+                    <div class="option-card">
+                        <h3>Format:</h3>
+                        <div class="format-buttons">
+                            <button class="format-btn active" data-format="reels">
+                                Reels (9:16)
+                            </button>
+                            <button class="format-btn" data-format="original">
+                                Original (16:9)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Burn Captions Card -->
+                    <div class="option-card">
+                        <h3>Captions:</h3>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="burnCaptionsToggle" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">Burn into Video</span>
+                        </label>
+                    </div>
+
+                    <!-- AI Strategy Card (spans 2 columns) -->
+                    <div class="option-card option-card-full">
+                        <h3>AI Strategy:</h3>
+                        <select id="aiStrategySelect" class="strategy-dropdown">
+                            <option value="viral-moments">Viral Moments</option>
+                        </select>
+                    </div>
                 </div>
 
                 <!-- Auto/Manual Workflow Buttons -->
