@@ -131,7 +131,12 @@ function createClipCard(clip) {
             <video preload="metadata" muted>
                 <source src="${videoUrl}#t=0.5" type="video/mp4">
             </video>
-            <div class="play-overlay">▶️</div>
+            <div class="play-overlay">
+                <svg class="play-icon" width="80" height="80" viewBox="0 0 80 80" fill="none">
+                    <circle cx="40" cy="40" r="40" fill="rgba(0, 0, 0, 0.7)"/>
+                    <path d="M32 26L56 40L32 54V26Z" fill="white"/>
+                </svg>
+            </div>
         </div>
         <div class="clip-info">
             <div class="clip-title" title="${displayTitle}">${displayTitle}</div>

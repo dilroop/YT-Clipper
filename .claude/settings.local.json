@@ -35,7 +35,9 @@
       "Bash(ping:*)",
       "Bash(ffprobe:*)",
       "Bash(open:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(yt-dlp:*)",
+      "Bash(killall:*)"
     ],
     "deny": [],
     "ask": []

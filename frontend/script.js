@@ -622,17 +622,53 @@ async function loadHistory() {
                             <div class="history-meta">${item.channel} • ${formatDuration(item.duration)}</div>
                             <div class="history-time">${timeAgo}</div>
                         </div>
+                        <button class="history-copy-btn" data-url="${item.url}" title="Copy link" aria-label="Copy link">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                        </button>
                     </div>
                 `;
             }).join('');
 
             // Add click handlers to history items
             document.querySelectorAll('.history-item').forEach(item => {
-                item.addEventListener('click', () => {
+                item.addEventListener('click', (e) => {
+                    // Don't trigger if clicking the copy button
+                    if (e.target.closest('.history-copy-btn')) {
+                        return;
+                    }
                     const url = item.dataset.url;
                     urlInput.value = url;
                     hideElement(historyModal);
                     fetchThumbnail(url);
+                });
+            });
+
+            // Add click handlers to copy buttons
+            document.querySelectorAll('.history-copy-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation(); // Prevent history item click
+                    const url = btn.dataset.url;
+                    try {
+                        await navigator.clipboard.writeText(url);
+                        // Visual feedback
+                        const originalHTML = btn.innerHTML;
+                        btn.innerHTML = `
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        `;
+                        btn.style.color = 'var(--success-color)';
+                        setTimeout(() => {
+                            btn.innerHTML = originalHTML;
+                            btn.style.color = '';
+                        }, 1500);
+                    } catch (err) {
+                        console.error('Failed to copy:', err);
+                        alert('Failed to copy link');
+                    }
                 });
             });
 

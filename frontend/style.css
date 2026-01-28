@@ -934,6 +934,7 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     transition: all 0.2s;
     display: flex;
     gap: 12px;
+    position: relative;
 }
 
 .history-item:active {
@@ -975,6 +976,38 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     font-size: 11px;
     color: var(--text-secondary);
     font-style: italic;
+}
+
+.history-copy-btn {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    padding: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    min-height: 36px;
+}
+
+.history-copy-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: rgba(255, 0, 0, 0.1);
+}
+
+.history-copy-btn:active {
+    transform: scale(0.95);
+}
+
+.history-copy-btn svg {
+    display: block;
 }
 
 /* Loading State */
