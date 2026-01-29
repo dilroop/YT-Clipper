@@ -1114,6 +1114,11 @@ async def websocket_logs(websocket: WebSocket):
 
                     last_position = current_size
                 except Exception as e:
+                    error_str = str(e)
+                    # If WebSocket is closed, break the loop
+                    if "close message has been sent" in error_str or "closed" in error_str.lower():
+                        print(f"⚠️ WebSocket closed for {client_id}, stopping log stream")
+                        break
                     print(f"⚠️ Error reading log file for {client_id}: {e}")
 
     except WebSocketDisconnect:
