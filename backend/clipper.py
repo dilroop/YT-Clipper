@@ -130,92 +130,104 @@ class VideoClipper:
                 format_type=format_type
             )
 
-        # Multi-part - build complex ffmpeg filter
+        # Multi-part - extract parts first, then stitch
         try:
-            # Build filter_complex for stitching with crossfades
-            filter_parts = []
-            audio_parts = []
+            import tempfile
+            import shutil
 
-            # Extract each part
+            print(f"\n🎬 Creating multi-part clip with {len(parts)} parts (0.1s crossfade)...")
+
+            # Create temp directory for part files
+            temp_dir = Path(tempfile.mkdtemp())
+            part_files = []
+
+            # Step 1: Extract each part as a separate file (more reliable than trim filter)
             for i, part in enumerate(parts):
                 start = part['start']
-                end = part['end']
-                duration = end - start
+                duration = part['end'] - start
+                part_file = temp_dir / f"part_{i:03d}.mp4"
 
-                # Trim video and audio for this part
-                filter_parts.append(
-                    f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]"
-                )
-                audio_parts.append(
-                    f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}]"
-                )
+                print(f"   Extracting part {i+1}/{len(parts)}: {start}s for {duration}s")
 
-            # Build crossfade chain for video
-            video_chain = "[v0]"
-            for i in range(1, len(parts)):
-                prev_duration = parts[i-1]['end'] - parts[i-1]['start']
-                offset = prev_duration - transition_duration
+                # Use -ss and -t for reliable extraction
+                cmd = [
+                    'ffmpeg',
+                    '-ss', str(start),
+                    '-i', str(video_path),
+                    '-t', str(duration),
+                    '-c:v', 'libx264',
+                    '-c:a', 'aac',
+                    '-preset', 'ultrafast',  # Fast extraction
+                    '-y',
+                    str(part_file)
+                ]
 
-                if i == 1:
-                    # First crossfade
+                subprocess.run(cmd, check=True, capture_output=True)
+                part_files.append(part_file)
+
+            # Step 2: Build xfade filter chain to stitch parts
+            if len(part_files) == 1:
+                # Single part, just copy
+                shutil.copy(part_files[0], output_path)
+            else:
+                # Build filter_complex for crossfade stitching
+                filter_parts = []
+
+                # Build crossfade chain for video
+                video_chain = "[0:v]"
+                cumulative_duration = parts[0]['end'] - parts[0]['start']
+
+                for i in range(1, len(part_files)):
+                    part_duration = parts[i]['end'] - parts[i]['start']
+                    offset = cumulative_duration - transition_duration
+
                     filter_parts.append(
-                        f"{video_chain}[v{i}]xfade=transition=fade:duration={transition_duration}:offset={offset}[vt{i}]"
+                        f"{video_chain}[{i}:v]xfade=transition=fade:duration={transition_duration}:offset={offset}[vt{i}]"
                     )
                     video_chain = f"[vt{i}]"
-                else:
-                    # Subsequent crossfades
-                    filter_parts.append(
-                        f"{video_chain}[v{i}]xfade=transition=fade:duration={transition_duration}:offset={offset}[vt{i}]"
-                    )
-                    video_chain = f"[vt{i}]"
 
-            # Build acrossfade chain for audio
-            audio_chain = "[a0]"
-            for i in range(1, len(parts)):
-                if i == 1:
-                    # First crossfade
+                    # Update cumulative duration
+                    cumulative_duration += part_duration - transition_duration
+
+                # Build acrossfade chain for audio
+                audio_chain = "[0:a]"
+                for i in range(1, len(part_files)):
                     filter_parts.append(
-                        f"{audio_chain}[a{i}]acrossfade=d={transition_duration}[at{i}]"
-                    )
-                    audio_chain = f"[at{i}]"
-                else:
-                    # Subsequent crossfades
-                    filter_parts.append(
-                        f"{audio_chain}[a{i}]acrossfade=d={transition_duration}[at{i}]"
+                        f"{audio_chain}[{i}:a]acrossfade=d={transition_duration}[at{i}]"
                     )
                     audio_chain = f"[at{i}]"
 
-            # Final output tags
-            filter_complex = ";".join(filter_parts)
+                # Final output
+                filter_complex = ";".join(filter_parts)
 
-            # Build ffmpeg command
-            cmd = [
-                'ffmpeg',
-                '-i', str(video_path),
-                '-filter_complex', filter_complex,
-                '-map', video_chain.strip('[]'),  # Map final video chain
-                '-map', audio_chain.strip('[]'),  # Map final audio chain
-                '-c:v', 'libx264',
-                '-c:a', 'aac',
-                '-preset', 'medium',
-                '-crf', '23',
-                '-y',
-                str(output_path)
-            ]
+                # Build ffmpeg command with multiple inputs
+                cmd = ['ffmpeg']
+                for part_file in part_files:
+                    cmd.extend(['-i', str(part_file)])
 
-            print(f"\n🎬 Stitching {len(parts)} parts with {transition_duration}s crossfade...")
-            print(f"   Filter complex: {filter_complex[:200]}..." if len(filter_complex) > 200 else f"   Filter complex: {filter_complex}")
+                cmd.extend([
+                    '-filter_complex', filter_complex,
+                    '-map', video_chain,
+                    '-map', audio_chain,
+                    '-c:v', 'libx264',
+                    '-c:a', 'aac',
+                    '-preset', 'medium',
+                    '-crf', '23',
+                    '-y',
+                    str(output_path)
+                ])
 
-            subprocess.run(
-                cmd,
-                check=True,
-                capture_output=True
-            )
+                print(f"   Stitching {len(part_files)} parts with crossfade...")
+                subprocess.run(cmd, check=True, capture_output=True)
+
+            # Cleanup temp files
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
             # Calculate total duration
             total_duration = sum(part['duration'] for part in parts)
-            # Subtract overlaps from transitions
             total_duration -= transition_duration * (len(parts) - 1)
+
+            print(f"   ✅ Multi-part clip created: {total_duration:.1f}s")
 
             return {
                 'success': True,
