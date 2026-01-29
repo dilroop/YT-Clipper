@@ -268,6 +268,14 @@ async function processVideo() {
         // Reset progress stages
         resetProgressStages();
 
+        // Reset cancel button to default handler
+        cancelBtn.textContent = 'Cancel Processing';
+        cancelBtn.onclick = () => {
+            if (confirm('Are you sure you want to cancel processing?')) {
+                cancelProcessing();
+            }
+        };
+
         // Connect to WebSocket for real-time progress
         await connectWebSocketAndWait();
 
@@ -375,14 +383,24 @@ function cancelProcessing() {
         ws = null;
     }
 
+    // Reset progress stages
+    resetProgressStages();
+
     // Reset UI
     hideElement(progressSection);
     hideElement(clipSelectionSection);
+    hideElement(resultsSection);
     showElement(previewSection);
 
-    // Note: Server-side cleanup would need to be implemented
-    // by adding a cancel endpoint that kills the processing job
-    alert('Processing cancelled. Note: Downloaded files may remain in downloads folder.');
+    // Reset cancel button
+    cancelBtn.textContent = 'Cancel Processing';
+    cancelBtn.onclick = () => {
+        if (confirm('Are you sure you want to cancel processing?')) {
+            cancelProcessing();
+        }
+    };
+
+    console.log('Processing cancelled');
 }
 
 // Track progress state
@@ -805,6 +823,14 @@ async function analyzeAndShowClips() {
         // Reset progress stages
         resetProgressStages();
 
+        // Reset cancel button to default handler
+        cancelBtn.textContent = 'Cancel Processing';
+        cancelBtn.onclick = () => {
+            if (confirm('Are you sure you want to cancel processing?')) {
+                cancelProcessing();
+            }
+        };
+
         // Connect to WebSocket for real-time progress
         await connectWebSocketAndWait();
         updateProgress(0, 'Starting analysis...');
@@ -917,6 +943,14 @@ async function generateSelectedClips() {
 
         // Reset progress stages
         resetProgressStages();
+
+        // Reset cancel button to default handler
+        cancelBtn.textContent = 'Cancel Processing';
+        cancelBtn.onclick = () => {
+            if (confirm('Are you sure you want to cancel processing?')) {
+                cancelProcessing();
+            }
+        };
 
         // Connect to WebSocket
         await connectWebSocketAndWait();
