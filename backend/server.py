@@ -124,6 +124,7 @@ class ConfigUpdate(BaseModel):
     downloader_backend: Optional[str] = None
     caption_settings: Optional[dict] = None
     watermark_settings: Optional[dict] = None
+    ai_validation: Optional[dict] = None
 
 
 # Helper functions
@@ -323,11 +324,19 @@ async def analyze_video(request: AnalyzeVideoRequest):
 
         # Use AI analyzer if API key is available
         openai_api_key = os.getenv('OPENAI_API_KEY')
+
+        # Load validation settings from config
+        ai_validation = config.get('ai_validation', {})
+        min_duration = ai_validation.get('min_clip_duration', 15)
+        max_duration = ai_validation.get('max_clip_duration', 60)
+
         if openai_api_key and openai_api_key.startswith('sk-'):
             analyzer = AIAnalyzer(
                 api_key=openai_api_key,
                 model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
-                temperature=float(os.getenv('OPENAI_TEMPERATURE', '1.0'))
+                temperature=float(os.getenv('OPENAI_TEMPERATURE', '1.0')),
+                min_clip_duration=min_duration,
+                max_clip_duration=max_duration
             )
         else:
             analyzer = SectionAnalyzer()
@@ -488,6 +497,11 @@ async def process_video(request: ProcessVideoRequest):
         # Initialize modules
         transcriber = AudioTranscriber(model_name="base")
 
+        # Load validation settings from config
+        ai_validation = config.get('ai_validation', {})
+        min_duration = ai_validation.get('min_clip_duration', 15)
+        max_duration = ai_validation.get('max_clip_duration', 60)
+
         # Use AI analyzer if API key is available, otherwise fall back to simple analyzer
         openai_api_key = os.getenv('OPENAI_API_KEY')
         if openai_api_key and openai_api_key.startswith('sk-'):
@@ -495,7 +509,9 @@ async def process_video(request: ProcessVideoRequest):
             analyzer = AIAnalyzer(
                 api_key=openai_api_key,
                 model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
-                temperature=float(os.getenv('OPENAI_TEMPERATURE', '1.0'))
+                temperature=float(os.getenv('OPENAI_TEMPERATURE', '1.0')),
+                min_clip_duration=min_duration,
+                max_clip_duration=max_duration
             )
         else:
             print("Using simple keyword-based analyzer (no API key found)")
@@ -787,6 +803,9 @@ async def update_config(config_update: ConfigUpdate):
 
         if config_update.watermark_settings:
             config['watermark_settings'] = {**config.get('watermark_settings', {}), **config_update.watermark_settings}
+
+        if config_update.ai_validation:
+            config['ai_validation'] = {**config.get('ai_validation', {}), **config_update.ai_validation}
 
         save_config(config)
 

@@ -37,7 +37,10 @@
       "Bash(open:*)",
       "Bash(git rm:*)",
       "Bash(yt-dlp:*)",
-      "Bash(killall:*)"
+      "Bash(killall:*)",
+      "Bash(sqlite3:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)"
     ],
     "deny": [],
     "ask": []

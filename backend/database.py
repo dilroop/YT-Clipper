@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import List, Dict, Optional
 
 
-# Get database path from project root
+# Get database path from backend/history folder
 PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = PROJECT_ROOT / "history.db"
+DB_PATH = PROJECT_ROOT / "backend" / "history" / "history.db"
 
 
 def init_database():

@@ -136,7 +136,12 @@ YTClipper/
 │   ├── caption_generator.py    # Caption generation and burning (ASS format)
 │   ├── reels_processor.py      # Reels conversion with face detection
 │   ├── watermark_processor.py  # Watermark overlay
-│   └── file_manager.py         # File organization and cleanup
+│   ├── file_manager.py         # File organization and cleanup
+│   └── history/                # History database folder
+│       ├── history.db          # SQLite database for video history
+│       ├── history.db.backup   # Database backup
+│       ├── run_history_cleanup.py  # Cleanup script
+│       └── cleanup_history.sql     # SQL cleanup script
 │
 ├── frontend/                   # HTML/CSS/JS frontend
 │   ├── index.html              # Main page
@@ -174,7 +179,6 @@ YTClipper/
 ├── logs/                       # Application logs
 │   └── ytclipper.log           # Main log file (timestamped)
 │
-├── history.db                  # SQLite database for video history
 ├── config.json                 # User configuration (captions, watermark)
 ├── .env                        # Environment variables (API keys)
 └── requirements.txt            # Python dependencies

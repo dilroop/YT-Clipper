@@ -82,6 +82,162 @@ class VideoClipper:
                 'error': f"ffmpeg error: {e.stderr.decode()}"
             }
 
+    def create_multipart_clip(
+        self,
+        video_path: str,
+        parts: List[Dict],
+        output_path: str = None,
+        transition_duration: float = 0.1,
+        format_type: str = "original"
+    ) -> dict:
+        """
+        Create a multi-part clip by stitching multiple segments with crossfade transitions
+
+        Args:
+            video_path: Path to source video
+            parts: List of part metadata (start, end, text, words, duration)
+            output_path: Optional output path
+            transition_duration: Duration of crossfade transition in seconds (default: 0.1s)
+            format_type: "original" or "reels"
+
+        Returns:
+            dict with clip info
+        """
+        video_path = Path(video_path)
+
+        if output_path is None:
+            output_path = self.output_dir / f"multipart_clip_{parts[0]['start']}.mp4"
+        else:
+            output_path = Path(output_path)
+
+        # Ensure output directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Validate parts
+        if len(parts) < 1:
+            return {
+                'success': False,
+                'error': 'At least 1 part required for multi-part clip'
+            }
+
+        # Single part - use regular clip creation
+        if len(parts) == 1:
+            return self.create_clip(
+                video_path=str(video_path),
+                start_time=parts[0]['start'],
+                end_time=parts[0]['end'],
+                output_path=str(output_path),
+                format_type=format_type
+            )
+
+        # Multi-part - build complex ffmpeg filter
+        try:
+            # Build filter_complex for stitching with crossfades
+            filter_parts = []
+            audio_parts = []
+
+            # Extract each part
+            for i, part in enumerate(parts):
+                start = part['start']
+                end = part['end']
+                duration = end - start
+
+                # Trim video and audio for this part
+                filter_parts.append(
+                    f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]"
+                )
+                audio_parts.append(
+                    f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}]"
+                )
+
+            # Build crossfade chain for video
+            video_chain = "[v0]"
+            for i in range(1, len(parts)):
+                prev_duration = parts[i-1]['end'] - parts[i-1]['start']
+                offset = prev_duration - transition_duration
+
+                if i == 1:
+                    # First crossfade
+                    filter_parts.append(
+                        f"{video_chain}[v{i}]xfade=transition=fade:duration={transition_duration}:offset={offset}[vt{i}]"
+                    )
+                    video_chain = f"[vt{i}]"
+                else:
+                    # Subsequent crossfades
+                    filter_parts.append(
+                        f"{video_chain}[v{i}]xfade=transition=fade:duration={transition_duration}:offset={offset}[vt{i}]"
+                    )
+                    video_chain = f"[vt{i}]"
+
+            # Build acrossfade chain for audio
+            audio_chain = "[a0]"
+            for i in range(1, len(parts)):
+                if i == 1:
+                    # First crossfade
+                    filter_parts.append(
+                        f"{audio_chain}[a{i}]acrossfade=d={transition_duration}[at{i}]"
+                    )
+                    audio_chain = f"[at{i}]"
+                else:
+                    # Subsequent crossfades
+                    filter_parts.append(
+                        f"{audio_chain}[a{i}]acrossfade=d={transition_duration}[at{i}]"
+                    )
+                    audio_chain = f"[at{i}]"
+
+            # Final output tags
+            filter_complex = ";".join(filter_parts)
+
+            # Build ffmpeg command
+            cmd = [
+                'ffmpeg',
+                '-i', str(video_path),
+                '-filter_complex', filter_complex,
+                '-map', video_chain.strip('[]'),  # Map final video chain
+                '-map', audio_chain.strip('[]'),  # Map final audio chain
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-y',
+                str(output_path)
+            ]
+
+            print(f"\n🎬 Stitching {len(parts)} parts with {transition_duration}s crossfade...")
+            print(f"   Filter complex: {filter_complex[:200]}..." if len(filter_complex) > 200 else f"   Filter complex: {filter_complex}")
+
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True
+            )
+
+            # Calculate total duration
+            total_duration = sum(part['duration'] for part in parts)
+            # Subtract overlaps from transitions
+            total_duration -= transition_duration * (len(parts) - 1)
+
+            return {
+                'success': True,
+                'clip_path': str(output_path),
+                'parts': parts,
+                'part_count': len(parts),
+                'duration': total_duration,
+                'is_multipart': True
+            }
+
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.decode() if e.stderr else str(e)
+            return {
+                'success': False,
+                'error': f"ffmpeg error during multi-part stitching: {error_msg}"
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Error creating multi-part clip: {str(e)}"
+            }
+
     def create_clips_batch(
         self,
         video_path: str,
@@ -89,11 +245,11 @@ class VideoClipper:
         output_dir: str = None
     ) -> List[Dict]:
         """
-        Create multiple clips from video
+        Create multiple clips from video (handles both single-part and multi-part)
 
         Args:
             video_path: Path to source video
-            clips: List of clip metadata (start, end, clip_number)
+            clips: List of clip metadata with 'parts' array
             output_dir: Optional output directory
 
         Returns:
@@ -109,19 +265,46 @@ class VideoClipper:
             clip_num = clip.get('clip_number', 0)
             output_path = self.output_dir / f"clip_{clip_num:03d}.mp4"
 
-            result = self.create_clip(
-                video_path=video_path,
-                start_time=clip['start'],
-                end_time=clip['end'],
-                output_path=str(output_path),
-                format_type=clip.get('format_type', 'original')
-            )
+            # All clips now have 'parts' array (normalized format from Phase 1)
+            if 'parts' in clip and isinstance(clip['parts'], list):
+                # Use multipart clip method (handles both 1-part and N-part)
+                result = self.create_multipart_clip(
+                    video_path=video_path,
+                    parts=clip['parts'],
+                    output_path=str(output_path),
+                    transition_duration=0.1,  # 100ms as specified
+                    format_type=clip.get('format_type', 'original')
+                )
 
-            if result['success']:
-                result['clip_number'] = clip_num
-                result['text'] = clip.get('text', '')
-                result['words'] = clip.get('words', [])
-                results.append(result)
+                if result['success']:
+                    result['clip_number'] = clip_num
+                    result['title'] = clip.get('title', 'Clip')
+                    result['reason'] = clip.get('reason', '')
+                    result['keywords'] = clip.get('keywords', [])
+                    # Merge all text from parts
+                    result['text'] = ' '.join([part.get('text', '') for part in clip['parts']])
+                    # Merge all words from parts
+                    result['words'] = []
+                    for part in clip['parts']:
+                        result['words'].extend(part.get('words', []))
+                    results.append(result)
+            else:
+                # Legacy format fallback (for old code that doesn't use normalized format)
+                # This shouldn't happen if using Phase 1 AI analyzer
+                print(f"⚠️  Warning: Clip {clip_num} using legacy format (no 'parts' array)")
+                result = self.create_clip(
+                    video_path=video_path,
+                    start_time=clip.get('start', 0),
+                    end_time=clip.get('end', 0),
+                    output_path=str(output_path),
+                    format_type=clip.get('format_type', 'original')
+                )
+
+                if result['success']:
+                    result['clip_number'] = clip_num
+                    result['text'] = clip.get('text', '')
+                    result['words'] = clip.get('words', [])
+                    results.append(result)
 
         return results
 

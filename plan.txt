@@ -1,0 +1,375 @@
+===============================================================================
+YTCLIPPER - MULTI-PART NARRATIVE CLIPS IMPLEMENTATION PLAN
+===============================================================================
+Goal: Enable AI to create reels composed of multiple non-contiguous video segments
+      that tell a cohesive story across a long video.
+
+Started: 2026-01-29
+Status: Planning Complete - Ready to Implement
+
+===============================================================================
+OVERVIEW
+===============================================================================
+
+Current Behavior:
+  - 1 Clip = 1 Continuous Time Range
+  - Example: Clip from 2:30-2:45 (single segment)
+
+New Behavior:
+  - 1 Reel = N Parts (3-7 parts per reel)
+  - Example: Reel with Part1: 2:30-2:45, Part2: 5:10-5:25, Part3: 8:00-8:15
+  - Parts are stitched together with 100ms fade transitions
+  - Captions flow continuously across all parts
+  - AI "connects the dots" to form narrative arcs
+
+Backward Compatibility:
+  ✓ Existing strategies (viral-moments, educational, context-rich) continue working
+  ✓ Single-part clips are treated as multi-part with 1 part
+  ✓ Both formats coexist in the same codebase
+
+===============================================================================
+PHASE 1: UPDATE DATA MODEL & AI RESPONSE FORMAT
+===============================================================================
+[✓] 1.1 Define New Data Structures
+    Files: backend/ai_analyzer.py
+    COMPLETED: 2026-01-29
+
+    OLD Format (still supported):
+    {
+        "start": 150.0,
+        "end": 165.0,
+        "text": "full transcript",
+        "title": "Clip Title",
+        "reason": "Why interesting",
+        "keywords": [...],
+        "words": [...]
+    }
+
+    NEW Format (multi-part):
+    {
+        "title": "Reel Title",
+        "reason": "Narrative explanation",
+        "keywords": [...],
+        "parts": [
+            {
+                "start": 150.0,
+                "end": 165.0,
+                "text": "part 1 transcript",
+                "words": [...]
+            },
+            {
+                "start": 310.0,
+                "end": 325.0,
+                "text": "part 2 transcript",
+                "words": [...]
+            }
+        ]
+    }
+
+[✓] 1.2 Update AI Response Parser
+    Files: backend/ai_analyzer.py (lines 199-313)
+    COMPLETED: 2026-01-29
+    - Detects if response has "parts" key (multi-part) or not (single-part)
+    - Parses both formats correctly
+    - Validates constraints:
+      * 1-7 parts per reel (using _validate_multipart_clip)
+      * Parts are chronologically ordered
+      * No overlapping time ranges
+      * Min 5-second gap between parts
+    - Integrated into find_interesting_clips() method
+    - Logging shows multi-part details (part count, total duration)
+
+[✓] 1.3 Add Backward Compatibility Layer
+    Files: backend/ai_analyzer.py (lines 472-513)
+    COMPLETED: 2026-01-29
+    - Created _convert_singlepart_to_normalized_format() method
+    - Converts single-part format to 1-part multi-part internally
+    - Old strategies work without modification
+    - All clips now use unified "parts" array structure
+
+===============================================================================
+PHASE 2: CREATE NEW AI PROMPT STRATEGY
+===============================================================================
+[✓] 2.1 Create multi-part-narrative.txt
+    File: ai-prompt-strategy/multi-part-narrative.txt
+    COMPLETED: 2026-01-29
+
+    Instructions to OpenAI:
+    - Find N unrelated narrative arcs across the entire video
+    - Each arc should have 3-7 segments that connect thematically
+    - Segments can be far apart in the video (join the dots)
+    - Return multi-part JSON format with clear narrative reasoning
+    - Target total duration per reel: {target_duration}
+    - Each part duration: {min_duration} to {max_duration} seconds
+
+[ ] 2.2 Test Prompt with Sample Video
+    - Verify OpenAI returns valid multi-part JSON
+    - Check that parts form coherent narratives
+    - Ensure parts are distributed across video (not clustered)
+
+===============================================================================
+PHASE 3: UPDATE VIDEO CLIPPER (STITCHING)
+===============================================================================
+[✓] 3.1 Add Multi-Part Clip Stitching
+    File: backend/clipper.py (lines 85-239)
+    COMPLETED: 2026-01-29
+
+    New Method: create_multipart_clip(video_path, parts, transition_duration=0.1)
+
+    Implementation:
+    - Extracts each part as separate segment using trim/atrim
+    - Applies 100ms crossfade between consecutive segments (xfade/acrossfade)
+    - Concatenates all segments into single output file
+    - Uses ffmpeg complex filter for efficiency
+    - Handles single-part clips by delegating to create_clip()
+    - Calculates correct total duration (sum of parts minus overlaps)
+
+    FFmpeg Strategy (as implemented):
+    [0:v] trim=start=150:end=165, setpts=PTS-STARTPTS [v0];
+    [0:a] atrim=start=150:end=165, asetpts=PTS-STARTPTS [a0];
+    [0:v] trim=start=310:end=325, setpts=PTS-STARTPTS [v1];
+    [0:a] atrim=start=310:end=325, asetpts=PTS-STARTPTS [a1];
+    [v0][v1] xfade=transition=fade:duration=0.1:offset=14.9 [vt1];
+    [a0][a1] acrossfade=d=0.1 [at1];
+
+[✓] 3.2 Update clipper.py Integration
+    File: backend/clipper.py (lines 241-309)
+    COMPLETED: 2026-01-29
+    - Updated create_clips_batch() to handle normalized 'parts' format
+    - All clips use create_multipart_clip() (handles both 1-part and N-part)
+    - Merges text and words from all parts
+    - Legacy format fallback with warning for old code
+
+[ ] 3.3 Test Video Stitching
+    - Test with 2 parts (simple case)
+    - Test with 7 parts (max complexity)
+    - Verify transitions are smooth (100ms fade)
+    - Verify audio sync maintained
+
+===============================================================================
+PHASE 4: UPDATE CAPTION GENERATOR
+===============================================================================
+[ ] 4.1 Merge Multi-Part Captions
+    File: backend/caption_generator.py
+
+    Modifications:
+    - Accept parts[] array with word-level timing
+    - Merge all words into single timeline
+    - Adjust timing offsets:
+      * Part 1 words: keep original timing
+      * Part 2 words: offset by (Part 1 duration)
+      * Part 3 words: offset by (Part 1 + Part 2 duration)
+      * etc.
+
+[ ] 4.2 Generate Continuous ASS Subtitles
+    - Create single ASS file with all merged words
+    - Ensure captions flow naturally across transitions
+    - Test with multi-part clips
+
+[ ] 4.3 Update generate_clip_caption()
+    - Handle both single-part and multi-part word arrays
+    - Maintain existing behavior for single-part
+
+===============================================================================
+PHASE 5: UPDATE AI ANALYZER (CORE LOGIC)
+===============================================================================
+[ ] 5.1 Modify find_interesting_clips()
+    File: backend/ai_analyzer.py
+
+    Changes:
+    - Load strategy prompt (multi-part-narrative.txt)
+    - Pass full transcript to OpenAI
+    - Parse response (single-part or multi-part)
+    - Validate multi-part constraints
+    - Normalize to internal format
+    - Extract word-level timing for each part
+
+[ ] 5.2 Add Multi-Part Validation
+    - Ensure parts are chronologically ordered
+    - Check 3-7 parts per reel
+    - Verify no overlapping ranges
+    - Verify minimum gap between parts (5 seconds)
+    - Reject invalid reels (log error, skip)
+
+[ ] 5.3 Test with Various Video Lengths
+    - Short video (5 min): expect single-part fallback
+    - Medium video (15 min): expect 2-3 parts per reel
+    - Long video (60 min): expect 5-7 parts per reel
+
+===============================================================================
+PHASE 6: UPDATE SERVER PROCESSING
+===============================================================================
+[ ] 6.1 Update /api/process Endpoint
+    File: backend/server.py
+
+    Changes:
+    - Pass clips (single or multi-part) to clipper
+    - Detect clip type in clipping loop
+    - Call appropriate clipper method
+    - Update progress messages for multi-part
+      * "Processing clip 1/5 (3 parts)..."
+      * "Stitching part 2/3..."
+
+[ ] 6.2 Update /api/analyze Endpoint
+    File: backend/server.py
+
+    Changes:
+    - Return multi-part clips to frontend
+    - Include parts[] array in response
+    - Calculate total duration across all parts
+
+[ ] 6.3 Add Progress Tracking
+    - Show stitching progress for multi-part clips
+    - Update stage details with part information
+
+===============================================================================
+PHASE 7: UPDATE FRONTEND (DISPLAY & INTERACTION)
+===============================================================================
+[ ] 7.1 Update Clip Selection UI
+    File: frontend/script.js
+
+    Function: displayClipSelection()
+    Changes:
+    - Detect if clip has "parts" array
+    - Display multi-part clips with all time ranges
+    - Show part count badge: "🎬 3 Parts"
+    - List all parts with timestamps:
+      * Part 1: 2:30-2:45 (15s)
+      * Part 2: 5:10-5:25 (15s)
+      * Part 3: 8:00-8:15 (15s)
+      * Total: 45s
+
+[ ] 7.2 Update YouTube Preview Links
+    - Create link with first part timestamp
+    - Add tooltip: "Click to watch Part 1 (more parts in this reel)"
+
+[ ] 7.3 Add Multi-Part Indicator in UI
+    File: frontend/style.css
+
+    New Styles:
+    - .parts-badge: Small badge showing part count
+    - .part-list: Expandable list of all parts
+    - .part-item: Individual part in the list
+
+===============================================================================
+PHASE 8: TESTING & VALIDATION
+===============================================================================
+[ ] 8.1 Unit Tests
+    - Test multi-part parser (valid & invalid JSON)
+    - Test stitching with various part counts
+    - Test caption merging and offset calculation
+    - Test backward compatibility with old format
+
+[ ] 8.2 Integration Tests
+    - Test full pipeline with multi-part strategy
+    - Test full pipeline with old strategies (backward compat)
+    - Test mixed usage (some multi-part, some single-part)
+
+[ ] 8.3 End-to-End Testing
+    Test Videos:
+    - 10-min tutorial video → expect 2-3 narrative arcs
+    - 30-min podcast → expect 3-5 story-based reels
+    - 60-min documentary → expect 5-7 thematic reels
+
+    Validation:
+    - ✓ Reels play smoothly with fade transitions
+    - ✓ Captions sync correctly across all parts
+    - ✓ Total reel duration within target range
+    - ✓ Parts are meaningfully related (coherent narrative)
+    - ✓ Parts span the video (not clustered at start/end)
+
+[ ] 8.4 Performance Testing
+    - Measure stitching time (vs single-part)
+    - Verify no memory leaks with 7-part reels
+    - Test with reels format (9:16) and original (16:9)
+
+===============================================================================
+PHASE 9: DOCUMENTATION & CLEANUP
+===============================================================================
+[ ] 9.1 Update README
+    - Document multi-part narrative feature
+    - Add examples and use cases
+    - Explain strategy selection
+
+[ ] 9.2 Code Comments
+    - Add docstrings for new methods
+    - Explain multi-part data flow
+    - Document ffmpeg stitching logic
+
+[ ] 9.3 User Guide
+    - When to use multi-part vs single-part strategies
+    - How narratives are formed
+    - Best practices for long videos
+
+===============================================================================
+CONSTRAINTS & DESIGN DECISIONS
+===============================================================================
+
+Multi-Part Constraints:
+- Min parts per reel: 1 (backward compatible)
+- Max parts per reel: 7 (avoid over-fragmentation)
+- Optimal parts per reel: 3-5 (sweet spot for narratives)
+- Min gap between parts: 5 seconds (avoid fake splitting)
+- Transition duration: 100ms crossfade (subtle, professional)
+
+Target Durations:
+- Same as existing: 30-60 seconds per reel
+- Applied to total stitched duration (sum of all parts)
+
+Backward Compatibility:
+- Old strategies continue working unchanged
+- Single-part clips auto-converted to 1-part multi-part format
+- No breaking changes to existing API
+
+Performance:
+- Stitching overhead: ~2-3 seconds per multi-part reel
+- Memory usage: Minimal (ffmpeg streams, doesn't load full video)
+- Acceptable for reels (small file sizes)
+
+===============================================================================
+CURRENT STATUS
+===============================================================================
+✓ Planning complete
+✓ Architecture designed
+✓ Data structures defined
+✓ Implementation phases mapped
+✓ Phase 1 complete (2026-01-29)
+  - AI response parser updated to handle both formats
+  - Validation and conversion helper methods added
+  - Backward compatibility layer implemented
+  - All clips now use unified "parts" array structure
+✓ Phase 2 complete (2026-01-29)
+  - multi-part-narrative.txt strategy created
+  - Comprehensive AI prompt with narrative arc instructions
+
+NEXT STEPS:
+→ Phase 2.2: Test multi-part prompt with sample video
+→ Phase 3: Update clipper.py to stitch multi-part clips
+→ Phase 4: Update caption_generator.py to merge multi-part captions
+
+===============================================================================
+NOTES & DECISIONS LOG
+===============================================================================
+2026-01-29 (Morning):
+- Initial planning session
+- Confirmed 100ms fade transitions
+- Max 3-7 parts per reel
+- Backward compatibility required
+- Multi-part strategy will be new file (not parameter)
+- Captions flow continuously (no reset between parts)
+
+2026-01-29 (Afternoon):
+- Phase 1 COMPLETED: AI analyzer updated to handle both formats
+  * Added _is_multipart_format() to detect clip type
+  * Added _validate_multipart_clip() with comprehensive validation
+  * Added _convert_multipart_to_normalized_format() for multi-part clips
+  * Added _convert_singlepart_to_normalized_format() for backward compatibility
+  * Updated find_interesting_clips() to integrate all new methods
+  * All clips now use unified "parts" array structure internally
+- Phase 2 COMPLETED: Created multi-part-narrative.txt strategy
+  * Instructs GPT to find narrative arcs across entire video
+  * Enforces 3-7 parts per reel with clear constraints
+  * Emphasizes thematic connections and storytelling
+- Key Decision: Changed max parts from 7 to 1-7 (min 1 for backward compat)
+
+===============================================================================

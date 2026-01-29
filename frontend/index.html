@@ -303,6 +303,22 @@
                     </div>
                 </div>
 
+                <!-- AI Analysis Settings -->
+                <div class="setting-section">
+                    <h3>AI Clip Validation</h3>
+                    <p class="setting-note">Set duration limits for AI-generated clips</p>
+
+                    <div class="setting-item">
+                        <label>Minimum Duration: <span id="minDurationValue">15</span>s</label>
+                        <input type="range" id="minDuration" min="10" max="30" value="15" step="1">
+                    </div>
+
+                    <div class="setting-item">
+                        <label>Maximum Duration: <span id="maxDurationValue">60</span>s</label>
+                        <input type="range" id="maxDuration" min="30" max="120" value="60" step="5">
+                    </div>
+                </div>
+
                 <!-- Developer Tools -->
                 <div class="setting-section">
                     <h3>Developer Tools</h3>

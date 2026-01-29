@@ -44,6 +44,10 @@ const fontSizeSlider = document.getElementById('fontSize');
 const fontSizeValue = document.getElementById('fontSizeValue');
 const verticalPosSlider = document.getElementById('verticalPosition');
 const verticalPosValue = document.getElementById('verticalPosValue');
+const minDurationSlider = document.getElementById('minDuration');
+const minDurationValue = document.getElementById('minDurationValue');
+const maxDurationSlider = document.getElementById('maxDuration');
+const maxDurationValue = document.getElementById('maxDurationValue');
 
 // Utility Functions
 function formatDuration(seconds) {
@@ -196,6 +200,14 @@ verticalPosSlider.addEventListener('input', (e) => {
     verticalPosValue.textContent = e.target.value;
 });
 
+minDurationSlider.addEventListener('input', (e) => {
+    minDurationValue.textContent = e.target.value;
+});
+
+maxDurationSlider.addEventListener('input', (e) => {
+    maxDurationValue.textContent = e.target.value;
+});
+
 // API Functions
 async function fetchThumbnail(url) {
     try {
@@ -293,23 +305,11 @@ async function processVideo() {
 
     } catch (error) {
         console.error('Error processing video:', error);
-
-        // Check for OpenAI quota error
-        const errorMsg = error.message || '';
-        if (errorMsg.includes('OPENAI_QUOTA_ERROR') || errorMsg.includes('Insufficient OpenAI credits')) {
-            alert('⚠️ OpenAI Credits Exhausted\n\n' +
-                  'Your OpenAI API credits have been exhausted or exceeded the quota.\n\n' +
-                  'Please add credits to your OpenAI account at:\n' +
-                  'https://platform.openai.com/account/billing\n\n' +
-                  'After adding credits, try processing the video again.');
-        } else {
-            alert('Error: ' + error.message);
-        }
-
-        hideElement(progressSection);
-        showElement(previewSection);
         isProcessing = false;
         if (ws) ws.close();
+
+        // Show error in progress UI
+        showProcessingError(error.message, 'analyzing');
     }
 }
 
@@ -506,6 +506,53 @@ function resetProgressStages() {
     completedStages.clear();
 }
 
+function showProcessingError(errorMessage, failedStage, onRetry = null) {
+    // Mark the failed stage as error
+    const stageElem = document.querySelector(`[data-stage="${failedStage}"]`);
+    if (stageElem) {
+        stageElem.classList.add('error');
+        stageElem.classList.remove('active', 'completed');
+
+        const statusElem = document.getElementById(`status-${failedStage}`);
+        const detailsElem = document.getElementById(`details-${failedStage}`);
+
+        if (statusElem) {
+            statusElem.textContent = 'Failed ✗';
+        }
+
+        if (detailsElem) {
+            // Format error message nicely
+            let errorHTML = `<div style="color: #ef4444; margin-top: 8px;">
+                <strong>Error:</strong> ${errorMessage}
+            </div>`;
+
+            // Add helpful tips for common errors
+            if (errorMessage.includes('Could not find any interesting clips')) {
+                errorHTML += `<div style="margin-top: 8px; color: var(--text-secondary); font-size: 12px;">
+                    <strong>Tip:</strong> Try adjusting the duration settings in Settings, or use a different AI strategy.
+                </div>`;
+            } else if (errorMessage.includes('OPENAI_QUOTA_ERROR') || errorMessage.includes('Insufficient OpenAI credits')) {
+                errorHTML += `<div style="margin-top: 8px; color: var(--text-secondary); font-size: 12px;">
+                    <strong>Tip:</strong> Add credits at <a href="https://platform.openai.com/account/billing" target="_blank" style="color: var(--primary-color);">OpenAI Billing</a>
+                </div>`;
+            }
+
+            detailsElem.innerHTML = errorHTML;
+        }
+    }
+
+    // Update cancel button to "Back" or custom action
+    cancelBtn.textContent = onRetry ? 'Back to Selection' : 'Back to Start';
+    cancelBtn.onclick = () => {
+        if (onRetry) {
+            onRetry();
+        } else {
+            hideElement(progressSection);
+            showElement(previewSection);
+        }
+    };
+}
+
 function showResults(data) {
     hideElement(progressSection);
     showElement(resultsSection);
@@ -573,6 +620,14 @@ async function loadSettings() {
             verticalPosSlider.value = cs.vertical_position || 80;
             verticalPosValue.textContent = cs.vertical_position || 80;
         }
+
+        if (config.ai_validation) {
+            const av = config.ai_validation;
+            minDurationSlider.value = av.min_clip_duration || 15;
+            minDurationValue.textContent = av.min_clip_duration || 15;
+            maxDurationSlider.value = av.max_clip_duration || 60;
+            maxDurationValue.textContent = av.max_clip_duration || 60;
+        }
     } catch (error) {
         console.error('Error loading settings:', error);
     }
@@ -587,6 +642,11 @@ async function saveSettingsToServer() {
             vertical_position: parseInt(verticalPosSlider.value),
         };
 
+        const aiValidationSettings = {
+            min_clip_duration: parseInt(minDurationSlider.value),
+            max_clip_duration: parseInt(maxDurationSlider.value),
+        };
+
         const response = await fetch('/api/config', {
             method: 'POST',
             headers: {
@@ -594,6 +654,7 @@ async function saveSettingsToServer() {
             },
             body: JSON.stringify({
                 caption_settings: captionSettings,
+                ai_validation: aiValidationSettings,
             }),
         });
 
@@ -782,10 +843,10 @@ async function analyzeAndShowClips() {
 
     } catch (error) {
         console.error('Error analyzing video:', error);
-        alert('Error: ' + error.message);
-        hideElement(progressSection);
-        showElement(previewSection);
         if (ws) ws.close();
+
+        // Show error in progress UI
+        showProcessingError(error.message, 'analyzing');
     }
 }
 
@@ -886,12 +947,15 @@ async function generateSelectedClips() {
 
     } catch (error) {
         console.error('Error generating clips:', error);
-        alert('Error: ' + error.message);
-        hideElement(progressSection);
-        showElement(clipSelectionSection);
+        if (ws) ws.close();
         generateBtn.disabled = false;
         generateBtn.textContent = 'Generate Selected Clips';
-        if (ws) ws.close();
+
+        // Show error in progress UI with return to selection option
+        showProcessingError(error.message, 'clipping', () => {
+            hideElement(progressSection);
+            showElement(clipSelectionSection);
+        });
     }
 }
 
