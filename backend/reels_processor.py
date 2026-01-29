@@ -240,6 +240,16 @@ class ReelsProcessor:
                     if face_center_x < edge_margin or face_center_x > width - edge_margin:
                         continue
 
+                    # Filter by confidence score
+                    confidence = detection.categories[0].score if detection.categories else 0.0
+                    if confidence < 0.6:
+                        continue
+
+                    # Filter by aspect ratio (faces are roughly square)
+                    aspect_ratio = w / h if h > 0 else 0
+                    if aspect_ratio < 0.6 or aspect_ratio > 1.4:
+                        continue
+
                     # Take first valid face
                     best_face_x = face_center_x
                     break
@@ -345,8 +355,18 @@ class ReelsProcessor:
                     if face_center_x < edge_margin or face_center_x > width - edge_margin:
                         continue
 
-                    # MediaPipe FaceDetector automatically filters non-faces
-                    # Much more accurate than Haar Cascade
+                    # Filter by confidence score (reduce false positives)
+                    confidence = detection.categories[0].score if detection.categories else 0.0
+                    if confidence < 0.6:  # Require at least 60% confidence
+                        continue
+
+                    # Filter by aspect ratio (real faces are roughly square, not wide rectangles)
+                    aspect_ratio = w / h if h > 0 else 0
+                    if aspect_ratio < 0.6 or aspect_ratio > 1.4:  # Face should be 0.6-1.4 ratio
+                        continue
+
+                    # MediaPipe FaceDetector with enhanced filtering
+                    # Filters: size, edge, confidence, aspect ratio
 
                     face_positions.append({
                         'topLeft': {'x': x_min, 'y': y_min},
@@ -461,6 +481,9 @@ class ReelsProcessor:
 
             # Store face positions using corner points
             frame_faces = []
+            min_face_size = int(height * 0.08)
+            edge_margin = int(width * 0.05)
+
             if detection_result.detections:
                 for detection in detection_result.detections:
                     bbox = detection.bounding_box
@@ -470,6 +493,24 @@ class ReelsProcessor:
                     h = int(bbox.height)
                     x_max = x_min + w
                     y_max = y_min + h
+
+                    # Apply same filters as other detection methods
+                    if w < min_face_size or h < min_face_size:
+                        continue
+
+                    face_center_x = x_min + w // 2
+                    if face_center_x < edge_margin or face_center_x > width - edge_margin:
+                        continue
+
+                    # Filter by confidence score
+                    confidence = detection.categories[0].score if detection.categories else 0.0
+                    if confidence < 0.6:
+                        continue
+
+                    # Filter by aspect ratio (faces are roughly square)
+                    aspect_ratio = w / h if h > 0 else 0
+                    if aspect_ratio < 0.6 or aspect_ratio > 1.4:
+                        continue
 
                     frame_faces.append({
                         'topLeft': {'x': x_min, 'y': y_min},
