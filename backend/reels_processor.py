@@ -51,6 +51,17 @@ PAN_CYCLE_DURATION = 8.0
 
 # ================================================================
 
+# ==================== OUTPUT FORMAT OPTIONS ====================
+# Format 1: Standard 9:16 vertical with all tracking modes
+FORMAT_VERTICAL_9_16 = "vertical_9x16"
+
+# Format 2: Stacked 9:8 boxes (TOP: AI-animated photo, BOTTOM: tracked highlight)
+FORMAT_STACKED_PHOTO = "stacked_photo"
+
+# Format 3: Stacked 9:8 boxes (TOP: AI-generated video, BOTTOM: tracked highlight)
+FORMAT_STACKED_VIDEO = "stacked_video"
+# ================================================================
+
 
 class ReelsProcessor:
     def __init__(self):
@@ -767,7 +778,10 @@ class ReelsProcessor:
         video_path: str,
         output_path: str = None,
         auto_detect: bool = True,
-        dynamic_mode: bool = True
+        dynamic_mode: bool = True,
+        output_format: str = None,
+        ai_content_path: str = None,
+        caption_text: str = None
     ) -> Dict:
         """
         Convert video to reels format with smart cropping
@@ -779,6 +793,9 @@ class ReelsProcessor:
             output_path: Optional output path
             auto_detect: Use face detection for cropping
             dynamic_mode: Enable dynamic mode switching (check faces every 8 frames)
+            output_format: Format type (FORMAT_VERTICAL_9_16, FORMAT_STACKED_PHOTO, FORMAT_STACKED_VIDEO)
+            ai_content_path: Path to AI-generated content (photo/video) for stacked formats
+            caption_text: Optional caption text to overlay at the end
 
         Returns:
             dict with result
@@ -790,6 +807,27 @@ class ReelsProcessor:
         else:
             output_path = Path(output_path)
 
+        # Default to vertical 9:16 format
+        if output_format is None:
+            output_format = FORMAT_VERTICAL_9_16
+
+        # Route to appropriate conversion method based on format
+        if output_format == FORMAT_STACKED_PHOTO:
+            return self._convert_to_stacked_format(
+                video_path, output_path,
+                ai_content_type="photo",
+                ai_content_path=ai_content_path,
+                caption_text=caption_text
+            )
+        elif output_format == FORMAT_STACKED_VIDEO:
+            return self._convert_to_stacked_format(
+                video_path, output_path,
+                ai_content_type="video",
+                ai_content_path=ai_content_path,
+                caption_text=caption_text
+            )
+
+        # FORMAT_VERTICAL_9_16 - existing logic
         # If dynamic mode is enabled, check for dual-face segments
         if dynamic_mode and auto_detect:
             # Quick check: detect segments to see if we have dual-face segments
@@ -1591,3 +1629,326 @@ class ReelsProcessor:
                 result.append(seg)
 
         return result
+
+    def _convert_to_stacked_format(
+        self,
+        video_path: Path,
+        output_path: Path,
+        ai_content_type: str,
+        ai_content_path: str = None,
+        caption_text: str = None
+    ) -> Dict:
+        """
+        Convert to stacked 9:8 format with AI content on top and tracked highlight on bottom
+
+        Args:
+            video_path: Path to input video
+            output_path: Path for output
+            ai_content_type: "photo" or "video"
+            ai_content_path: Path to AI-generated content (if None, uses placeholder)
+            caption_text: Optional caption text to overlay
+
+        Returns:
+            dict with result
+        """
+        try:
+            import tempfile
+            import shutil
+
+            print(f"[DEBUG] Converting to stacked {ai_content_type} format")
+
+            temp_dir = Path(tempfile.mkdtemp())
+
+            # Get video properties
+            cap = cv2.VideoCapture(str(video_path))
+            if not cap.isOpened():
+                return {'success': False, 'error': f"Cannot open video: {video_path}"}
+
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = total_frames / fps
+            cap.release()
+
+            # Calculate 9:8 dimensions
+            # Final output is 1080x1920 (9:16)
+            # Each 9:8 box is 1080x960
+            box_width = 1080
+            box_height = 960
+
+            # Step 1: Create bottom box (tracked highlight)
+            print(f"[DEBUG] Creating bottom 9:8 box with face tracking...")
+            bottom_box_path = temp_dir / "bottom_box.mp4"
+
+            # Use smooth interpolation for single-face tracking
+            timeline = self._get_face_positions_timeline(str(video_path), FACE_CHECK_INTERVAL_FRAMES)
+            positions = timeline['positions']
+
+            # Calculate crop dimensions for 9:8 aspect ratio
+            crop_height = height
+            crop_width = int(crop_height * 9 / 8)
+
+            # Check if faces were detected or using fallback
+            is_zero_face = (len(positions) == 2 and
+                           positions[0][1] == width // 2 and
+                           positions[1][1] == width // 2)
+
+            if is_zero_face and ENABLE_ZERO_FACE_PANNING:
+                # Use panning for zero-face
+                print(f"[DEBUG] No faces detected - using smooth panning")
+                smooth_positions = self._generate_panning_positions(duration, fps, width, crop_width)
+            else:
+                # Interpolate face positions
+                print(f"[DEBUG] Interpolating {len(positions)} face positions")
+                smooth_positions = self._bezier_interpolate(positions, total_frames, SMOOTHING_STRENGTH)
+
+            # Generate crop expression
+            crop_x_values = []
+            for _, x_pos in smooth_positions:
+                if is_zero_face and ENABLE_ZERO_FACE_PANNING:
+                    crop_x = int(x_pos)
+                else:
+                    crop_x = int(x_pos - crop_width // 2)
+                crop_x = max(0, min(crop_x, width - crop_width))
+                crop_x_values.append(crop_x)
+
+            # Sample positions for FFmpeg expression
+            sample_interval = fps
+            sampled_indices = range(0, len(smooth_positions), int(sample_interval))
+
+            expr_parts = []
+            for i, idx in enumerate(sampled_indices):
+                if idx >= len(smooth_positions):
+                    break
+                time, face_x = smooth_positions[idx]
+                frame_num = int(time * fps)
+
+                if is_zero_face and ENABLE_ZERO_FACE_PANNING:
+                    crop_x = int(face_x)
+                else:
+                    crop_x = int(face_x - crop_width // 2)
+                crop_x = max(0, min(crop_x, width - crop_width))
+
+                if i == 0:
+                    expr_parts.append(f"if(lt(n,{frame_num}),{crop_x}")
+                else:
+                    if i < len(list(sampled_indices)) - 1:
+                        next_idx = list(sampled_indices)[i + 1]
+                        if next_idx < len(smooth_positions):
+                            next_time, next_face_x = smooth_positions[min(next_idx, len(smooth_positions)-1)]
+                            next_frame = int(next_time * fps)
+
+                            if is_zero_face and ENABLE_ZERO_FACE_PANNING:
+                                next_crop_x = int(next_face_x)
+                            else:
+                                next_crop_x = int(next_face_x - crop_width // 2)
+                            next_crop_x = max(0, min(next_crop_x, width - crop_width))
+
+                            expr_parts.append(f",if(lt(n,{next_frame}),{crop_x}+(n-{frame_num})*({next_crop_x}-{crop_x})/{next_frame-frame_num}")
+                    else:
+                        expr_parts.append(f",{crop_x}")
+
+            expr_parts.append(")" * (len(expr_parts) - 1))
+            crop_x_expr = "".join(expr_parts)
+
+            # Create bottom box with tracking
+            vf_filter = f"crop=w={crop_width}:h={crop_height}:x='{crop_x_expr}':y=0,scale={box_width}:{box_height}"
+
+            cmd = [
+                'ffmpeg',
+                '-i', str(video_path),
+                '-vf', vf_filter,
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-y',
+                str(bottom_box_path)
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
+            print(f"[DEBUG] Bottom box created: {box_width}x{box_height}")
+
+            # Step 2: Create or load top box (AI content)
+            print(f"[DEBUG] Creating top 9:8 box with {ai_content_type}...")
+            top_box_path = temp_dir / f"top_box_{ai_content_type}.mp4"
+
+            if ai_content_path and Path(ai_content_path).exists():
+                # Use provided AI content
+                print(f"[DEBUG] Using AI content from: {ai_content_path}")
+                # Resize and trim to match duration
+                cmd = [
+                    'ffmpeg',
+                    '-i', str(ai_content_path),
+                    '-vf', f'scale={box_width}:{box_height}:force_original_aspect_ratio=decrease,pad={box_width}:{box_height}:(ow-iw)/2:(oh-ih)/2',
+                    '-t', str(duration),
+                    '-c:v', 'libx264',
+                    '-an',  # No audio for top box
+                    '-preset', 'medium',
+                    '-crf', '23',
+                    '-y',
+                    str(top_box_path)
+                ]
+                subprocess.run(cmd, check=True, capture_output=True)
+            else:
+                # Generate placeholder
+                if ai_content_type == "photo":
+                    self._generate_ai_photo_placeholder(box_width, box_height, duration, fps, top_box_path)
+                else:  # video
+                    self._generate_ai_video_placeholder(box_width, box_height, duration, fps, top_box_path)
+
+            print(f"[DEBUG] Top box created: {box_width}x{box_height}")
+
+            # Step 3: Stack boxes vertically
+            print(f"[DEBUG] Stacking boxes vertically...")
+            stacked_path = temp_dir / "stacked.mp4"
+
+            # Use filter_complex to stack with audio from bottom
+            vf_filter = "[0:v][1:v]vstack"
+
+            cmd = [
+                'ffmpeg',
+                '-i', str(top_box_path),
+                '-i', str(bottom_box_path),
+                '-filter_complex', vf_filter,
+                '-map', '[out]',  # This will be auto-named by vstack
+                '-map', '1:a',  # Audio from bottom box (second input)
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-y',
+                str(stacked_path)
+            ]
+
+            # Actually, vstack doesn't auto-name, let's fix the command
+            cmd = [
+                'ffmpeg',
+                '-i', str(top_box_path),
+                '-i', str(bottom_box_path),
+                '-filter_complex', '[0:v][1:v]vstack[stacked]',
+                '-map', '[stacked]',
+                '-map', '1:a',  # Audio from bottom box
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-y',
+                str(stacked_path)
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
+            print(f"[DEBUG] Stacked video created: 1080x1920")
+
+            # Step 4: Add captions if provided
+            if caption_text:
+                print(f"[DEBUG] Adding captions...")
+                self._add_captions_overlay(stacked_path, output_path, caption_text)
+            else:
+                # Just copy stacked to output
+                shutil.copy(stacked_path, output_path)
+
+            # Cleanup
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+            print(f"[DEBUG] Stacked {ai_content_type} format complete: {output_path}")
+
+            return {
+                'success': True,
+                'output_path': str(output_path),
+                'mode': f'stacked_{ai_content_type}',
+                'format': f'{box_width}x{box_height * 2} (two {box_width}x{box_height} boxes stacked)'
+            }
+
+        except subprocess.CalledProcessError as e:
+            return {
+                'success': False,
+                'error': f"Error in stacked conversion: {e.stderr.decode() if e.stderr else str(e)}"
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Error in stacked conversion: {str(e)}"
+            }
+
+    def _generate_ai_photo_placeholder(self, width: int, height: int, duration: float, fps: float, output_path: Path):
+        """
+        Generate placeholder for AI-animated photo (solid color with text)
+
+        Args:
+            width: Box width
+            height: Box height
+            duration: Video duration in seconds
+            fps: Frames per second
+            output_path: Output path for placeholder
+        """
+        print(f"[DEBUG] Generating AI photo placeholder...")
+
+        # Create solid color with text overlay
+        # Using lavfi to generate test pattern
+        cmd = [
+            'ffmpeg',
+            '-f', 'lavfi',
+            '-i', f'color=c=0x2E3440:s={width}x{height}:d={duration}:r={fps}',
+            '-vf', f"drawtext=text='AI Photo Placeholder':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2",
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-y',
+            str(output_path)
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+
+    def _generate_ai_video_placeholder(self, width: int, height: int, duration: float, fps: float, output_path: Path):
+        """
+        Generate placeholder for AI-generated video (animated gradient)
+
+        Args:
+            width: Box width
+            height: Box height
+            duration: Video duration in seconds
+            fps: Frames per second
+            output_path: Output path for placeholder
+        """
+        print(f"[DEBUG] Generating AI video placeholder...")
+
+        # Create animated gradient using testsrc2
+        cmd = [
+            'ffmpeg',
+            '-f', 'lavfi',
+            '-i', f'testsrc2=size={width}x{height}:rate={fps}:duration={duration}',
+            '-vf', f"drawtext=text='AI Video Placeholder':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2",
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-y',
+            str(output_path)
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+
+    def _add_captions_overlay(self, video_path: Path, output_path: Path, caption_text: str):
+        """
+        Add caption text overlay to video
+
+        Args:
+            video_path: Input video path
+            output_path: Output video path
+            caption_text: Caption text to overlay
+        """
+        print(f"[DEBUG] Adding caption overlay: {caption_text[:50]}...")
+
+        # Add caption at bottom using drawtext filter
+        # Position captions in bottom 20% of frame with padding
+        vf_filter = f"drawtext=text='{caption_text}':fontcolor=white:fontsize=36:box=1:boxcolor=black@0.5:boxborderw=10:x=(w-text_w)/2:y=h-th-100"
+
+        cmd = [
+            'ffmpeg',
+            '-i', str(video_path),
+            '-vf', vf_filter,
+            '-c:v', 'libx264',
+            '-c:a', 'copy',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-y',
+            str(output_path)
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
