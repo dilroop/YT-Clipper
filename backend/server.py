@@ -396,20 +396,36 @@ async def analyze_video(request: AnalyzeVideoRequest):
         # Format clips for frontend
         formatted_clips = []
         for i, clip in enumerate(interesting_clips):
+            # Handle both old flat format and new multi-part format
+            if 'parts' in clip:
+                # New multi-part format - use first part for main timing
+                first_part = clip['parts'][0]
+                start = first_part['start']
+                end = first_part['end']
+                text = first_part.get('text', clip.get('text', ''))
+                words = first_part.get('words', clip.get('words', []))
+            else:
+                # Old flat format (legacy support)
+                start = clip['start']
+                end = clip['end']
+                text = clip.get('text', '')
+                words = clip.get('words', [])
+
             # Calculate timestamp in seconds for YouTube link
-            start_seconds = int(clip['start'])
+            start_seconds = int(start)
 
             formatted_clips.append({
                 'index': i,
-                'start': clip['start'],
-                'end': clip['end'],
-                'duration': clip['end'] - clip['start'],
+                'start': start,
+                'end': end,
+                'duration': end - start,
                 'title': clip.get('title', f'Clip {i+1}'),
                 'reason': clip.get('reason', ''),
-                'text': clip['text'],
+                'text': text,
                 'youtube_link': f"{request.url}&t={start_seconds}",
                 'keywords': clip.get('keywords', []),
-                'words': clip.get('words', [])  # Include word-level timing for captions
+                'words': words,  # Include word-level timing for captions
+                'parts': clip.get('parts', [])  # Include parts for multi-part clips
             })
 
         await update_progress({'stage': 'complete', 'percent': 100, 'message': 'Analysis complete!'})
