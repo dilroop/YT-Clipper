@@ -2,7 +2,7 @@
 
 // State
 let currentVideoData = null;
-let selectedFormat = 'reels';
+let selectedFormat = 'vertical_9x16';  // Default to vertical 9:16 format
 let analyzedClips = null;
 let selectedClipIndices = [];
 
@@ -15,7 +15,7 @@ const thumbnail = document.getElementById('thumbnail');
 const videoTitle = document.getElementById('videoTitle');
 const channelName = document.getElementById('channelName');
 const videoDuration = document.getElementById('videoDuration');
-const formatBtns = document.querySelectorAll('.format-btn');
+const formatBtns = document.querySelectorAll('.format-btn, .format-btn-icon');  // Support both old and new classes
 const burnCaptionsToggle = document.getElementById('burnCaptionsToggle');
 const progressSection = document.getElementById('progressSection');
 const progressFill = document.getElementById('progressFill');

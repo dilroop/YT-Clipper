@@ -113,7 +113,7 @@ class AnalyzeVideoRequest(BaseModel):
 
 class ProcessVideoRequest(BaseModel):
     url: str
-    format: str  # "original" or "reels"
+    format: str  # "original", "vertical_9x16", "stacked_photo", "stacked_video" (or legacy "reels")
     burn_captions: bool = True
     selected_clips: Optional[list] = None  # List of clip indices to process (for manual mode)
     preanalyzed_clips: Optional[list] = None  # Pre-analyzed clip data from /api/analyze (skips transcription & analysis)
@@ -636,8 +636,20 @@ async def process_video(request: ProcessVideoRequest):
 
             # Convert to reels format FIRST if requested (before captions)
             # This ensures captions are centered on the reels crop
-            if request.format == "reels":
-                reels_result = reels_proc.convert_to_reels(clip_path)
+            # Handle multi-format selection: vertical_9x16, stacked_photo, stacked_video
+            if request.format in ["reels", "vertical_9x16", "stacked_photo", "stacked_video"]:
+                # Map format values to output_format parameter
+                output_format_map = {
+                    "reels": "vertical_9x16",  # Legacy support
+                    "vertical_9x16": "vertical_9x16",
+                    "stacked_photo": "stacked_photo",
+                    "stacked_video": "stacked_video"
+                }
+
+                reels_result = reels_proc.convert_to_reels(
+                    clip_path,
+                    output_format=output_format_map.get(request.format, "vertical_9x16")
+                )
                 if reels_result['success']:
                     clip_path = reels_result['output_path']
                     temp_files.append(clip_path)
@@ -695,7 +707,12 @@ async def process_video(request: ProcessVideoRequest):
         # Step 6: Organize clips based on selected format
         await update_progress({'stage': 'organizing', 'percent': 90, 'message': 'Organizing files...'})
         print(f"[DEBUG] Organizing {len(processed_clips)} clips to {project_folder}")
-        file_mgr.organize_clips(processed_clips, project_folder, video_info, request.format)
+
+        # Map format for file organization - all reels formats go to "reels" folder
+        # This maintains backwards compatibility and clean folder structure
+        org_format = "reels" if request.format in ["reels", "vertical_9x16", "stacked_photo", "stacked_video"] else request.format
+
+        file_mgr.organize_clips(processed_clips, project_folder, video_info, org_format)
         print(f"[DEBUG] Organization complete")
 
         # Step 8: Cleanup
