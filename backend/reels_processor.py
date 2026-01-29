@@ -33,6 +33,22 @@ USE_SMOOTH_INTERPOLATION = True
 # 0.3 = responsive, 0.5 = balanced, 0.7 = very smooth
 SMOOTHING_STRENGTH = 0.5
 
+# Zero-face panning settings (when no faces detected)
+# Instead of static crop, pan smoothly left-to-right and back
+ENABLE_ZERO_FACE_PANNING = True
+
+# Panning boundaries (percentage of video width)
+# 0.15 = start at 15% from left edge, 0.85 = stop at 85%
+# This hides the left 0-15% and right 85-100% edges
+PAN_LEFT_BOUNDARY = 0.15   # Start panning from this % of width
+PAN_RIGHT_BOUNDARY = 0.85  # Pan up to this % of width
+
+# Panning speed (seconds for one complete left-to-right pan)
+# Lower = faster panning, Higher = slower, more cinematic
+# 8.0 = completes one pan in 8 seconds (good for podcasts)
+# 12.0 = slower, more dramatic
+PAN_CYCLE_DURATION = 8.0
+
 # ================================================================
 
 
@@ -101,6 +117,57 @@ class ReelsProcessor:
             interp_values = gaussian_filter1d(interp_values, sigma=sigma)
 
         return list(zip(interp_times, interp_values))
+
+    def _generate_panning_positions(self, duration: float, fps: float, width: int, crop_width: int) -> List[Tuple[float, float]]:
+        """
+        Generate smooth panning positions for zero-face segments
+        Pans left-to-right and back using sine wave for smooth motion
+
+        Args:
+            duration: Segment duration in seconds
+            fps: Frames per second
+            width: Video width in pixels
+            crop_width: Width of crop window
+
+        Returns:
+            List of (time, x_position) tuples
+        """
+        import math
+
+        # Calculate boundary positions in pixels
+        left_boundary_px = int(width * PAN_LEFT_BOUNDARY)
+        right_boundary_px = int(width * PAN_RIGHT_BOUNDARY) - crop_width
+
+        # Ensure boundaries are valid
+        right_boundary_px = max(left_boundary_px, min(right_boundary_px, width - crop_width))
+
+        # Center position
+        center_x = (left_boundary_px + right_boundary_px) / 2
+        amplitude = (right_boundary_px - left_boundary_px) / 2
+
+        # Generate positions using sine wave for smooth panning
+        num_frames = int(duration * fps)
+        positions = []
+
+        for frame in range(num_frames):
+            time = frame / fps
+
+            # Sine wave oscillation: -1 to 1 over PAN_CYCLE_DURATION seconds
+            # Frequency: 1 / PAN_CYCLE_DURATION (completes one full cycle in PAN_CYCLE_DURATION seconds)
+            angle = (2 * math.pi * time) / PAN_CYCLE_DURATION
+
+            # Map sine wave to panning range
+            # sin(-π/2) = -1 (left), sin(π/2) = 1 (right)
+            x_position = center_x + amplitude * math.sin(angle - math.pi / 2)
+
+            # Clamp to boundaries
+            x_position = max(left_boundary_px, min(x_position, right_boundary_px))
+
+            positions.append((time, x_position))
+
+        print(f"[DEBUG] Generated panning motion: {left_boundary_px}px to {right_boundary_px}px over {PAN_CYCLE_DURATION}s cycles")
+
+        return positions
 
     def _get_face_positions_timeline(self, video_path: str, check_every_n_frames: int = 8) -> Dict:
         """
@@ -856,17 +923,34 @@ class ReelsProcessor:
             crop_height = height
             crop_width = int(crop_height * 9 / 16)
 
-            # Interpolate face positions using Bezier curves
-            num_samples = total_frames  # One position per frame for ultra-smooth motion
-            print(f"[DEBUG] Interpolating {len(positions)} keyframes to {num_samples} frames using Bezier curves")
+            # Check if faces were actually detected or if we're using fallback center positions
+            # Fallback positions are exactly 2 points at start/end with center x-coordinate
+            is_zero_face = (len(positions) == 2 and
+                           positions[0][1] == width // 2 and
+                           positions[1][1] == width // 2)
 
-            smooth_positions = self._bezier_interpolate(positions, num_samples, SMOOTHING_STRENGTH)
+            if is_zero_face and ENABLE_ZERO_FACE_PANNING:
+                # No faces detected - use smooth panning instead
+                print(f"[DEBUG] No faces detected - using smooth panning (left-right motion)")
+                video_duration = total_frames / fps
+                smooth_positions = self._generate_panning_positions(video_duration, fps, width, crop_width)
+                print(f"[DEBUG] Generated {len(smooth_positions)} panning positions")
+            else:
+                # Interpolate face positions using Bezier curves
+                num_samples = total_frames  # One position per frame for ultra-smooth motion
+                print(f"[DEBUG] Interpolating {len(positions)} keyframes to {num_samples} frames using Bezier curves")
+                smooth_positions = self._bezier_interpolate(positions, num_samples, SMOOTHING_STRENGTH)
 
             # Generate crop positions for each frame
             crop_x_values = []
-            for _, face_x in smooth_positions:
-                # Center crop on face
-                crop_x = int(face_x - crop_width // 2)
+            for _, x_pos in smooth_positions:
+                if is_zero_face and ENABLE_ZERO_FACE_PANNING:
+                    # Panning mode - x_pos is already the crop position
+                    crop_x = int(x_pos)
+                else:
+                    # Face tracking mode - x_pos is face center, need to center crop on it
+                    crop_x = int(x_pos - crop_width // 2)
+
                 # Clamp to video bounds
                 crop_x = max(0, min(crop_x, width - crop_width))
                 crop_x_values.append(crop_x)
@@ -1220,10 +1304,65 @@ class ReelsProcessor:
                                 crop_filter = f"crop={crop_width}:{crop_height}:{crop_x}:0"
                                 vf_filter = f"{crop_filter},scale=1080:1920"
                         else:
-                            # No face or smooth interpolation disabled - use default center crop
-                            crop_params = self._get_default_crop_position(width, height, "center")
-                            crop_filter = f"crop={crop_params['width']}:{crop_params['height']}:{crop_params['x']}:{crop_params['y']}"
-                            vf_filter = f"{crop_filter},scale=1080:1920"
+                            # Zero-face segment or smooth interpolation disabled
+                            # Check if this is actually a zero-face segment
+                            if seg['face_count'] == 0 and ENABLE_ZERO_FACE_PANNING and USE_SMOOTH_INTERPOLATION:
+                                # Apply smooth panning for zero-face segments
+                                print(f"[DEBUG]   Applying smooth panning to zero-face segment...")
+
+                                segment_duration = seg['end_time'] - seg['start_time']
+                                segment_frame_count = int(segment_duration * fps)
+
+                                # Calculate crop dimensions
+                                target_aspect = 9 / 16
+                                crop_height = height
+                                crop_width = int(crop_height * target_aspect)
+
+                                # Generate panning positions
+                                panning_positions = self._generate_panning_positions(
+                                    segment_duration, fps, width, crop_width
+                                )
+
+                                # Use similar expression generation as smooth interpolation
+                                max_keyframes = 30
+                                sample_interval = max(1, len(panning_positions) // max_keyframes)
+                                sampled_positions = panning_positions[::sample_interval]
+                                if len(sampled_positions) > max_keyframes:
+                                    sampled_positions = sampled_positions[:max_keyframes]
+
+                                # Build FFmpeg expression with linear interpolation
+                                expr_parts = []
+                                for i in range(len(sampled_positions)):
+                                    time, pan_x = sampled_positions[i]
+                                    frame_num = int((i / len(sampled_positions)) * segment_frame_count)
+                                    crop_x = int(pan_x)
+                                    crop_x = max(0, min(crop_x, width - crop_width))
+
+                                    if i == 0:
+                                        expr_parts.append(f"if(lt(n,{frame_num}),{crop_x}")
+                                    elif i < len(sampled_positions) - 1:
+                                        next_time, next_pan_x = sampled_positions[i + 1]
+                                        next_frame = int(((i + 1) / len(sampled_positions)) * segment_frame_count)
+                                        next_crop_x = int(next_pan_x)
+                                        next_crop_x = max(0, min(next_crop_x, width - crop_width))
+
+                                        if next_frame > frame_num:
+                                            expr_parts.append(f",if(lt(n,{next_frame}),{crop_x}+(n-{frame_num})*({next_crop_x}-{crop_x})/{next_frame-frame_num}")
+                                        else:
+                                            expr_parts.append(f",{crop_x}")
+                                    else:
+                                        expr_parts.append(f",{crop_x}")
+
+                                expr_parts.append(")" * (len(sampled_positions) - 1))
+                                crop_x_expr = "".join(expr_parts)
+
+                                print(f"[DEBUG]   Generated panning expression with {len(sampled_positions)} keyframes")
+                                vf_filter = f"crop=w={crop_width}:h={crop_height}:x='{crop_x_expr}':y=0,scale=1080:1920"
+                            else:
+                                # Smooth interpolation disabled or other case - use default center crop
+                                crop_params = self._get_default_crop_position(width, height, "center")
+                                crop_filter = f"crop={crop_params['width']}:{crop_params['height']}:{crop_params['x']}:{crop_params['y']}"
+                                vf_filter = f"{crop_filter},scale=1080:1920"
 
                         process_cmd = [
                             'ffmpeg',
