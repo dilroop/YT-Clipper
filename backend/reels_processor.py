@@ -1,21 +1,202 @@
 """
 Reels Processor Module
 Converts videos to reels format (9:16) with speaker auto-focus
-Uses face detection for intelligent cropping
+Uses MediaPipe FaceDetector for intelligent cropping (faster, more accurate than Haar Cascade)
 """
 
 import cv2
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Tuple
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+import numpy as np
+
+
+# ==================== FACE TRACKING SETTINGS ====================
+# These control how frequently the face position is checked and crop is updated
+
+# How often to check for faces (in frames)
+# Lower values = more accurate tracking but slower preprocessing
+# 4 frames @ 30fps = ~0.13s between checks
+# Try: 4 (0.13s), 8 (0.27s), 15 (0.5s)
+FACE_CHECK_INTERVAL_FRAMES = 4
+
+# Smooth motion interpolation (uses Bezier curves)
+# When enabled, creates smooth crop motion between detected positions
+# No segments = no audio clicks, smooth camera movement
+USE_SMOOTH_INTERPOLATION = True
+
+# Smoothing strength for Bezier curves (0.0-1.0)
+# Lower = follows face closely, Higher = smoother but slower response
+# 0.3 = responsive, 0.5 = balanced, 0.7 = very smooth
+SMOOTHING_STRENGTH = 0.5
+
+# ================================================================
 
 
 class ReelsProcessor:
     def __init__(self):
-        """Initialize reels processor with face detection"""
-        # Load OpenCV's pre-trained face detector
-        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        self.face_cascade = cv2.CascadeClassifier(cascade_path)
+        """Initialize reels processor with MediaPipe face detection"""
+        # MediaPipe detectors are created on-demand in each method
+        # to avoid timestamp conflicts between sequential and non-sequential processing
+        pass
+
+    def _get_face_detection_model(self):
+        """Download and cache MediaPipe face detection model"""
+        import urllib.request
+        import os
+
+        model_path = Path.home() / '.cache' / 'mediapipe' / 'blaze_face_short_range.tflite'
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if not model_path.exists():
+            print("[INFO] Downloading MediaPipe face detection model...")
+            url = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite"
+            urllib.request.urlretrieve(url, model_path)
+            print("[INFO] Model downloaded successfully")
+
+        with open(model_path, 'rb') as f:
+            return f.read()
+
+    def _bezier_interpolate(self, points: List[Tuple[float, float]], num_samples: int, smoothness: float = 0.5) -> List[Tuple[float, float]]:
+        """
+        Interpolate between points using Catmull-Rom to Bezier conversion for smooth curves
+
+        Args:
+            points: List of (time, value) tuples
+            num_samples: Number of interpolated points to generate
+            smoothness: 0.0-1.0, controls curve smoothness
+
+        Returns:
+            List of interpolated (time, value) tuples
+        """
+        if len(points) < 2:
+            return points
+
+        # Extract times and values
+        times = np.array([p[0] for p in points])
+        values = np.array([p[1] for p in points])
+
+        # Create interpolation times
+        t_min, t_max = times[0], times[-1]
+        interp_times = np.linspace(t_min, t_max, num_samples)
+
+        # Use cubic interpolation with smoothing
+        from scipy import interpolate
+
+        # Catmull-Rom spline (smooth curve through points)
+        # Adjust tension based on smoothness (0 = tight, 1 = loose)
+        tension = smoothness
+
+        # Create cubic spline
+        cs = interpolate.CubicSpline(times, values, bc_type='natural')
+        interp_values = cs(interp_times)
+
+        # Apply smoothing filter for extra smoothness
+        if smoothness > 0.3:
+            from scipy.ndimage import gaussian_filter1d
+            sigma = smoothness * 2
+            interp_values = gaussian_filter1d(interp_values, sigma=sigma)
+
+        return list(zip(interp_times, interp_values))
+
+    def _get_face_positions_timeline(self, video_path: str, check_every_n_frames: int = 8) -> Dict:
+        """
+        Get face positions throughout video as a timeline (for smooth interpolation)
+
+        Args:
+            video_path: Path to video
+            check_every_n_frames: Check faces every N frames
+
+        Returns:
+            Dict with timeline data: {
+                'positions': [(time, x_center), ...],
+                'fps': float,
+                'width': int,
+                'height': int
+            }
+        """
+        # Create fresh VIDEO-mode detector
+        base_options = python.BaseOptions(model_asset_buffer=self._get_face_detection_model())
+        video_options = vision.FaceDetectorOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.VIDEO,
+            min_detection_confidence=0.5,
+            min_suppression_threshold=0.3
+        )
+        video_detector = vision.FaceDetector.create_from_options(video_options)
+
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            raise Exception(f"Cannot open video: {video_path}")
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        positions = []
+        min_face_size = int(height * 0.08)
+        edge_margin = int(width * 0.05)
+
+        frame_idx = 0
+        print(f"[DEBUG] Detecting face positions every {check_every_n_frames} frames...")
+
+        while frame_idx < total_frames:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+            timestamp_ms = int((frame_idx / fps) * 1000)
+            detection_result = video_detector.detect_for_video(mp_image, timestamp_ms)
+
+            timestamp = frame_idx / fps
+
+            # Get single best face position
+            best_face_x = None
+            if detection_result.detections:
+                for detection in detection_result.detections:
+                    bbox = detection.bounding_box
+                    x_min = int(bbox.origin_x)
+                    w = int(bbox.width)
+                    h = int(bbox.height)
+
+                    # Apply filters
+                    if w < min_face_size or h < min_face_size:
+                        continue
+                    face_center_x = x_min + w // 2
+                    if face_center_x < edge_margin or face_center_x > width - edge_margin:
+                        continue
+
+                    # Take first valid face
+                    best_face_x = face_center_x
+                    break
+
+            if best_face_x is not None:
+                positions.append((timestamp, best_face_x))
+
+            frame_idx += check_every_n_frames
+
+        cap.release()
+
+        print(f"[DEBUG] Detected {len(positions)} face positions")
+
+        # If no faces detected, use center
+        if not positions:
+            positions = [(0.0, width // 2), (total_frames / fps, width // 2)]
+
+        return {
+            'positions': positions,
+            'fps': fps,
+            'width': width,
+            'height': height,
+            'total_frames': total_frames
+        }
 
     def detect_face_segments(self, video_path: str, check_every_n_frames: int = 8) -> List[Dict]:
         """
@@ -28,6 +209,16 @@ class ReelsProcessor:
         Returns:
             List of segments with face count and timestamps
         """
+        # Create fresh VIDEO-mode detector for sequential frame processing
+        base_options = python.BaseOptions(model_asset_buffer=self._get_face_detection_model())
+        video_options = vision.FaceDetectorOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.VIDEO,
+            min_detection_confidence=0.5,
+            min_suppression_threshold=0.3
+        )
+        video_detector = vision.FaceDetector.create_from_options(video_options)
+
         cap = cv2.VideoCapture(str(video_path))
 
         if not cap.isOpened():
@@ -50,28 +241,53 @@ class ReelsProcessor:
             if not ret:
                 break
 
-            # Convert to grayscale for face detection
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # Convert BGR to RGB for MediaPipe
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Detect faces
-            faces = self.face_cascade.detectMultiScale(
-                gray,
-                scaleFactor=1.1,
-                minNeighbors=5,
-                minSize=(30, 30)
-            )
+            # Create MediaPipe Image
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+
+            # Detect faces with MediaPipe FaceDetector
+            timestamp_ms = int((frame_idx / fps) * 1000)  # Convert to milliseconds
+            detection_result = video_detector.detect_for_video(mp_image, timestamp_ms)
 
             timestamp = frame_idx / fps
 
-            # Store face positions using corner points
+            # Extract face positions from detections
             face_positions = []
-            for (x, y, w, h) in faces:
-                face_positions.append({
-                    'topLeft': {'x': x, 'y': y},
-                    'rightBottom': {'x': x + w, 'y': y + h},
-                    'width': w,
-                    'height': h
-                })
+            min_face_size = int(height * 0.08)  # Face must be at least 8% of frame height
+            edge_margin = int(width * 0.05)  # 5% margin from edges
+
+            if detection_result.detections:
+                for detection in detection_result.detections:
+                    # Get bounding box
+                    bbox = detection.bounding_box
+                    x_min = int(bbox.origin_x)
+                    y_min = int(bbox.origin_y)
+                    w = int(bbox.width)
+                    h = int(bbox.height)
+                    x_max = x_min + w
+                    y_max = y_min + h
+
+                    # Filter out very small detections (likely logos, text, or noise)
+                    if w < min_face_size or h < min_face_size:
+                        continue
+
+                    # Filter out detections too close to edges (likely background objects)
+                    face_center_x = x_min + w // 2
+                    if face_center_x < edge_margin or face_center_x > width - edge_margin:
+                        continue
+
+                    # MediaPipe FaceDetector automatically filters non-faces
+                    # Much more accurate than Haar Cascade
+
+                    face_positions.append({
+                        'topLeft': {'x': x_min, 'y': y_min},
+                        'rightBottom': {'x': x_max, 'y': y_max},
+                        'width': w,
+                        'height': h,
+                        'confidence': detection.categories[0].score if detection.categories else 0.0
+                    })
 
             # Validate face count - if 2 faces, check if sizes are similar
             # This filters out false detections (microphone, hands, etc.)
@@ -134,6 +350,16 @@ class ReelsProcessor:
         Returns:
             dict with crop parameters (x, y, width, height) or dual_faces list
         """
+        # Create IMAGE-mode detector for non-sequential frame sampling
+        base_options = python.BaseOptions(model_asset_buffer=self._get_face_detection_model())
+        image_options = vision.FaceDetectorOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.IMAGE,  # Use IMAGE mode for sampling
+            min_detection_confidence=0.5,
+            min_suppression_threshold=0.3
+        )
+        image_detector = vision.FaceDetector.create_from_options(image_options)
+
         cap = cv2.VideoCapture(str(video_path))
 
         if not cap.isOpened():
@@ -157,26 +383,33 @@ class ReelsProcessor:
             if not ret:
                 continue
 
-            # Convert to grayscale for face detection
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # Convert BGR to RGB for MediaPipe
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Detect faces
-            faces = self.face_cascade.detectMultiScale(
-                gray,
-                scaleFactor=1.1,
-                minNeighbors=5,
-                minSize=(30, 30)
-            )
+            # Create MediaPipe Image
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+
+            # Detect faces with MediaPipe FaceDetector (IMAGE mode)
+            detection_result = image_detector.detect(mp_image)
 
             # Store face positions using corner points
             frame_faces = []
-            for (x, y, w, h) in faces:
-                frame_faces.append({
-                    'topLeft': {'x': x, 'y': y},
-                    'rightBottom': {'x': x + w, 'y': y + h},
-                    'width': w,
-                    'height': h
-                })
+            if detection_result.detections:
+                for detection in detection_result.detections:
+                    bbox = detection.bounding_box
+                    x_min = int(bbox.origin_x)
+                    y_min = int(bbox.origin_y)
+                    w = int(bbox.width)
+                    h = int(bbox.height)
+                    x_max = x_min + w
+                    y_max = y_min + h
+
+                    frame_faces.append({
+                        'topLeft': {'x': x_min, 'y': y_min},
+                        'rightBottom': {'x': x_max, 'y': y_max},
+                        'width': w,
+                        'height': h
+                    })
 
             # Track when we detect exactly 2 valid faces (similar sizes)
             if len(frame_faces) == 2:
@@ -205,12 +438,18 @@ class ReelsProcessor:
             print(f"[DEBUG] Single-face mode: Only {frames_with_two_faces}/{sample_frames} frames have 2 faces (need {int(dual_face_threshold)}+ for dual mode)")
 
         # Single face or no consistent dual-face detection
-        # Calculate average face position from all detected faces
+        # Use median face position for better centering (more robust than average)
         all_faces = [face for frame_faces in face_positions for face in frame_faces]
 
         if all_faces:
-            # Calculate average face center for horizontal positioning
-            avg_center_x = sum((f['topLeft']['x'] + f['rightBottom']['x']) / 2 for f in all_faces) / len(all_faces)
+            # Calculate median face center for horizontal positioning
+            face_centers = sorted([(f['topLeft']['x'] + f['rightBottom']['x']) / 2 for f in all_faces])
+
+            # Use median center position
+            if len(face_centers) % 2 == 0:
+                median_center_x = (face_centers[len(face_centers)//2 - 1] + face_centers[len(face_centers)//2]) / 2
+            else:
+                median_center_x = face_centers[len(face_centers)//2]
 
             # Calculate crop parameters for 9:16 aspect ratio
             target_aspect = 9 / 16  # width / height for reels
@@ -218,7 +457,7 @@ class ReelsProcessor:
             crop_width = int(crop_height * target_aspect)
 
             # Center crop horizontally around detected face
-            crop_x = int(avg_center_x - crop_width // 2)
+            crop_x = int(median_center_x - crop_width // 2)
 
             # Ensure crop stays within video bounds
             crop_x = max(0, min(crop_x, width - crop_width))
@@ -443,9 +682,29 @@ class ReelsProcessor:
         else:
             output_path = Path(output_path)
 
-        # If dynamic mode is enabled, use segment-based conversion
+        # If dynamic mode is enabled, check for dual-face segments
         if dynamic_mode and auto_detect:
-            return self._convert_to_reels_dynamic(video_path, output_path)
+            # Quick check: detect segments to see if we have dual-face segments
+            import cv2
+            cap = cv2.VideoCapture(str(video_path))
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap.release()
+
+            segments = self.detect_face_segments(str(video_path), check_every_n_frames=FACE_CHECK_INTERVAL_FRAMES)
+            has_dual_face_segments = any(seg['face_count'] == 2 for seg in segments)
+
+            if has_dual_face_segments:
+                # Hybrid mode: Use dynamic conversion with smooth interpolation for single-face segments
+                print("[DEBUG] Detected dual-face segments - using hybrid mode (dual-face static + single-face smooth)")
+                return self._convert_to_reels_dynamic(video_path, output_path)
+            elif USE_SMOOTH_INTERPOLATION:
+                # Pure smooth mode: No dual-face segments, use full smooth interpolation
+                print("[DEBUG] No dual-face segments - using pure smooth interpolation mode")
+                return self._convert_to_reels_smooth(video_path, output_path)
+            else:
+                # Legacy segment-based without smooth interpolation
+                return self._convert_to_reels_dynamic(video_path, output_path)
 
         # Otherwise use the original static mode detection
         # Detect speaker position(s)
@@ -570,6 +829,168 @@ class ReelsProcessor:
                 'error': f"Error converting to dual-face reels: {e.stderr.decode()}"
             }
 
+    def _convert_to_reels_smooth(self, video_path: Path, output_path: Path) -> Dict:
+        """
+        Convert to reels with smooth Bezier curve-based face tracking
+        No segments = no audio clicks, smooth camera movement
+
+        Args:
+            video_path: Path to input video
+            output_path: Path for output
+
+        Returns:
+            dict with result
+        """
+        try:
+            print(f"[DEBUG] Using smooth interpolation mode (Bezier curves)")
+
+            # Get face position timeline
+            timeline = self._get_face_positions_timeline(str(video_path), FACE_CHECK_INTERVAL_FRAMES)
+            positions = timeline['positions']
+            fps = timeline['fps']
+            width = timeline['width']
+            height = timeline['height']
+            total_frames = timeline['total_frames']
+
+            # Calculate crop dimensions (9:16 aspect ratio)
+            crop_height = height
+            crop_width = int(crop_height * 9 / 16)
+
+            # Interpolate face positions using Bezier curves
+            num_samples = total_frames  # One position per frame for ultra-smooth motion
+            print(f"[DEBUG] Interpolating {len(positions)} keyframes to {num_samples} frames using Bezier curves")
+
+            smooth_positions = self._bezier_interpolate(positions, num_samples, SMOOTHING_STRENGTH)
+
+            # Generate crop positions for each frame
+            crop_x_values = []
+            for _, face_x in smooth_positions:
+                # Center crop on face
+                crop_x = int(face_x - crop_width // 2)
+                # Clamp to video bounds
+                crop_x = max(0, min(crop_x, width - crop_width))
+                crop_x_values.append(crop_x)
+
+            # Use zoompan filter for smooth motion
+            # Create expression that interpolates between positions
+            print(f"[DEBUG] Generating smooth crop filter...")
+
+            # For smooth motion, we'll use crop with a custom expression
+            # Generate a file with crop coordinates per frame
+            import tempfile
+            temp_dir = Path(tempfile.mkdtemp())
+
+            # Create a simple approach: generate segments with linear interpolation
+            # FFmpeg zoompan doesn't support per-frame coordinates easily
+            # So we'll use crop with expressions based on frame number
+
+            # Alternative: Use crop with setpts and expressions
+            # Build expression from interpolated data
+
+            # Simplest approach: Use overlay with moving crop
+            # But for now, let's use crop with frame-based expression
+
+            # Generate crop command with smooth transitions
+            # We'll create a zoompan-like effect using crop + scale
+
+            # Actually, let's write a file with timestamps and use sendcmd
+            cmd_file = temp_dir / "crop_commands.txt"
+            with open(cmd_file, 'w') as f:
+                # Generate commands for key positions only (not all frames)
+                step = max(1, len(smooth_positions) // 100)  # Max 100 commands
+                for i in range(0, len(smooth_positions), step):
+                    time, face_x = smooth_positions[i]
+                    crop_x = int(face_x - crop_width // 2)
+                    crop_x = max(0, min(crop_x, width - crop_width))
+                    # sendcmd format: time filter command
+                    f.write(f"{time} crop x {crop_x}\n")
+
+            # Actually, sendcmd is complex. Let's use a simpler approach:
+            # Pre-crop with padding, then use zoompan to follow interpolated positions
+
+            # Simplest working solution: Use crop with changing x based on frame number
+            # We'll create a piecewise linear expression
+
+            # Generate FFmpeg expression for crop x-coordinate
+            # Format: if(gte(n,frame1),x1,if(gte(n,frame2),x2,...))
+
+            # For simplicity, let's sample positions and create smooth transitions
+            sample_interval = fps  # One sample per second
+            sampled_indices = range(0, len(smooth_positions), int(sample_interval))
+
+            # Build expression for smooth crop x position
+            expr_parts = []
+            for i, idx in enumerate(sampled_indices):
+                if idx >= len(smooth_positions):
+                    break
+                time, face_x = smooth_positions[idx]
+                frame_num = int(time * fps)
+                crop_x = int(face_x - crop_width // 2)
+                crop_x = max(0, min(crop_x, width - crop_width))
+
+                if i == 0:
+                    expr_parts.append(f"if(lt(n,{frame_num}),{crop_x}")
+                else:
+                    # Linear interpolation between current and next
+                    if i < len(list(sampled_indices)) - 1:
+                        next_idx = list(sampled_indices)[i + 1]
+                        if next_idx < len(smooth_positions):
+                            next_time, next_face_x = smooth_positions[min(next_idx, len(smooth_positions)-1)]
+                            next_frame = int(next_time * fps)
+                            next_crop_x = int(next_face_x - crop_width // 2)
+                            next_crop_x = max(0, min(next_crop_x, width - crop_width))
+
+                            # Linear interpolation formula
+                            expr_parts.append(f",if(lt(n,{next_frame}),{crop_x}+(n-{frame_num})*({next_crop_x}-{crop_x})/{next_frame-frame_num}")
+                    else:
+                        expr_parts.append(f",{crop_x}")
+
+            # Close all if statements
+            expr_parts.append(")" * (len(expr_parts) - 1))
+            crop_x_expr = "".join(expr_parts)
+
+            # Build ffmpeg command with smooth crop
+            vf_filter = f"crop=w={crop_width}:h={crop_height}:x='{crop_x_expr}':y=0,scale=1080:1920"
+
+            cmd = [
+                'ffmpeg',
+                '-i', str(video_path),
+                '-vf', vf_filter,
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-y',
+                str(output_path)
+            ]
+
+            print(f"[DEBUG] Running single-pass conversion with smooth motion...")
+            subprocess.run(cmd, check=True, capture_output=True)
+
+            # Cleanup
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+            print(f"[DEBUG] Smooth conversion complete: {output_path}")
+
+            return {
+                'success': True,
+                'output_path': str(output_path),
+                'mode': 'smooth',
+                'keyframes': len(positions)
+            }
+
+        except subprocess.CalledProcessError as e:
+            return {
+                'success': False,
+                'error': f"Error in smooth conversion: {e.stderr.decode()}"
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Error in smooth conversion: {str(e)}"
+            }
+
     def _convert_to_reels_dynamic(self, video_path: Path, output_path: Path) -> Dict:
         """
         Convert to reels with dynamic mode switching based on face detection
@@ -586,15 +1007,16 @@ class ReelsProcessor:
             import tempfile
             import shutil
 
-            # Get video dimensions
+            # Get video dimensions and fps
             cap = cv2.VideoCapture(str(video_path))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
             cap.release()
 
-            # Detect face segments (check every 8 frames)
-            print("[DEBUG] Detecting face segments for dynamic conversion...")
-            segments = self.detect_face_segments(str(video_path), check_every_n_frames=8)
+            # Detect face segments using configured interval
+            print(f"[DEBUG] Detecting face segments (checking every {FACE_CHECK_INTERVAL_FRAMES} frames)...")
+            segments = self.detect_face_segments(str(video_path), check_every_n_frames=FACE_CHECK_INTERVAL_FRAMES)
 
             if not segments:
                 # No segments detected, fall back to simple single mode
@@ -605,6 +1027,14 @@ class ReelsProcessor:
             # Merge consecutive segments with same face count to reduce jitter
             merged_segments = self._merge_segments(segments)
             print(f"[DEBUG] Merged into {len(merged_segments)} segments")
+
+            # Skip segment splitting when smooth interpolation is enabled
+            # Smooth interpolation handles motion within segments, so no need to split
+            if not USE_SMOOTH_INTERPOLATION:
+                # Split long single-face segments for better face tracking (legacy mode)
+                max_duration = 2.0  # 2 seconds per segment
+                merged_segments = self._split_long_single_face_segments(merged_segments, max_duration=max_duration)
+                print(f"[DEBUG] After splitting: {len(merged_segments)} segments")
 
             # If only one segment, use simple conversion
             if len(merged_segments) == 1:
@@ -624,13 +1054,25 @@ class ReelsProcessor:
             segment_files = []
 
             try:
-                # Process each segment
+                # Extract original audio ONCE (keep it untouched to avoid clicks)
+                print(f"[DEBUG] Extracting original audio...")
+                audio_path = temp_dir / "original_audio.aac"
+                audio_cmd = [
+                    'ffmpeg',
+                    '-i', str(video_path),
+                    '-vn',  # No video
+                    '-acodec', 'copy',  # Copy audio without re-encoding
+                    '-y',
+                    str(audio_path)
+                ]
+                subprocess.run(audio_cmd, check=True, capture_output=True)
+
+                # Process each segment (VIDEO ONLY, no audio)
                 for i, seg in enumerate(merged_segments):
                     print(f"[DEBUG] Processing segment {i+1}/{len(merged_segments)}: "
                           f"{seg['face_count']} faces, {seg['start_time']:.1f}s-{seg['end_time']:.1f}s")
 
-                    # Extract segment from original video
-                    # Use re-encoding instead of copy to handle short segments properly
+                    # Extract segment from original video (VIDEO ONLY)
                     segment_path = temp_dir / f"segment_{i:03d}_raw.mp4"
                     extract_cmd = [
                         'ffmpeg',
@@ -638,8 +1080,8 @@ class ReelsProcessor:
                         '-ss', str(seg['start_time']),
                         '-to', str(seg['end_time']),
                         '-c:v', 'libx264',
-                        '-c:a', 'aac',
-                        '-preset', 'ultrafast',  # Fast encoding for temp segments
+                        '-an',  # No audio
+                        '-preset', 'ultrafast',
                         '-y',
                         str(segment_path)
                     ]
@@ -682,47 +1124,113 @@ class ReelsProcessor:
                             '-i', str(segment_path),
                             '-filter_complex', vf_filter,
                             '-c:v', 'libx264',
-                            '-c:a', 'aac',
+                            '-an',  # No audio (will add back later)
                             '-preset', 'medium',
                             '-crf', '23',
                             '-y',
                             str(processed_path)
                         ]
                     else:
-                        # Single-face or no-face mode
-                        # Get crop params for single face (or default if no faces)
-                        if seg['face_count'] == 1 and len(seg['faces']) > 0:
-                            # Calculate average face center for single face
-                            all_faces = [face for frame_faces in seg['faces'] for face in frame_faces]
-                            avg_center_x = sum((f['topLeft']['x'] + f['rightBottom']['x']) / 2 for f in all_faces) / len(all_faces)
-
-                            target_aspect = 9 / 16
-                            crop_height = height
-                            crop_width = int(crop_height * target_aspect)
-                            crop_x = int(avg_center_x - crop_width // 2)
-                            crop_x = max(0, min(crop_x, width - crop_width))
-
-                            crop_params = {
-                                'x': crop_x,
-                                'y': 0,
-                                'width': crop_width,
-                                'height': crop_height
-                            }
-                        else:
-                            # No face or multiple faces - use default center crop
-                            crop_params = self._get_default_crop_position(width, height, "center")
-
+                        # Single-face or no-face mode - use SMOOTH INTERPOLATION
                         processed_path = temp_dir / f"segment_{i:03d}_processed.mp4"
 
-                        crop_filter = f"crop={crop_params['width']}:{crop_params['height']}:{crop_params['x']}:{crop_params['y']}"
-                        vf_filter = f"{crop_filter},scale=1080:1920"
+                        if seg['face_count'] == 1 and len(seg['faces']) > 0 and USE_SMOOTH_INTERPOLATION:
+                            # Apply smooth Bezier interpolation within this segment
+                            print(f"[DEBUG]   Applying smooth interpolation to single-face segment...")
+
+                            # Extract face positions with timestamps (relative to segment start)
+                            positions = []
+                            frames_in_segment = len(seg['faces'])
+                            segment_duration = seg['end_time'] - seg['start_time']
+
+                            for frame_idx, frame_faces in enumerate(seg['faces']):
+                                if frame_faces:
+                                    # Get first face center
+                                    face = frame_faces[0]
+                                    face_center_x = (face['topLeft']['x'] + face['rightBottom']['x']) / 2
+                                    timestamp = (frame_idx / frames_in_segment) * segment_duration
+                                    positions.append((timestamp, face_center_x))
+
+                            if len(positions) >= 2:
+                                # Get segment frame count
+                                segment_frame_count = int((seg['end_time'] - seg['start_time']) * fps)
+
+                                # Interpolate using Bezier curves
+                                smooth_positions = self._bezier_interpolate(positions, segment_frame_count, SMOOTHING_STRENGTH)
+
+                                # Calculate crop dimensions
+                                target_aspect = 9 / 16
+                                crop_height = height
+                                crop_width = int(crop_height * target_aspect)
+
+                                # Generate FFmpeg expression for smooth crop
+                                # Limit to max 30 keyframes to avoid overly complex expressions
+                                max_keyframes = 30
+                                sample_interval = max(1, len(smooth_positions) // max_keyframes)
+
+                                sampled_positions = smooth_positions[::sample_interval]
+                                if len(sampled_positions) > max_keyframes:
+                                    sampled_positions = sampled_positions[:max_keyframes]
+
+                                # Build simpler expression with linear interpolation
+                                # Format: lerp(a, b, (n-start)/(end-start))
+                                expr_parts = []
+                                for i in range(len(sampled_positions)):
+                                    time, face_x = sampled_positions[i]
+                                    # Frame number relative to segment (starts at 0)
+                                    frame_num = int((i / len(sampled_positions)) * segment_frame_count)
+                                    crop_x = int(face_x - crop_width // 2)
+                                    crop_x = max(0, min(crop_x, width - crop_width))
+
+                                    if i == 0:
+                                        expr_parts.append(f"if(lt(n,{frame_num}),{crop_x}")
+                                    elif i < len(sampled_positions) - 1:
+                                        next_time, next_face_x = sampled_positions[i + 1]
+                                        next_frame = int(((i + 1) / len(sampled_positions)) * segment_frame_count)
+                                        next_crop_x = int(next_face_x - crop_width // 2)
+                                        next_crop_x = max(0, min(next_crop_x, width - crop_width))
+
+                                        # Linear interpolation: a + (n-start)*(b-a)/(end-start)
+                                        if next_frame > frame_num:
+                                            expr_parts.append(f",if(lt(n,{next_frame}),{crop_x}+(n-{frame_num})*({next_crop_x}-{crop_x})/{next_frame-frame_num}")
+                                        else:
+                                            expr_parts.append(f",{crop_x}")
+                                    else:
+                                        # Last frame
+                                        expr_parts.append(f",{crop_x}")
+
+                                # Close all if statements (one less than parts count)
+                                expr_parts.append(")" * (len(sampled_positions) - 1))
+                                crop_x_expr = "".join(expr_parts)
+
+                                print(f"[DEBUG]   Generated expression with {len(sampled_positions)} keyframes")
+                                vf_filter = f"crop=w={crop_width}:h={crop_height}:x='{crop_x_expr}':y=0,scale=1080:1920"
+                            else:
+                                # Not enough positions, fall back to static crop
+                                all_faces = [face for frame_faces in seg['faces'] for face in frame_faces]
+                                face_centers = sorted([(f['topLeft']['x'] + f['rightBottom']['x']) / 2 for f in all_faces])
+                                median_center_x = face_centers[len(face_centers)//2] if face_centers else width // 2
+
+                                target_aspect = 9 / 16
+                                crop_height = height
+                                crop_width = int(crop_height * target_aspect)
+                                crop_x = int(median_center_x - crop_width // 2)
+                                crop_x = max(0, min(crop_x, width - crop_width))
+
+                                crop_filter = f"crop={crop_width}:{crop_height}:{crop_x}:0"
+                                vf_filter = f"{crop_filter},scale=1080:1920"
+                        else:
+                            # No face or smooth interpolation disabled - use default center crop
+                            crop_params = self._get_default_crop_position(width, height, "center")
+                            crop_filter = f"crop={crop_params['width']}:{crop_params['height']}:{crop_params['x']}:{crop_params['y']}"
+                            vf_filter = f"{crop_filter},scale=1080:1920"
 
                         process_cmd = [
                             'ffmpeg',
                             '-i', str(segment_path),
                             '-vf', vf_filter,
                             '-c:v', 'libx264',
-                            '-c:a', 'aac',
+                            '-an',  # No audio (will add back later)
                             '-preset', 'medium',
                             '-crf', '23',
                             '-y',
@@ -732,13 +1240,14 @@ class ReelsProcessor:
                     subprocess.run(process_cmd, check=True, capture_output=True)
                     segment_files.append(processed_path)
 
-                # Concatenate all segments
-                print(f"[DEBUG] Concatenating {len(segment_files)} processed segments")
+                # Concatenate all video segments (no audio)
+                print(f"[DEBUG] Concatenating {len(segment_files)} processed video segments")
                 concat_list_path = temp_dir / "concat_list.txt"
                 with open(concat_list_path, 'w') as f:
                     for seg_file in segment_files:
                         f.write(f"file '{seg_file}'\n")
 
+                video_only_path = temp_dir / "video_only.mp4"
                 concat_cmd = [
                     'ffmpeg',
                     '-f', 'concat',
@@ -746,9 +1255,23 @@ class ReelsProcessor:
                     '-i', str(concat_list_path),
                     '-c', 'copy',
                     '-y',
-                    str(output_path)
+                    str(video_only_path)
                 ]
                 subprocess.run(concat_cmd, check=True, capture_output=True)
+
+                # Add original audio back to concatenated video
+                print(f"[DEBUG] Adding original audio to final video")
+                merge_cmd = [
+                    'ffmpeg',
+                    '-i', str(video_only_path),
+                    '-i', str(audio_path),
+                    '-c:v', 'copy',  # Copy video (no re-encode)
+                    '-c:a', 'aac',   # Encode audio to aac
+                    '-shortest',     # Match shortest stream (video)
+                    '-y',
+                    str(output_path)
+                ]
+                subprocess.run(merge_cmd, check=True, capture_output=True)
 
                 print(f"[DEBUG] Dynamic conversion complete: {output_path}")
 
@@ -832,3 +1355,59 @@ class ReelsProcessor:
         merged.append(current)
 
         return merged
+
+    def _split_long_single_face_segments(self, segments: List[Dict], max_duration: float = 2.0) -> List[Dict]:
+        """
+        Split long single-face segments into smaller chunks for better face tracking.
+        Only splits single-face (count=1) segments that exceed max_duration.
+
+        Duration is controlled by CROP_UPDATE_INTERVAL_FRAMES setting.
+        Lower = smoother tracking but more segments (audio clicks)
+        Higher = fewer segments but less responsive tracking
+
+        Args:
+            segments: List of merged segments
+            max_duration: Maximum duration for single-face segments (seconds, default 2.0 = 60 frames at 30fps)
+
+        Returns:
+            List of segments with long single-face segments split
+        """
+        result = []
+
+        for seg in segments:
+            duration = seg['end_time'] - seg['start_time']
+
+            # Only split single-face segments that are too long
+            if seg['face_count'] == 1 and duration > max_duration and 'faces' in seg and len(seg['faces']) > 0:
+                # Calculate how many chunks we need
+                num_chunks = int(duration / max_duration) + 1
+                chunk_duration = duration / num_chunks
+
+                # Calculate faces per chunk
+                total_face_frames = len(seg['faces'])
+                faces_per_chunk = max(1, total_face_frames // num_chunks)
+
+                print(f"[DEBUG] Splitting long single-face segment ({duration:.1f}s) into {num_chunks} chunks of ~{chunk_duration:.1f}s")
+
+                # Create chunks
+                for i in range(num_chunks):
+                    chunk_start = seg['start_time'] + (i * chunk_duration)
+                    chunk_end = seg['start_time'] + ((i + 1) * chunk_duration) if i < num_chunks - 1 else seg['end_time']
+
+                    # Distribute faces to chunks
+                    face_start_idx = i * faces_per_chunk
+                    face_end_idx = (i + 1) * faces_per_chunk if i < num_chunks - 1 else total_face_frames
+                    chunk_faces = seg['faces'][face_start_idx:face_end_idx]
+
+                    chunk = {
+                        'start_time': chunk_start,
+                        'end_time': chunk_end,
+                        'face_count': seg['face_count'],
+                        'faces': chunk_faces
+                    }
+                    result.append(chunk)
+            else:
+                # Keep segment as-is (dual-face, short single-face, or no-face)
+                result.append(seg)
+
+        return result
