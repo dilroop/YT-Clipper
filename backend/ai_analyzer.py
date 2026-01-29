@@ -199,86 +199,112 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
             # Log what AI suggested before filtering
             print(f"\n🤖 AI Suggested {len(highlights)} clips before filtering:")
             for i, clip in enumerate(highlights, 1):
-                if isinstance(clip, dict) and 'start_time' in clip and 'end_time' in clip:
-                    start = self._parse_timestamp(clip['start_time'])
-                    end = self._parse_timestamp(clip['end_time'])
-                    duration = end - start
-                    print(f"   Clip {i}: {clip['start_time']} - {clip['end_time']} ({duration:.1f}s) | {clip.get('title', 'N/A')}")
+                if isinstance(clip, dict):
+                    if self._is_multipart_format(clip):
+                        # Multi-part clip - show all parts
+                        parts = clip.get('parts', [])
+                        print(f"   Clip {i}: Multi-part reel with {len(parts)} parts | {clip.get('title', 'N/A')}")
+                        for part_idx, part in enumerate(parts, 1):
+                            if 'start_time' in part and 'end_time' in part:
+                                start = self._parse_timestamp(part['start_time'])
+                                end = self._parse_timestamp(part['end_time'])
+                                duration = end - start
+                                print(f"      Part {part_idx}: {part['start_time']} - {part['end_time']} ({duration:.1f}s)")
+                    elif 'start_time' in clip and 'end_time' in clip:
+                        # Single-part clip (legacy)
+                        start = self._parse_timestamp(clip['start_time'])
+                        end = self._parse_timestamp(clip['end_time'])
+                        duration = end - start
+                        print(f"   Clip {i}: {clip['start_time']} - {clip['end_time']} ({duration:.1f}s) | {clip.get('title', 'N/A')}")
+                    else:
+                        print(f"   Clip {i}: Invalid format - missing required fields")
                 else:
-                    print(f"   Clip {i}: Invalid format")
+                    print(f"   Clip {i}: Invalid format - not a dict")
             print()
 
-            # Filter by duration
+            # Process and validate clips
             valid_clips = []
             for i, highlight in enumerate(highlights):
-                # Validate that each item is a dictionary with required fields
+                # Validate that each item is a dictionary
                 if not isinstance(highlight, dict):
                     print(f"\n⚠️  Skipping clip {i+1}: Expected dict but got {type(highlight)}")
                     print(f"   Value: {str(highlight)[:200]}")
                     continue
 
-                if 'start_time' not in highlight or 'end_time' not in highlight:
-                    print(f"\n⚠️  Skipping clip {i+1}: Missing start_time or end_time")
-                    print(f"   Keys: {list(highlight.keys())}")
-                    continue
-                start = self._parse_timestamp(highlight['start_time'])
-                end = self._parse_timestamp(highlight['end_time'])
-                duration = end - start
+                # Detect format and validate
+                is_multipart = self._is_multipart_format(highlight)
 
-                # Check duration requirements
-                if self.min_clip_duration <= duration <= self.max_clip_duration:
-                    # Find matching segments and words for this time range
-                    clip_segments = [
-                        seg for seg in segments
-                        if not (seg['end'] < start or seg['start'] > end)
-                    ]
+                if is_multipart:
+                    # Multi-part clip validation
+                    validation_error = self._validate_multipart_clip(highlight, i+1)
+                    if validation_error:
+                        print(f"\n⚠️  {validation_error}")
+                        continue
 
-                    # Collect all words in this time range
-                    all_words = []
-                    for seg in clip_segments:
-                        all_words.extend(seg.get('words', []))
+                    # Convert to normalized format
+                    try:
+                        normalized_clip = self._convert_multipart_to_normalized_format(highlight, segments)
+                        valid_clips.append(normalized_clip)
 
-                    # Filter words to only those within the clip timerange
-                    clip_words = [
-                        w for w in all_words
-                        if w['start'] >= start and w['end'] <= end
-                    ]
+                        # Log success
+                        parts_count = len(normalized_clip['parts'])
+                        total_duration = sum(part['duration'] for part in normalized_clip['parts'])
+                        print(f"\n✅ Clip {i+1}: Multi-part reel with {parts_count} parts (total: {total_duration:.1f}s)")
+                        print(f"   Title: {normalized_clip['title']}")
 
-                    # Combine text from all segments
-                    clip_text = ' '.join([seg['text'] for seg in clip_segments])
+                    except Exception as e:
+                        print(f"\n⚠️  Skipping clip {i+1}: Error converting multi-part clip: {e}")
+                        continue
 
-                    valid_clips.append({
-                        'start': start,
-                        'end': end,
-                        'text': clip_text,
-                        'words': clip_words,
-                        'score': 90,  # AI-selected clips get high score
-                        'title': highlight.get('title', 'Interesting Clip'),
-                        'reason': highlight.get('reason', ''),
-                        'keywords': highlight.get('keywords', []),
-                        'duration': duration
-                    })
-
-                    if len(valid_clips) >= num_clips:
-                        break
                 else:
-                    # Log duration violations
+                    # Single-part clip validation (backward compatibility)
+                    if 'start_time' not in highlight or 'end_time' not in highlight:
+                        print(f"\n⚠️  Skipping clip {i+1}: Missing start_time or end_time")
+                        print(f"   Keys: {list(highlight.keys())}")
+                        continue
+
+                    start = self._parse_timestamp(highlight['start_time'])
+                    end = self._parse_timestamp(highlight['end_time'])
+                    duration = end - start
+
+                    # Check duration requirements
                     if duration < self.min_clip_duration:
                         print(f"\n⚠️  Skipping clip {i+1}: Duration {duration:.1f}s is too short (minimum: {self.min_clip_duration}s)")
-                    else:
+                        print(f"   Title: {highlight.get('title', 'N/A')}")
+                        print(f"   Time: {highlight['start_time']} - {highlight['end_time']}")
+                        continue
+                    elif duration > self.max_clip_duration:
                         print(f"\n⚠️  Skipping clip {i+1}: Duration {duration:.1f}s is too long (maximum: {self.max_clip_duration}s)")
-                    print(f"   Title: {highlight.get('title', 'N/A')}")
-                    print(f"   Time: {highlight['start_time']} - {highlight['end_time']}")
+                        print(f"   Title: {highlight.get('title', 'N/A')}")
+                        print(f"   Time: {highlight['start_time']} - {highlight['end_time']}")
+                        continue
+
+                    # Convert to normalized format (1-part multi-part)
+                    try:
+                        normalized_clip = self._convert_singlepart_to_normalized_format(highlight, segments)
+                        valid_clips.append(normalized_clip)
+
+                        # Log success
+                        print(f"\n✅ Clip {i+1}: Single-part clip ({duration:.1f}s)")
+                        print(f"   Title: {normalized_clip['title']}")
+
+                    except Exception as e:
+                        print(f"\n⚠️  Skipping clip {i+1}: Error converting single-part clip: {e}")
+                        continue
+
+                # Stop if we have enough clips
+                if len(valid_clips) >= num_clips:
+                    break
 
             # Log filtering summary
             filtered_count = len(highlights) - len(valid_clips)
             if filtered_count > 0:
-                print(f"\n✅ Kept {len(valid_clips)} clips, filtered out {filtered_count} clips due to duration constraints")
+                print(f"\n✅ Kept {len(valid_clips)} clips, filtered out {filtered_count} clips")
             else:
                 print(f"\n✅ Kept all {len(valid_clips)} clips")
 
-            # Sort by timestamp
-            valid_clips.sort(key=lambda x: x['start'])
+            # Sort by timestamp of first part
+            valid_clips.sort(key=lambda x: x['parts'][0]['start'])
 
             # Assign clip numbers
             for i, clip in enumerate(valid_clips):
@@ -337,3 +363,190 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
             return hours * 3600 + minutes * 60 + seconds
         else:
             return 0.0
+
+    def _is_multipart_format(self, clip_data: Dict) -> bool:
+        """
+        Detect if clip data is in multi-part format
+        Multi-part format has a 'parts' array instead of direct start_time/end_time
+        """
+        return isinstance(clip_data, dict) and 'parts' in clip_data
+
+    def _validate_multipart_clip(self, clip_data: Dict, clip_index: int) -> Optional[str]:
+        """
+        Validate multi-part clip data structure and constraints
+        Returns error message if invalid, None if valid
+        """
+        # Check for required fields
+        if 'title' not in clip_data:
+            return f"Clip {clip_index}: Missing 'title' field"
+
+        if 'parts' not in clip_data:
+            return f"Clip {clip_index}: Missing 'parts' array"
+
+        parts = clip_data['parts']
+
+        # Validate parts array
+        if not isinstance(parts, list):
+            return f"Clip {clip_index}: 'parts' must be an array"
+
+        # Check part count (3-7 parts per reel)
+        if len(parts) < 1:
+            return f"Clip {clip_index}: Must have at least 1 part"
+
+        if len(parts) > 7:
+            return f"Clip {clip_index}: Too many parts ({len(parts)}). Maximum is 7 parts per reel"
+
+        # Validate each part and calculate total duration
+        prev_end = None
+        total_duration = 0.0
+
+        for part_idx, part in enumerate(parts):
+            if not isinstance(part, dict):
+                return f"Clip {clip_index}, Part {part_idx+1}: Part must be a dict"
+
+            if 'start_time' not in part or 'end_time' not in part:
+                return f"Clip {clip_index}, Part {part_idx+1}: Missing start_time or end_time"
+
+            start = self._parse_timestamp(part['start_time'])
+            end = self._parse_timestamp(part['end_time'])
+
+            # Check chronological order
+            if prev_end is not None and start < prev_end:
+                return f"Clip {clip_index}, Part {part_idx+1}: Parts must be in chronological order"
+
+            # Check minimum gap between parts (5 seconds)
+            if prev_end is not None and (start - prev_end) < 5.0:
+                return f"Clip {clip_index}, Part {part_idx+1}: Parts must be at least 5 seconds apart (gap: {start - prev_end:.1f}s)"
+
+            # Check individual part duration (allow short segments for multi-part)
+            duration = end - start
+            if duration < 2.0:  # Minimum 2s per part to avoid extremely short segments
+                return f"Clip {clip_index}, Part {part_idx+1}: Duration {duration:.1f}s is too short (minimum 2s per part)"
+
+            if duration > self.max_clip_duration:  # Still enforce max per part
+                return f"Clip {clip_index}, Part {part_idx+1}: Duration {duration:.1f}s exceeds maximum ({self.max_clip_duration}s per part)"
+
+            total_duration += duration
+            prev_end = end
+
+        # Validate total combined duration
+        if total_duration < self.min_clip_duration:
+            return f"Clip {clip_index}: Total duration {total_duration:.1f}s is too short (minimum: {self.min_clip_duration}s)"
+
+        if total_duration > self.max_clip_duration:
+            return f"Clip {clip_index}: Total duration {total_duration:.1f}s is too long (maximum: {self.max_clip_duration}s)"
+
+        return None  # Valid
+
+    def _convert_multipart_to_normalized_format(self, clip_data: Dict, segments: List[Dict]) -> Dict:
+        """
+        Convert multi-part clip data to normalized internal format
+
+        Multi-part format:
+        {
+            "title": "...",
+            "reason": "...",
+            "keywords": [...],
+            "parts": [
+                {"start_time": "00:01:00.000", "end_time": "00:01:15.000", ...},
+                {"start_time": "00:03:20.000", "end_time": "00:03:40.000", ...}
+            ]
+        }
+
+        Normalized format:
+        {
+            "title": "...",
+            "reason": "...",
+            "keywords": [...],
+            "parts": [
+                {"start": 60.0, "end": 75.0, "text": "...", "words": [...]},
+                {"start": 200.0, "end": 220.0, "text": "...", "words": [...]}
+            ]
+        }
+        """
+        parts = clip_data['parts']
+        normalized_parts = []
+
+        for part_data in parts:
+            start = self._parse_timestamp(part_data['start_time'])
+            end = self._parse_timestamp(part_data['end_time'])
+
+            # Find matching segments for this part
+            part_segments = [
+                seg for seg in segments
+                if not (seg['end'] < start or seg['start'] > end)
+            ]
+
+            # Collect words for this part
+            all_words = []
+            for seg in part_segments:
+                all_words.extend(seg.get('words', []))
+
+            # Filter words to only those within this part's timerange
+            part_words = [
+                w for w in all_words
+                if w['start'] >= start and w['end'] <= end
+            ]
+
+            # Combine text from all segments in this part
+            part_text = ' '.join([seg['text'] for seg in part_segments])
+
+            normalized_parts.append({
+                'start': start,
+                'end': end,
+                'text': part_text,
+                'words': part_words,
+                'duration': end - start
+            })
+
+        return {
+            'title': clip_data.get('title', 'Multi-Part Reel'),
+            'reason': clip_data.get('reason', ''),
+            'keywords': clip_data.get('keywords', []),
+            'parts': normalized_parts,
+            'score': 90,  # AI-selected clips get high score
+            'is_multipart': True
+        }
+
+    def _convert_singlepart_to_normalized_format(self, clip_data: Dict, segments: List[Dict]) -> Dict:
+        """
+        Convert single-part clip data to normalized format (backward compatibility)
+        Treats it as a multi-part clip with 1 part
+        """
+        start = self._parse_timestamp(clip_data['start_time'])
+        end = self._parse_timestamp(clip_data['end_time'])
+        duration = end - start
+
+        # Find matching segments
+        clip_segments = [
+            seg for seg in segments
+            if not (seg['end'] < start or seg['start'] > end)
+        ]
+
+        # Collect words
+        all_words = []
+        for seg in clip_segments:
+            all_words.extend(seg.get('words', []))
+
+        clip_words = [
+            w for w in all_words
+            if w['start'] >= start and w['end'] <= end
+        ]
+
+        # Combine text
+        clip_text = ' '.join([seg['text'] for seg in clip_segments])
+
+        return {
+            'title': clip_data.get('title', 'Interesting Clip'),
+            'reason': clip_data.get('reason', ''),
+            'keywords': clip_data.get('keywords', []),
+            'parts': [{
+                'start': start,
+                'end': end,
+                'text': clip_text,
+                'words': clip_words,
+                'duration': duration
+            }],
+            'score': 90,
+            'is_multipart': False  # Mark as converted single-part
+        }
