@@ -26,6 +26,8 @@ from typing import Optional
 from datetime import datetime
 import asyncio
 import sys
+import concurrent.futures
+from functools import partial
 
 # Import database module
 from database import (
@@ -40,6 +42,27 @@ from database import (
 
 # Initialize FastAPI app
 app = FastAPI(title="YTClipper", version="1.0.0")
+
+# Create thread pool for blocking operations
+# Max workers = 2 to prevent overloading CPU with multiple FFmpeg processes
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+async def run_in_executor(func, *args, **kwargs):
+    """
+    Run blocking function in thread pool executor
+
+    Args:
+        func: Blocking function to run
+        *args: Positional arguments
+        **kwargs: Keyword arguments
+
+    Returns:
+        Result from blocking function
+    """
+    loop = asyncio.get_event_loop()
+    if kwargs:
+        func = partial(func, **kwargs)
+    return await loop.run_in_executor(executor, func, *args)
 
 # Add CORS middleware for cross-origin requests
 app.add_middleware(
@@ -109,6 +132,7 @@ class VideoURLRequest(BaseModel):
 class AnalyzeVideoRequest(BaseModel):
     url: str
     ai_strategy: Optional[str] = "viral-moments"  # AI strategy to use
+    client_id: Optional[str] = None  # WebSocket client ID for targeted progress updates
 
 
 class ProcessVideoRequest(BaseModel):
@@ -118,6 +142,7 @@ class ProcessVideoRequest(BaseModel):
     selected_clips: Optional[list] = None  # List of clip indices to process (for manual mode)
     preanalyzed_clips: Optional[list] = None  # Pre-analyzed clip data from /api/analyze (skips transcription & analysis)
     ai_strategy: Optional[str] = "viral-moments"  # AI strategy to use (viral-moments, context-rich, educational)
+    client_id: Optional[str] = None  # WebSocket client ID for targeted progress updates
 
 
 class ConfigUpdate(BaseModel):
@@ -176,34 +201,83 @@ migrate_database()
 # WebSocket manager
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: list[WebSocket] = []
+        self.active_connections: dict[str, WebSocket] = {}  # client_id -> websocket
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, client_id: str = None):
         await websocket.accept()
-        self.active_connections.append(websocket)
-        print(f"🔌 WebSocket connected. Total connections: {len(self.active_connections)}")
 
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-        print(f"🔌 WebSocket disconnected. Total connections: {len(self.active_connections)}")
+        # Generate client ID if not provided
+        if not client_id:
+            client_id = f"client_{id(websocket)}"
 
-    async def broadcast(self, message: dict):
-        print(f"📡 Broadcasting to {len(self.active_connections)} connection(s): {message.get('stage', 'unknown')} - {message.get('message', '')}")
+        self.active_connections[client_id] = websocket
+        print(f"🔌 WebSocket connected (ID: {client_id}). Total connections: {len(self.active_connections)}")
 
-        disconnected = []
-        for connection in self.active_connections:
-            try:
-                await connection.send_json(message)
-                print(f"✅ Message sent successfully to connection")
-            except Exception as e:
-                print(f"❌ Failed to send to connection: {e}")
-                disconnected.append(connection)
+        # Send client ID back to client
+        try:
+            await websocket.send_json({"type": "connection", "client_id": client_id})
+        except:
+            pass
 
-        # Remove disconnected connections
-        for conn in disconnected:
-            if conn in self.active_connections:
-                self.active_connections.remove(conn)
+        return client_id
+
+    def disconnect(self, client_id: str = None, websocket: WebSocket = None):
+        # Support both disconnect by client_id or by websocket object
+        if client_id and client_id in self.active_connections:
+            del self.active_connections[client_id]
+            print(f"🔌 WebSocket disconnected (ID: {client_id}). Total connections: {len(self.active_connections)}")
+        elif websocket:
+            # Find and remove by websocket object
+            for cid, ws in list(self.active_connections.items()):
+                if ws == websocket:
+                    del self.active_connections[cid]
+                    print(f"🔌 WebSocket disconnected (ID: {cid}). Total connections: {len(self.active_connections)}")
+                    break
+
+    async def broadcast(self, message: dict, target_client_id: str = None):
+        """
+        Broadcast message to connections.
+        If target_client_id is provided, only send to that client.
+        Otherwise, broadcast to all.
+        """
+        if target_client_id:
+            # Targeted send
+            if target_client_id in self.active_connections:
+                connection = self.active_connections[target_client_id]
+                print(f"📡 Sending to client {target_client_id}: {message.get('stage', 'unknown')} - {message.get('message', '')}")
+                try:
+                    await connection.send_json(message)
+                    print(f"✅ Message sent successfully")
+                except Exception as e:
+                    error_str = str(e)
+                    if "close message has been sent" in error_str or not error_str:
+                        print(f"⚠️  Connection already closed, removing")
+                    else:
+                        print(f"❌ Failed to send: {e}")
+                    self.disconnect(client_id=target_client_id)
+            else:
+                print(f"⚠️  Client {target_client_id} not found in active connections")
+        else:
+            # Broadcast to all
+            print(f"📡 Broadcasting to {len(self.active_connections)} connection(s): {message.get('stage', 'unknown')} - {message.get('message', '')}")
+
+            disconnected = []
+            for client_id, connection in self.active_connections.items():
+                try:
+                    await connection.send_json(message)
+                    print(f"✅ Message sent successfully to {client_id}")
+                except Exception as e:
+                    error_str = str(e)
+                    if "close message has been sent" in error_str or not error_str:
+                        print(f"⚠️  Connection {client_id} already closed, skipping")
+                    else:
+                        print(f"❌ Failed to send to {client_id}: {e}")
+                    disconnected.append(client_id)
+
+            # Remove disconnected connections
+            for client_id in disconnected:
+                self.disconnect(client_id=client_id)
+                print(f"🧹 Cleaned up closed connection {client_id}")
 
 
 manager = ConnectionManager()
@@ -341,13 +415,15 @@ async def analyze_video(request: AnalyzeVideoRequest):
         else:
             analyzer = SectionAnalyzer()
 
-        # Progress tracking with WebSocket broadcasting
+        # Progress tracking with WebSocket broadcasting (targeted to specific client)
+        client_id = request.client_id
+
         async def update_progress(data):
             print(f"Progress: {data}")
             await manager.broadcast({
                 'type': 'progress',
                 **data
-            })
+            }, target_client_id=client_id)
 
         # Wrapper for sync callbacks
         def update_progress_sync(data):
@@ -362,7 +438,11 @@ async def analyze_video(request: AnalyzeVideoRequest):
 
         # Step 1: Download video
         await update_progress({'stage': 'downloading', 'percent': 0, 'message': 'Downloading video...'})
-        download_result = downloader.download_video(request.url, update_progress_sync)
+        download_result = await run_in_executor(
+            downloader.download_video,
+            request.url,
+            update_progress_sync
+        )
 
         if not download_result['success']:
             raise Exception(download_result['error'])
@@ -378,7 +458,11 @@ async def analyze_video(request: AnalyzeVideoRequest):
 
         # Step 2: Transcribe audio
         await update_progress({'stage': 'transcribing', 'percent': 30, 'message': 'Transcribing audio...'})
-        transcript_result = transcriber.transcribe(video_path, update_progress_sync)
+        transcript_result = await run_in_executor(
+            transcriber.transcribe,
+            video_path,
+            update_progress_sync
+        )
 
         if not transcript_result['success']:
             raise Exception(transcript_result['error'])
@@ -406,17 +490,28 @@ async def analyze_video(request: AnalyzeVideoRequest):
         formatted_clips = []
         for i, clip in enumerate(interesting_clips):
             # Handle both old flat format and new multi-part format
-            if 'parts' in clip:
+            if 'parts' in clip and len(clip['parts']) > 0:
                 # New multi-part format - use first part for main timing
                 first_part = clip['parts'][0]
+                last_part = clip['parts'][-1]
                 start = first_part['start']
-                end = first_part['end']
-                text = first_part.get('text', clip.get('text', ''))
-                words = first_part.get('words', clip.get('words', []))
+                end = last_part['end']
+
+                # Calculate total duration by summing all parts (excluding gaps)
+                total_duration = sum(part['end'] - part['start'] for part in clip['parts'])
+
+                # Combine text from all parts for the description
+                text = ' ... '.join([part.get('text', '') for part in clip['parts']])
+
+                # Combine words from all parts
+                words = []
+                for part in clip['parts']:
+                    words.extend(part.get('words', []))
             else:
                 # Old flat format (legacy support)
                 start = clip['start']
                 end = clip['end']
+                total_duration = end - start
                 text = clip.get('text', '')
                 words = clip.get('words', [])
 
@@ -427,7 +522,7 @@ async def analyze_video(request: AnalyzeVideoRequest):
                 'index': i,
                 'start': start,
                 'end': end,
-                'duration': end - start,
+                'duration': total_duration,
                 'title': clip.get('title', f'Clip {i+1}'),
                 'reason': clip.get('reason', ''),
                 'text': text,
@@ -523,29 +618,36 @@ async def process_video(request: ProcessVideoRequest):
         watermark_proc = WatermarkProcessor(watermark_config)
         file_mgr = FileManager()
 
-        # Progress tracking with WebSocket broadcasting
+        # Progress tracking with WebSocket broadcasting (targeted to specific client)
+        client_id = request.client_id
+
         async def update_progress(data):
             print(f"Progress: {data}")
             await manager.broadcast({
                 'type': 'progress',
                 **data
-            })
+            }, target_client_id=client_id)
 
         # Wrapper for sync callbacks
         def update_progress_sync(data):
-            # Create event loop if needed and broadcast
+            """Thread-safe progress callback for subprocess operations"""
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    asyncio.create_task(update_progress(data))
+                    # Schedule coroutine on event loop from thread (thread-safe)
+                    asyncio.run_coroutine_threadsafe(update_progress(data), loop)
                 else:
                     loop.run_until_complete(update_progress(data))
-            except:
-                print(f"Progress: {data}")
+            except Exception as e:
+                print(f"Progress update failed: {e}")
 
         # Step 1: Download video
         await update_progress({'stage': 'downloading', 'percent': 0, 'message': 'Downloading video...'})
-        download_result = downloader.download_video(request.url, update_progress_sync)
+        download_result = await run_in_executor(
+            downloader.download_video,
+            request.url,
+            update_progress_sync
+        )
 
         if not download_result['success']:
             raise Exception(download_result['error'])
@@ -567,15 +669,26 @@ async def process_video(request: ProcessVideoRequest):
             # Convert frontend clip format to backend format
             interesting_clips = []
             for clip_data in request.preanalyzed_clips:
-                interesting_clips.append({
-                    'start': clip_data['start'],
-                    'end': clip_data['end'],
-                    'text': clip_data['text'],
-                    'title': clip_data.get('title', 'Interesting Clip'),
-                    'reason': clip_data.get('reason', ''),
-                    'keywords': clip_data.get('keywords', []),
-                    'words': clip_data.get('words', [])  # Word-level timing for captions
-                })
+                # Check if this is a multi-part clip (has 'parts' array with multiple parts)
+                if 'parts' in clip_data and len(clip_data['parts']) > 1:
+                    # Multi-part clip - preserve the parts array
+                    interesting_clips.append({
+                        'title': clip_data.get('title', 'Multi-Part Clip'),
+                        'reason': clip_data.get('reason', ''),
+                        'keywords': clip_data.get('keywords', []),
+                        'parts': clip_data['parts']  # ✅ Preserve parts array for multi-part clips
+                    })
+                else:
+                    # Single-part clip - use top-level start/end
+                    interesting_clips.append({
+                        'start': clip_data['start'],
+                        'end': clip_data['end'],
+                        'text': clip_data['text'],
+                        'title': clip_data.get('title', 'Interesting Clip'),
+                        'reason': clip_data.get('reason', ''),
+                        'keywords': clip_data.get('keywords', []),
+                        'words': clip_data.get('words', [])  # Word-level timing for captions
+                    })
 
             audio_path = None  # No audio extraction needed
         else:
@@ -650,21 +763,50 @@ async def process_video(request: ProcessVideoRequest):
                 'message': f'Processing clip {i+1}/{len(interesting_clips)}...'
             })
 
-            # Create base clip from original video
-            clip_result = clipper.create_clip(
-                video_path=video_path,
-                start_time=clip['start'],
-                end_time=clip['end']
-            )
+            # Check if this is a multi-part clip
+            if 'parts' in clip and len(clip['parts']) > 1:
+                # Multi-part clip - use create_multipart_clip
+                print(f"[DEBUG] Creating multi-part clip with {len(clip['parts'])} parts")
+                print(f"[DEBUG] Parts structure: {clip['parts']}")
+                clip_result = await run_in_executor(
+                    clipper.create_multipart_clip,
+                    video_path=str(video_path),
+                    parts=clip['parts']
+                )
+            else:
+                # Single-part clip - use regular create_clip
+                clip_result = await run_in_executor(
+                    clipper.create_clip,
+                    video_path=str(video_path),
+                    start_time=clip['start'],
+                    end_time=clip['end']
+                )
 
             print(f"[DEBUG] create_clip result: success={clip_result['success']}")
             if not clip_result['success']:
-                print(f"[DEBUG] Clip creation failed, skipping clip {i+1}")
+                error_msg = clip_result.get('error', 'Unknown error')
+                print(f"[DEBUG] Clip creation failed: {error_msg}")
+                print(f"[DEBUG] Skipping clip {i+1}")
                 continue
 
             clip_path = clip_result['clip_path']
             print(f"[DEBUG] Clip created at: {clip_path}")
             temp_files.append(clip_path)
+
+            # Extract words, start, and end for caption generation (handle multi-part vs single-part)
+            if 'parts' in clip and len(clip['parts']) > 1:
+                # Multi-part clip: collect all words from all parts
+                all_words = []
+                for part in clip['parts']:
+                    all_words.extend(part.get('words', []))
+                clip_words = all_words
+                clip_start = clip['parts'][0]['start']
+                clip_end = clip['parts'][-1]['end']
+            else:
+                # Single-part clip: use top-level fields
+                clip_words = clip.get('words', [])
+                clip_start = clip.get('start', 0)
+                clip_end = clip.get('end', 0)
 
             # Convert to reels format FIRST if requested (before captions)
             # This ensures captions are centered on the reels crop
@@ -678,7 +820,8 @@ async def process_video(request: ProcessVideoRequest):
                     "stacked_video": "stacked_video"
                 }
 
-                reels_result = reels_proc.convert_to_reels(
+                reels_result = await run_in_executor(
+                    reels_proc.convert_to_reels,
                     clip_path,
                     output_format=output_format_map.get(request.format, "vertical_9x16")
                 )
@@ -688,9 +831,9 @@ async def process_video(request: ProcessVideoRequest):
 
             # Generate caption text
             caption_text = caption_gen.generate_clip_caption(
-                clip['words'],
-                clip['start'],
-                clip['end']
+                clip_words,
+                clip_start,
+                clip_end
             )
 
             # NOW burn captions onto the clip (after reels conversion if applicable)
@@ -698,15 +841,16 @@ async def process_video(request: ProcessVideoRequest):
                 # Create ASS subtitles in temp folder
                 ass_path = TEMP_DIR / f"clip_{i+1}.ass"
                 caption_gen.create_ass_subtitles(
-                    words=clip['words'],
+                    words=clip_words,
                     output_path=str(ass_path),
-                    clip_start_time=clip['start']
+                    clip_start_time=clip_start
                 )
                 temp_files.append(str(ass_path))
 
                 # Burn captions (output also in temp folder)
                 captioned_path = TEMP_DIR / f"clip_{i+1}_captioned.mp4"
-                burn_result = caption_gen.burn_captions(
+                burn_result = await run_in_executor(
+                    caption_gen.burn_captions,
                     video_path=clip_path,
                     subtitle_path=str(ass_path),
                     output_path=str(captioned_path)
@@ -717,19 +861,30 @@ async def process_video(request: ProcessVideoRequest):
                     temp_files.append(clip_path)
 
             # Add watermark if enabled
-            watermark_result = watermark_proc.add_watermark(clip_path)
+            watermark_result = await run_in_executor(
+                watermark_proc.add_watermark,
+                clip_path
+            )
             if watermark_result['success'] and watermark_result.get('watermark_added'):
                 clip_path = watermark_result['output_path']
                 temp_files.append(clip_path)
+
+            # Extract text for multi-part vs single-part clips
+            if 'parts' in clip and len(clip['parts']) > 1:
+                # Multi-part clip: combine text from all parts
+                clip_text = ' ... '.join([part.get('text', '') for part in clip['parts']])
+            else:
+                # Single-part clip: use top-level text
+                clip_text = clip.get('text', '')
 
             # Store processed clip info (including AI-generated metadata)
             processed_clips.append({
                 'clip_number': i + 1,
                 'clip_path': clip_path,
-                'start_time': clip['start'],
-                'end_time': clip['end'],
-                'duration': clip['end'] - clip['start'],
-                'text': clip['text'],
+                'start_time': clip_start,
+                'end_time': clip_end,
+                'duration': clip_end - clip_start,
+                'text': clip_text,
                 'caption_text': caption_text,
                 'title': clip.get('title', 'Interesting Clip'),
                 'reason': clip.get('reason', ''),
@@ -847,31 +1002,33 @@ async def get_strategies():
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket for real-time progress updates"""
     print("🎯 WebSocket connection request received")
-    await manager.connect(websocket)
-    print("✅ WebSocket connection established and added to manager")
+    client_id = await manager.connect(websocket)
+    print(f"✅ WebSocket connection established (ID: {client_id})")
 
     try:
         # Keep connection alive - ping/pong to prevent timeout
         # The manager.broadcast() will send progress updates asynchronously
         ping_count = 0
         while True:
-            # Send a heartbeat ping every 5 seconds to keep connection alive
+            # Send a heartbeat ping every 10 seconds to keep connection alive (reduced frequency)
             try:
                 ping_count += 1
                 await websocket.send_json({"type": "ping"})
-                print(f"💓 Heartbeat ping #{ping_count} sent")
-                await asyncio.sleep(5)
+                print(f"💓 Heartbeat ping #{ping_count} sent to {client_id}")
+                await asyncio.sleep(10)  # Increased from 5s to 10s to reduce message flooding
             except Exception as e:
-                print(f"❌ WebSocket send error (breaking loop): {e}")
+                # Connection closed by client or network error
+                error_msg = str(e) if str(e) else "Connection closed"
+                print(f"❌ WebSocket send error for {client_id} (breaking loop): {error_msg}")
                 break
     except WebSocketDisconnect:
-        print("🔌 WebSocket disconnected by client")
-        manager.disconnect(websocket)
+        print(f"🔌 WebSocket disconnected by client ({client_id})")
     except Exception as e:
-        print(f"❌ WebSocket error: {e}")
-        manager.disconnect(websocket)
+        print(f"❌ WebSocket error ({client_id}): {e}")
     finally:
-        print("🔚 WebSocket connection closed")
+        # Always clean up the connection
+        manager.disconnect(client_id=client_id)
+        print(f"🔚 WebSocket connection closed ({client_id})")
 
 
 @app.get("/api/history")
@@ -916,28 +1073,29 @@ async def get_logs(lines: int = 500):
 async def websocket_logs(websocket: WebSocket):
     """WebSocket for live log streaming"""
     await websocket.accept()
-    print(f"🔌 WebSocket connected from logs panel")
+    client_id = f"logs_{id(websocket)}"
+    print(f"🔌 WebSocket connected from logs panel (ID: {client_id})")
 
     try:
         # Send initial log content (last 500 lines)
         if LOG_FILE.exists():
-            print(f"📂 Log file exists, reading last 500 lines...")
+            print(f"📂 Log file exists, reading last 500 lines for {client_id}...")
             with open(LOG_FILE, 'r', encoding='utf-8') as f:
                 all_lines = f.readlines()
                 last_lines = all_lines[-500:] if len(all_lines) > 500 else all_lines
-                print(f"📤 Sending {len(last_lines)} initial log lines...")
+                print(f"📤 Sending {len(last_lines)} initial log lines to {client_id}...")
                 for line in last_lines:
                     await websocket.send_json({"type": "history", "line": line.rstrip()})
-                print(f"✅ Sent all initial log lines")
+                print(f"✅ Sent all initial log lines to {client_id}")
         else:
-            print(f"⚠️ Log file does not exist yet")
+            print(f"⚠️ Log file does not exist yet for {client_id}")
 
         # Track the last position in the file
         last_position = LOG_FILE.stat().st_size if LOG_FILE.exists() else 0
 
         # Stream new log lines as they appear
         while True:
-            await asyncio.sleep(0.5)  # Check every 500ms
+            await asyncio.sleep(1.5)  # Increased from 500ms to 1.5s to reduce I/O load
 
             if not LOG_FILE.exists():
                 continue
@@ -946,19 +1104,24 @@ async def websocket_logs(websocket: WebSocket):
 
             if current_size > last_position:
                 # File has grown, read new content
-                with open(LOG_FILE, 'r', encoding='utf-8') as f:
-                    f.seek(last_position)
-                    new_lines = f.readlines()
+                try:
+                    with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                        f.seek(last_position)
+                        new_lines = f.readlines()
 
-                    for line in new_lines:
-                        await websocket.send_json({"type": "new", "line": line.rstrip()})
+                        for line in new_lines:
+                            await websocket.send_json({"type": "new", "line": line.rstrip()})
 
-                last_position = current_size
+                    last_position = current_size
+                except Exception as e:
+                    print(f"⚠️ Error reading log file for {client_id}: {e}")
 
     except WebSocketDisconnect:
-        print("Log viewer disconnected")
+        print(f"🔌 Log viewer disconnected ({client_id})")
     except Exception as e:
-        print(f"Error in log stream: {e}")
+        print(f"❌ Error in log stream ({client_id}): {e}")
+    finally:
+        print(f"🔚 Log WebSocket closed ({client_id})")
 
 
 @app.delete("/api/history")
@@ -1096,6 +1259,14 @@ async def get_clip_details(project: str, format: str, filename: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching clip details: {str(e)}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Gracefully shutdown thread pool executor"""
+    print("🛑 Shutting down thread pool executor...")
+    executor.shutdown(wait=True, cancel_futures=False)
+    print("✅ Thread pool executor shut down")
 
 
 if __name__ == "__main__":
