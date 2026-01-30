@@ -287,25 +287,25 @@ manager = ConnectionManager()
 @app.get("/")
 async def root():
     """Serve the main HTML page"""
-    return FileResponse(str(BASE_DIR / "frontend" / "index.html"))
+    return FileResponse(str(BASE_DIR / "frontend" / "pages" / "home" / "index.html"))
 
 
 @app.get("/gallery.html")
 async def gallery():
     """Serve the gallery HTML page"""
-    return FileResponse(str(BASE_DIR / "frontend" / "gallery.html"))
+    return FileResponse(str(BASE_DIR / "frontend" / "pages" / "gallery" / "index.html"))
 
 
 @app.get("/clip-detail.html")
 async def clip_detail():
     """Serve the clip detail HTML page"""
-    return FileResponse(str(BASE_DIR / "frontend" / "clip-detail.html"))
+    return FileResponse(str(BASE_DIR / "frontend" / "pages" / "clip-detail" / "index.html"))
 
 
 @app.get("/logs.html")
 async def logs():
     """Serve the logs HTML page"""
-    return FileResponse(str(BASE_DIR / "frontend" / "logs.html"))
+    return FileResponse(str(BASE_DIR / "frontend" / "pages" / "logs" / "index.html"))
 
 
 @app.post("/api/thumbnail")
@@ -529,7 +529,11 @@ async def analyze_video(request: AnalyzeVideoRequest):
                 'youtube_link': f"{request.url}&t={start_seconds}",
                 'keywords': clip.get('keywords', []),
                 'words': words,  # Include word-level timing for captions
-                'parts': clip.get('parts', [])  # Include parts for multi-part clips
+                'parts': clip.get('parts', []),  # Include parts for multi-part clips
+                # Validation metadata
+                'is_valid': clip.get('is_valid', True),
+                'validation_warnings': clip.get('validation_warnings', []),
+                'validation_level': clip.get('validation_level', 'valid')
             })
 
         await update_progress({'stage': 'complete', 'percent': 100, 'message': 'Analysis complete!'})
@@ -730,15 +734,27 @@ async def process_video(request: ProcessVideoRequest):
                     raise Exception("OPENAI_QUOTA_ERROR: " + error_msg.split("OPENAI_QUOTA_ERROR: ", 1)[1])
                 raise
 
-            # Filter clips if selected_clips is provided (manual mode)
+            # Filter clips based on mode
             if request.selected_clips is not None:
-                print(f"[DEBUG] Before filtering: {len(interesting_clips)} clips")
+                # Manual mode - use user selection (respects all clips regardless of validation)
+                print(f"[DEBUG] Manual mode - Before filtering: {len(interesting_clips)} clips")
                 print(f"[DEBUG] selected_clips indices: {request.selected_clips}")
                 interesting_clips = [
                     clip for i, clip in enumerate(interesting_clips)
                     if i in request.selected_clips
                 ]
-                print(f"[DEBUG] After filtering: {len(interesting_clips)} clips")
+                print(f"[DEBUG] Manual mode - After filtering: {len(interesting_clips)} clips")
+            else:
+                # Auto mode - filter out clips with validation_level == 'error' by default
+                original_count = len(interesting_clips)
+                interesting_clips = [
+                    clip for clip in interesting_clips
+                    if clip.get('validation_level', 'valid') != 'error'
+                ]
+                filtered_count = original_count - len(interesting_clips)
+                if filtered_count > 0:
+                    print(f"[DEBUG] Auto mode - Filtered out {filtered_count} clips with validation errors (overlaps)")
+                    print(f"[DEBUG] Auto mode - Keeping {len(interesting_clips)} valid/warning clips")
 
         # Step 4: Create project folder
         project_folder = file_mgr.create_project_folder(video_info['title'])
@@ -1067,6 +1083,48 @@ async def get_logs(lines: int = 500):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading logs: {str(e)}")
+
+
+@app.delete("/api/logs")
+async def clear_logs():
+    """Clear/truncate the log file"""
+    try:
+        # Ensure logs directory exists
+        LOG_FILE.parent.mkdir(exist_ok=True)
+
+        if LOG_FILE.exists():
+            # Truncate the file to 0 bytes
+            # This is thread-safe: the TeeOutput file handle remains valid
+            # and will continue appending after the file is truncated
+            with open(LOG_FILE, 'w', encoding='utf-8') as f:
+                f.write('')  # Clear the file
+
+            print("Log file cleared successfully")
+            return {
+                "success": True,
+                "message": "Log file cleared successfully"
+            }
+        else:
+            # File doesn't exist, create empty file
+            LOG_FILE.touch()
+            print("Log file did not exist, created empty file")
+            return {
+                "success": True,
+                "message": "Log file cleared successfully"
+            }
+
+    except PermissionError as e:
+        print(f"Permission error clearing log file: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Permission denied: Cannot clear log file. Check file permissions."
+        )
+    except Exception as e:
+        print(f"Error clearing log file: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error clearing log file: {str(e)}"
+        )
 
 
 @app.websocket("/ws/logs")

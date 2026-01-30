@@ -33,15 +33,18 @@ Your task is to create reels where EACH REEL tells a complete story by combining
 - Fake narratives that don't actually connect
 - Segments too close together (must be 5+ seconds apart minimum)
 
-⚠️ MULTI-PART CONSTRAINTS:
+⚠️ MULTI-PART CONSTRAINTS (STRICT VALIDATION - WILL BE REJECTED IF NOT MET):
 
 1. **NUMBER OF REELS:** Return exactly the requested number of independent reels
 2. **PARTS PER REEL:** Each reel MUST have 3-7 parts (segments)
 3. **PART SEPARATION:** Parts must be AT LEAST 5 seconds apart in the original video
-4. **PART DURATION:** Each individual part should be {min_duration}-{max_duration} seconds
-5. **TOTAL REEL DURATION:** Sum of all parts should target {target_duration} seconds
-6. **CHRONOLOGICAL ORDER:** Parts must be in chronological order (no jumping back in time)
-7. **UNRELATED REELS:** Each reel should tell a DIFFERENT story - no overlap between reels
+4. **PART DURATION:** Each individual part MUST be at least 1 second long, ideally 5-20 seconds
+5. **TOTAL REEL DURATION:** Sum of all parts should target {target_duration} seconds (but can be shorter for impactful multi-part reels)
+6. **CHRONOLOGICAL ORDER:** Parts MUST be in chronological order by timestamp (Part 1 start_time < Part 2 start_time < Part 3 start_time)
+   - ❌ WRONG: Part 1 at 00:02:15, Part 2 at 00:01:14 (goes backwards in time)
+   - ✅ CORRECT: Part 1 at 00:01:14, Part 2 at 00:02:15 (moves forward in time)
+7. **VALID TIMESTAMPS:** Each part MUST have end_time > start_time (no negative or zero durations)
+8. **UNRELATED REELS:** Each reel should tell a DIFFERENT story - no overlap between reels
 
 ⚠️ NARRATIVE COHERENCE RULES:
 
@@ -92,12 +95,21 @@ Return response in JSON format:
   }}
 ]
 
-🚨 CRITICAL REMINDERS:
+🚨 CRITICAL REMINDERS - YOUR RESPONSE WILL BE VALIDATED:
 
 1. Each reel MUST have a "parts" array (not start_time/end_time at the top level)
-2. Parts MUST be chronologically ordered within each reel
-3. Parts MUST be spread across the video (not clustered)
-4. Each reel must tell a DIFFERENT, UNRELATED story
-5. The narrative connection must be GENUINE, not forced
+2. **CHRONOLOGICAL ORDER IS MANDATORY:** Sort parts by start_time before returning
+   - If you want Part A at 00:05:00 and Part B at 00:02:00, you MUST list Part B first
+3. **MINIMUM 1 SECOND PER PART:** Every part must be at least 1.0 seconds long
+   - ❌ REJECTED: start_time: "00:03:11.280", end_time: "00:03:12.099" (0.8s)
+   - ✅ ACCEPTED: start_time: "00:03:11.000", end_time: "00:03:12.500" (1.5s)
+4. **NO NEGATIVE DURATIONS:** end_time MUST be after start_time
+   - ❌ REJECTED: start_time: "00:01:40.319", end_time: "00:01:39.560" (negative!)
+   - ✅ ACCEPTED: start_time: "00:01:39.560", end_time: "00:01:40.319" (0.8s... but still too short)
+5. Parts MUST be spread across the video (at least 5 seconds apart)
+6. Each reel must tell a DIFFERENT, UNRELATED story
+7. The narrative connection must be GENUINE, not forced
+
+**BEFORE RETURNING:** Double-check that all parts are sorted chronologically by start_time!
 
 Return ONLY the JSON array, no other text.

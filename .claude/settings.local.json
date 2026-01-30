@@ -40,7 +40,16 @@
       "Bash(killall:*)",
       "Bash(sqlite3:*)",
       "Bash(mkdir:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(find:*)",
+      "Bash(for file in tests/results/*.mp4)",
+      "Bash(do echo \"\")",
+      "Bash(python:*)",
+      "Bash(node:*)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:www.jsdelivr.com)",
+      "WebFetch(domain:alienzhou.github.io)",
+      "WebFetch(domain:simonwep.github.io)"
     ],
     "deny": [],
     "ask": []

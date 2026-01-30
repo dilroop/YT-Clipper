@@ -14,6 +14,54 @@ Mobile-first web application for clipping YouTube videos with AI-powered analysi
 - This applies to all code changes, regardless of size or scope
 - User will request commits with phrases like "commit this" or "create a commit"
 
+### Agent Delegation Policy
+**CRITICAL:** Claude MUST delegate tasks to specialized agents whenever the task matches their expertise. Answering directly instead of delegating is NOT ALLOWED.
+
+**Mandatory Delegation Rules:**
+
+1. **When to Delegate:**
+   - ANY API design, architecture, review, or backend Python questions → `python-api-architect`
+   - ANY HTML/CSS/JavaScript/TypeScript/SVG work or frontend tasks → `senior-web-developer`
+   - ANY performance claims, log analysis, or data verification → `data-claims-analyst`
+   - Quick "what is X?" questions about the project → `qagent` (quick-context-qa)
+
+2. **How to Delegate Properly:**
+   - Provide COMPLETE context in the agent prompt
+   - Include relevant file paths, line numbers, and code snippets
+   - Specify what the agent should return (analysis, code, recommendations)
+   - Give the agent enough information to work autonomously
+
+3. **Example of Good Delegation:**
+   ```
+   Task(
+     subagent_type="python-api-architect",
+     prompt="Review the FastAPI WebSocket implementation in backend/server.py lines 996-1026.
+            Context: We have streaming log endpoints that need error handling for closed connections.
+            Question: Is the current error handling approach following best practices?
+            Please provide: 1) Analysis of current approach, 2) Potential issues, 3) Recommended improvements."
+   )
+   ```
+
+4. **Example of Bad Delegation:**
+   ```
+   Task(
+     subagent_type="python-api-architect",
+     prompt="Review the WebSocket code"  # ❌ Too vague, no context
+   )
+   ```
+
+5. **Never Answer Directly When Agent Exists:**
+   - If user asks "How should I structure this API?" → Delegate to python-api-architect
+   - If user asks "Can you create this SVG?" → Delegate to senior-web-developer
+   - If user asks "Is this claim about performance true?" → Delegate to data-claims-analyst
+   - If user asks "What's the API endpoint for X?" → Delegate to qagent
+
+**Why This Matters:**
+- Agents are specialists with deeper expertise in their domains
+- Delegation ensures consistent quality and thorough analysis
+- Agents can focus deeply without context switching
+- Better results for the user
+
 ---
 
 ## API Endpoints

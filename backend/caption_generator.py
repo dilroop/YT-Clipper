@@ -189,11 +189,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         Returns:
             Caption text formatted as complete sentences
         """
-        # Filter words within clip timeframe
+        # Filter words that overlap with clip timeframe
+        # Include words if they overlap with the clip (not strictly contained)
         clip_words = [
             w['word'].strip()
             for w in words
-            if w['start'] >= clip_start_time and w['end'] <= clip_end_time
+            if not (w['end'] <= clip_start_time or w['start'] >= clip_end_time)
         ]
 
         # Return all words as continuous text (full sentences)

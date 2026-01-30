@@ -310,7 +310,10 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
             for i, clip in enumerate(valid_clips):
                 clip['clip_number'] = i + 1
 
-            return valid_clips[:num_clips]
+            # Run validation on all clips (don't filter, just add metadata)
+            validated_clips = self.validate_clips(valid_clips[:num_clips])
+
+            return validated_clips
 
         except json.JSONDecodeError as e:
             print(f"\n❌ Error parsing GPT response: {e}")
@@ -420,8 +423,8 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
 
             # Check individual part duration (allow short segments for multi-part)
             duration = end - start
-            if duration < 2.0:  # Minimum 2s per part to avoid extremely short segments
-                return f"Clip {clip_index}, Part {part_idx+1}: Duration {duration:.1f}s is too short (minimum 2s per part)"
+            if duration < 1.0:  # Minimum 1s per part (multi-part clips capture specific moments)
+                return f"Clip {clip_index}, Part {part_idx+1}: Duration {duration:.1f}s is too short (minimum 1s per part)"
 
             if duration > self.max_clip_duration:  # Still enforce max per part
                 return f"Clip {clip_index}, Part {part_idx+1}: Duration {duration:.1f}s exceeds maximum ({self.max_clip_duration}s per part)"
@@ -430,8 +433,12 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
             prev_end = end
 
         # Validate total combined duration
-        if total_duration < self.min_clip_duration:
-            return f"Clip {clip_index}: Total duration {total_duration:.1f}s is too short (minimum: {self.min_clip_duration}s)"
+        # For multi-part clips, use more flexible minimum (8s instead of configured min)
+        # since they're meant to be shorter, focused narrative moments
+        multi_part_min = min(8.0, self.min_clip_duration)
+
+        if total_duration < multi_part_min:
+            return f"Clip {clip_index}: Total duration {total_duration:.1f}s is too short (minimum: {multi_part_min:.0f}s for multi-part clips)"
 
         if total_duration > self.max_clip_duration:
             return f"Clip {clip_index}: Total duration {total_duration:.1f}s is too long (maximum: {self.max_clip_duration}s)"
@@ -482,14 +489,20 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
             for seg in part_segments:
                 all_words.extend(seg.get('words', []))
 
-            # Filter words to only those within this part's timerange
+            # Filter words to those that overlap with this part's timerange
+            # Include words if they overlap with the clip (not strictly contained)
             part_words = [
                 w for w in all_words
-                if w['start'] >= start and w['end'] <= end
+                if not (w['end'] <= start or w['start'] >= end)
             ]
 
-            # Combine text from all segments in this part
-            part_text = ' '.join([seg['text'] for seg in part_segments])
+            # Reconstruct text from words for accurate boundaries
+            # Use words instead of segments to avoid mid-sentence cuts
+            if part_words:
+                part_text = ' '.join([w.get('word', '').strip() for w in part_words])
+            else:
+                # Fallback to segment text if no words available
+                part_text = ' '.join([seg['text'] for seg in part_segments])
 
             normalized_parts.append({
                 'start': start,
@@ -528,13 +541,20 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
         for seg in clip_segments:
             all_words.extend(seg.get('words', []))
 
+        # Filter words to those that overlap with the clip timerange
+        # Include words if they overlap with the clip (not strictly contained)
         clip_words = [
             w for w in all_words
-            if w['start'] >= start and w['end'] <= end
+            if not (w['end'] <= start or w['start'] >= end)
         ]
 
-        # Combine text
-        clip_text = ' '.join([seg['text'] for seg in clip_segments])
+        # Reconstruct text from words for accurate boundaries
+        # Use words instead of segments to avoid mid-sentence cuts
+        if clip_words:
+            clip_text = ' '.join([w.get('word', '').strip() for w in clip_words])
+        else:
+            # Fallback to segment text if no words available
+            clip_text = ' '.join([seg['text'] for seg in clip_segments])
 
         return {
             'title': clip_data.get('title', 'Interesting Clip'),
@@ -550,3 +570,112 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
             'score': 90,
             'is_multipart': False  # Mark as converted single-part
         }
+
+    def validate_clips(self, clips: List[Dict]) -> List[Dict]:
+        """
+        Validate clips and add validation metadata without failing the request
+
+        Validation checks:
+        - Chronological order: Are clips in ascending time order?
+        - Overlaps: Do any time windows overlap?
+        - Duration issues: Already validated during clip creation
+
+        Validation levels:
+        - "valid" (green): No chronological errors, no overlaps
+        - "warning" (yellow): Chronological error (wrong order) BUT no overlap - clips are still usable
+        - "error" (red): Clips overlap in time - likely bad quality
+
+        Args:
+            clips: List of clip dictionaries with 'parts' array
+
+        Returns:
+            Same clips list with validation metadata added to each clip
+        """
+        print(f"\n🔍 Validating {len(clips)} clips for chronological order and overlaps...")
+
+        for i, clip in enumerate(clips):
+            warnings = []
+            validation_level = "valid"
+
+            # Get the time range for this clip (first part start to last part end)
+            if 'parts' not in clip or len(clip['parts']) == 0:
+                # Edge case: clip has no parts (shouldn't happen but handle gracefully)
+                warnings.append({
+                    'type': 'missing_parts',
+                    'message': 'Clip has no parts data',
+                    'severity': 'error'
+                })
+                validation_level = "error"
+                clip['is_valid'] = False
+                clip['validation_warnings'] = warnings
+                clip['validation_level'] = validation_level
+                continue
+
+            clip_start = clip['parts'][0]['start']
+            clip_end = clip['parts'][-1]['end']
+
+            # Check chronological order with previous clip
+            if i > 0:
+                prev_clip = clips[i - 1]
+                prev_clip_start = prev_clip['parts'][0]['start']
+                prev_clip_end = prev_clip['parts'][-1]['end']
+
+                # Check if current clip starts before previous clip
+                if clip_start < prev_clip_start:
+                    # Chronological error detected
+                    chronological_warning = {
+                        'type': 'chronological_error',
+                        'message': f'Clip appears before previous clip (clip starts at {self._format_timestamp(clip_start)}, but previous clip starts at {self._format_timestamp(prev_clip_start)})',
+                        'severity': 'warning'
+                    }
+
+                    # Check if they also overlap (overlap is more serious)
+                    # Two clips overlap if: clip1.start < clip2.end AND clip2.start < clip1.end
+                    if clip_start < prev_clip_end and prev_clip_start < clip_end:
+                        # OVERLAP detected - this is an error
+                        overlap_warning = {
+                            'type': 'overlap',
+                            'message': f'Clip overlaps with previous clip (current: {self._format_timestamp(clip_start)}-{self._format_timestamp(clip_end)}, previous: {self._format_timestamp(prev_clip_start)}-{self._format_timestamp(prev_clip_end)})',
+                            'severity': 'error',
+                            'overlaps_with': i - 1
+                        }
+                        warnings.append(overlap_warning)
+                        validation_level = "error"
+                        print(f"   ❌ Clip {i+1}: OVERLAP with clip {i} - {overlap_warning['message']}")
+                    else:
+                        # Wrong order but no overlap - yellow warning (still usable)
+                        warnings.append(chronological_warning)
+                        validation_level = "warning"
+                        print(f"   ⚠️  Clip {i+1}: Chronological error (but no overlap, still usable) - {chronological_warning['message']}")
+                elif clip_start < prev_clip_end:
+                    # Current clip starts after previous clip started, but before it ended
+                    # This is an overlap even if chronologically ordered
+                    overlap_warning = {
+                        'type': 'overlap',
+                        'message': f'Clip overlaps with previous clip (current: {self._format_timestamp(clip_start)}-{self._format_timestamp(clip_end)}, previous: {self._format_timestamp(prev_clip_start)}-{self._format_timestamp(prev_clip_end)})',
+                        'severity': 'error',
+                        'overlaps_with': i - 1
+                    }
+                    warnings.append(overlap_warning)
+                    validation_level = "error"
+                    print(f"   ❌ Clip {i+1}: OVERLAP with clip {i} - {overlap_warning['message']}")
+
+            # Set validation metadata
+            clip['is_valid'] = (validation_level == "valid")
+            clip['validation_warnings'] = warnings
+            clip['validation_level'] = validation_level
+
+            if validation_level == "valid":
+                print(f"   ✅ Clip {i+1}: Valid (no issues)")
+
+        # Summary
+        valid_count = sum(1 for c in clips if c['validation_level'] == 'valid')
+        warning_count = sum(1 for c in clips if c['validation_level'] == 'warning')
+        error_count = sum(1 for c in clips if c['validation_level'] == 'error')
+
+        print(f"\n📊 Validation Summary:")
+        print(f"   ✅ Valid: {valid_count}")
+        print(f"   ⚠️  Warning: {warning_count}")
+        print(f"   ❌ Error: {error_count}")
+
+        return clips

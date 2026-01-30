@@ -1,0 +1,1958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clip Script Editor - Test Page</title>
+    <!--
+    ============================================================================
+    CLIP SCRIPT EDITOR TEST PAGE
+    ============================================================================
+
+    UPDATED: Now uses EXACT same UI components as webapp
+    - CSS copied from frontend/style.css (clip editor sections only)
+    - JavaScript copied from frontend/script.js (clip editor functions only)
+    - ONLY data is mocked (mockClips and analyzedClips)
+
+    HOW TO USE:
+    1. Open this file in a web browser (Chrome/Firefox/Safari)
+    2. Click "Open Clip Editor" button to launch the modal
+    3. Test all features:
+       - Select a clip to see text highlighting with iOS/Android drag handles
+       - Drag handles to adjust clip boundaries (word-boundary snapping)
+       - Click ✓ button to confirm cached changes
+       - Drag clips using ☰ handle to reorder
+       - Click ✕ to delete a clip
+       - Click + button, then select transcript text to add new clip
+       - Click Save to finalize changes (check console)
+       - Click Cancel/✕ to discard changes
+
+    FEATURES TO TEST:
+    ✓ Full paragraph transcript (no timestamps)
+    ✓ Text highlighting when clip selected
+    ✓ iOS/Android-style drag handles
+    ✓ Real-time handle dragging with word boundaries
+    ✓ Check button (✓) for confirming changes
+    ✓ Drag-and-drop clip reordering
+    ✓ Delete clips with confirmation
+    ✓ Add new clips from transcript selection
+    ✓ Save/Cancel with change detection
+    ✓ Keyboard shortcuts (Escape, Ctrl+S)
+    ✓ Mobile responsive layout
+    ✓ Toast notifications
+
+    CHECK BROWSER CONSOLE:
+    - All state changes are logged
+    - Event triggers are logged
+    - Data mutations are logged with diff
+
+    ============================================================================
+    -->
+
+    <style>
+        /* ===== TEST PAGE SPECIFIC STYLES (NOT FROM WEBAPP) ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            color: #8b5cf6;
+        }
+
+        .test-info {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #8b5cf6;
+        }
+
+        .test-info h2 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .test-info ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .test-info li::before {
+            content: "✓ ";
+            color: #10b981;
+            font-weight: bold;
+        }
+
+        .open-editor-btn {
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+
+        .open-editor-btn:hover {
+            background: #7c3aed;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+        }
+
+        .open-editor-btn:active {
+            transform: translateY(0);
+        }
+
+        /* ===== WEBAPP STYLES FROM style.css ===== */
+        /* Variables */
+        :root {
+            --primary-color: #ff0000;
+            --bg-dark: #1a1a1a;
+            --bg-card: #2a2a2a;
+            --text-primary: #ffffff;
+            --text-secondary: #aaaaaa;
+            --border-color: #3a3a3a;
+            --success-color: #00ff00;
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border-radius: 20px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            margin: 0 auto;
+        }
+
+        @media (max-width: 768px) {
+            .modal {
+                padding: 0;
+                align-items: flex-end;
+            }
+
+            .modal-content {
+                border-radius: 20px 20px 0 0;
+                max-height: 85vh;
+                height: 85vh;
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .modal-header h2 {
+            font-size: 22px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 28px;
+            cursor: pointer;
+            min-width: 44px;
+            min-height: 44px;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .modal-body::-webkit-scrollbar {
+            width: 0px;
+            background: transparent;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        /* Clip Editor Modal */
+        .clip-editor-content {
+            width: 100vw;
+            height: 100vh;
+            max-width: 100vw;
+            max-height: 100vh;
+            border-radius: 0;
+        }
+
+        @media (max-width: 768px) {
+            .clip-editor-content {
+                width: 100vw;
+                height: 100vh;
+                max-height: 100vh;
+                border-radius: 0;
+            }
+        }
+
+        /* Editor body with 2-column layout */
+        .clip-editor-body {
+            display: flex;
+            flex-direction: row;
+            gap: 0;
+            padding: 0;
+            height: calc(100vh - 160px);
+            overflow: hidden;
+        }
+
+        /* Mobile: stack vertically */
+        @media (max-width: 768px) {
+            .clip-editor-body {
+                flex-direction: column;
+            }
+        }
+
+        /* Editor sections */
+        .editor-clips-section,
+        .editor-transcript-section {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        /* Clips section - left column, 30% width */
+        .editor-clips-section {
+            flex: 0 0 30%;
+            max-width: 30%;
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto;
+        }
+
+        /* Transcript section - right column, 70% width */
+        .editor-transcript-section {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+        }
+
+        /* Mobile: full width stacked */
+        @media (max-width: 768px) {
+            .editor-clips-section {
+                flex: 0 0 45%;
+                max-width: 100%;
+                max-height: 45%;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            .editor-transcript-section {
+                flex: 1;
+                max-height: 55%;
+            }
+        }
+
+        .editor-separator {
+            width: 1px;
+            height: 100%;
+            background: var(--border-color);
+            flex-shrink: 0;
+        }
+
+        /* Mobile: horizontal separator */
+        @media (max-width: 768px) {
+            .editor-separator {
+                width: 100%;
+                height: 1px;
+            }
+        }
+
+        .editor-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px 12px;
+            flex-shrink: 0;
+        }
+
+        .editor-section-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0;
+        }
+
+        .clip-count {
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px 12px;
+            border-radius: 12px;
+        }
+
+        .add-clip-btn {
+            background: #8b5cf6;
+            border: none;
+            color: white;
+            padding: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 36px;
+            min-height: 36px;
+        }
+
+        .add-clip-btn:hover {
+            background: #7c3aed;
+            transform: scale(1.05);
+        }
+
+        .add-clip-btn:active {
+            transform: scale(0.95);
+        }
+
+        .add-clip-btn.active {
+            background: #10b981;
+        }
+
+        .add-clip-btn.active:hover {
+            background: #059669;
+        }
+
+        .editor-clips-list {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 0 20px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-height: 0;
+        }
+
+        .editor-clips-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .editor-clips-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .editor-clips-list::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        .editor-clips-list::-webkit-scrollbar-thumb:hover {
+            background: #8b5cf6;
+        }
+
+        .editor-clip-card {
+            background: var(--bg-dark);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 12px;
+            transition: all 0.2s;
+            cursor: default;
+        }
+
+        .editor-clip-card.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+
+        .editor-clip-card.drag-over {
+            border-color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .editor-clip-card.selected {
+            border-color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        .editor-clip-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .clip-drag-handle {
+            cursor: grab;
+            color: var(--text-secondary);
+            padding: 4px;
+            transition: color 0.2s;
+            flex-shrink: 0;
+            user-select: none;
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        .clip-drag-handle:hover {
+            color: #8b5cf6;
+        }
+
+        .clip-drag-handle:active {
+            cursor: grabbing;
+        }
+
+        .editor-clip-time {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            flex: 1;
+            min-width: 0;
+        }
+
+        .clip-delete-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 6px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
+            min-height: 32px;
+            flex-shrink: 0;
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        .clip-delete-btn:hover {
+            border-color: #ef4444;
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .clip-delete-btn:active {
+            transform: scale(0.9);
+        }
+
+        .clip-confirm-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 6px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
+            min-height: 32px;
+            flex-shrink: 0;
+            font-size: 16px;
+            line-height: 1;
+            margin-left: 8px;
+        }
+
+        .clip-confirm-btn.visible {
+            display: flex;
+        }
+
+        .clip-confirm-btn.active {
+            border-color: #8b5cf6;
+            color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .clip-confirm-btn:hover {
+            border-color: #8b5cf6;
+            color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.15);
+        }
+
+        .clip-confirm-btn:active {
+            transform: scale(0.9);
+        }
+
+        .editor-clip-text {
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+        }
+
+        .editor-transcript-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 20px;
+            font-size: 14px;
+            line-height: 1.8;
+            color: var(--text-primary);
+            min-height: 0;
+            user-select: text;
+            position: relative;
+        }
+
+        .editor-transcript-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .editor-transcript-content::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .editor-transcript-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        .editor-transcript-content::-webkit-scrollbar-thumb:hover {
+            background: #8b5cf6;
+        }
+
+        .transcript-paragraph {
+            font-size: 15px;
+            line-height: 1.8;
+            color: var(--text-primary);
+            padding: 20px;
+            position: relative;
+            user-select: text;  /* CHANGED from none to text */
+            cursor: text;        /* CHANGED from default to text */
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            min-height: 200px;
+        }
+
+        .transcript-highlight {
+            background: rgba(139, 92, 246, 0.25);
+            border-radius: 2px;
+            position: relative;
+            padding: 2px 0;
+            transition: background 0.2s;
+        }
+
+        .transcript-highlight.active {
+            background: rgba(139, 92, 246, 0.35);
+        }
+
+        .selection-handle {
+            position: absolute;
+            z-index: 1000;      /* CHANGED from 100 to 1000 */
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
+            pointer-events: auto;  /* ADDED */
+        }
+
+        .selection-handle:active {
+            cursor: grabbing;
+        }
+
+        /* Handle structure: lollipop design - circular knob on top with vertical bar */
+        .selection-handle-knob {
+            width: 20px;
+            height: 20px;
+            background: #8b5cf6;
+            border: 3px solid white;
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+            margin: 0 auto;
+            z-index: 2;
+        }
+
+        .selection-handle-bar {
+            width: 4px;
+            height: 30px;
+            background: #8b5cf6;
+            position: relative;
+            margin: 0 auto;
+            margin-top: -2px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 1;
+        }
+
+        /* Start handle: positioned at the START of the selection */
+        /* The handle container's left edge aligns with the character boundary */
+        /* We offset it left by half the knob width to center the knob on the boundary */
+        .selection-handle-start {
+            /* No additional positioning needed - handled in JS */
+        }
+
+        /* End handle: positioned at the END of the selection */
+        /* The handle container's left edge aligns with the character boundary */
+        /* We offset it left by half the knob width to center the knob on the boundary */
+        .selection-handle-end {
+            /* No additional positioning needed - handled in JS */
+        }
+
+        .editor-empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .editor-empty-state svg {
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+
+        .editor-footer {
+            display: flex;
+            gap: 12px;
+        }
+
+        .editor-cancel-btn,
+        .editor-save-btn {
+            flex: 1;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-height: 56px;
+        }
+
+        .editor-cancel-btn {
+            background: var(--bg-dark);
+            border: 2px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        .editor-cancel-btn:hover {
+            border-color: var(--text-secondary);
+            color: var(--text-primary);
+        }
+
+        .editor-cancel-btn:active {
+            transform: scale(0.98);
+        }
+
+        .editor-save-btn {
+            background: #8b5cf6;
+            border: none;
+            color: white;
+        }
+
+        .editor-save-btn:hover {
+            background: #7c3aed;
+        }
+
+        .editor-save-btn:active {
+            transform: scale(0.98);
+        }
+
+        .editor-save-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 768px) {
+            .editor-section-header {
+                padding: 12px 16px 10px;
+            }
+
+            .editor-clips-list,
+            .editor-transcript-content {
+                padding: 0 16px 12px;
+            }
+
+            .editor-footer {
+                flex-direction: column-reverse;
+                gap: 8px;
+            }
+
+            .editor-cancel-btn,
+            .editor-save-btn {
+                width: 100%;
+            }
+        }
+
+        .toast-notification {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #10b981;
+            color: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            z-index: 2000;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            animation: toastSlideUp 0.3s ease;
+            pointer-events: none;
+        }
+
+        @keyframes toastSlideUp {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Test Page UI -->
+    <div class="test-container">
+        <h1>🎬 Clip Script Editor Test (Updated)</h1>
+
+        <div class="test-info">
+            <h2>New Features (Redesigned UI):</h2>
+            <ul>
+                <li>Full paragraph transcript (no timestamps)</li>
+                <li>iOS/Android-style drag handles on text selection</li>
+                <li>Real-time boundary adjustment with word snapping</li>
+                <li>Check button (✓) to confirm changes</li>
+                <li>Exact same code as webapp (only data is mocked)</li>
+            </ul>
+        </div>
+
+        <button class="open-editor-btn" onclick="openClipEditor()">
+            Open Clip Editor
+        </button>
+    </div>
+
+    <!-- Clip Script Editor Modal (EXACT same HTML as webapp) -->
+    <div class="modal" id="clipEditorModal" style="display: none;">
+        <div class="modal-content clip-editor-content">
+            <div class="modal-header">
+                <h2>Clip Script Editor</h2>
+                <button class="modal-close" id="closeClipEditorModal">✕</button>
+            </div>
+            <div class="modal-body clip-editor-body">
+                <!-- Clips Section -->
+                <div class="editor-clips-section">
+                    <div class="editor-section-header">
+                        <h3>Clips</h3>
+                        <span class="clip-count" id="editorClipCount">0 clips</span>
+                    </div>
+                    <div class="editor-clips-list" id="editorClipsList">
+                        <!-- Clips will be rendered here -->
+                    </div>
+                </div>
+
+                <!-- Separator -->
+                <div class="editor-separator"></div>
+
+                <!-- Transcript Section -->
+                <div class="editor-transcript-section">
+                    <div class="editor-section-header">
+                        <h3>Transcript</h3>
+                        <button class="add-clip-btn" id="addClipBtn" title="Add new clip from selection">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="editor-transcript-content" id="editorTranscript">
+                        <!-- Transcript will be rendered here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer editor-footer">
+                <button class="editor-cancel-btn" id="editorCancelBtn">Cancel</button>
+                <button class="editor-save-btn" id="editorSaveBtn">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== MOCKED DATA (THIS IS THE ONLY DIFFERENCE FROM WEBAPP) =====
+        const mockClips = [
+            {
+                index: 0,
+                start: 5.0,
+                end: 28.0,
+                duration: 23.0,
+                title: "Opening Hook",
+                reason: "Strong opening statement that captures attention immediately",
+                text: "Welcome everyone to this amazing tutorial where we'll learn how to build incredible applications with modern JavaScript frameworks and tools",
+                youtube_link: "https://youtube.com/watch?v=test&t=5",
+                keywords: ["intro", "hook", "welcome"],
+                words: [
+                    {word: "Welcome", start: 5.0, end: 5.8},
+                    {word: "everyone", start: 5.9, end: 6.5},
+                    {word: "to", start: 6.6, end: 6.7},
+                    {word: "this", start: 6.8, end: 7.1},
+                    {word: "amazing", start: 7.2, end: 7.9},
+                    {word: "tutorial", start: 8.0, end: 8.7},
+                    {word: "where", start: 8.8, end: 9.2},
+                    {word: "we'll", start: 9.3, end: 9.6},
+                    {word: "learn", start: 9.7, end: 10.2},
+                    {word: "how", start: 10.3, end: 10.6},
+                    {word: "to", start: 10.7, end: 10.8},
+                    {word: "build", start: 10.9, end: 11.4},
+                    {word: "incredible", start: 11.5, end: 12.3},
+                    {word: "applications", start: 12.4, end: 13.5},
+                    {word: "with", start: 13.6, end: 13.9},
+                    {word: "modern", start: 14.0, end: 14.6},
+                    {word: "JavaScript", start: 14.7, end: 15.5},
+                    {word: "frameworks", start: 15.6, end: 16.4},
+                    {word: "and", start: 16.5, end: 16.7},
+                    {word: "tools", start: 16.8, end: 17.3}
+                ],
+                parts: [{start: 5.0, end: 28.0, text: "Welcome everyone to this amazing tutorial", words: []}],
+                is_valid: true,
+                validation_level: "valid",
+                validation_warnings: []
+            },
+            {
+                index: 1,
+                start: 45.0,
+                end: 72.0,
+                duration: 27.0,
+                title: "Key Concept Explanation",
+                reason: "Clear explanation of core concepts with visual examples",
+                text: "The most important thing to understand is how state management works in modern applications. It's the foundation of everything we do in reactive programming and user interface development",
+                youtube_link: "https://youtube.com/watch?v=test&t=45",
+                keywords: ["concept", "state", "foundation"],
+                words: [
+                    {word: "The", start: 45.0, end: 45.2},
+                    {word: "most", start: 45.3, end: 45.7},
+                    {word: "important", start: 45.8, end: 46.5},
+                    {word: "thing", start: 46.6, end: 47.0},
+                    {word: "to", start: 47.1, end: 47.2},
+                    {word: "understand", start: 47.3, end: 48.1},
+                    {word: "is", start: 48.2, end: 48.4},
+                    {word: "how", start: 48.5, end: 48.8},
+                    {word: "state", start: 48.9, end: 49.4},
+                    {word: "management", start: 49.5, end: 50.3},
+                    {word: "works", start: 50.4, end: 50.9},
+                    {word: "in", start: 51.0, end: 51.2},
+                    {word: "modern", start: 51.3, end: 51.9},
+                    {word: "applications", start: 52.0, end: 52.9},
+                    {word: "It's", start: 53.0, end: 53.4},
+                    {word: "the", start: 53.5, end: 53.7},
+                    {word: "foundation", start: 53.8, end: 54.6},
+                    {word: "of", start: 54.7, end: 54.9},
+                    {word: "everything", start: 55.0, end: 55.7},
+                    {word: "we", start: 55.8, end: 56.0},
+                    {word: "do", start: 56.1, end: 56.3}
+                ],
+                parts: [{start: 45.0, end: 72.0, text: "The most important thing to understand is how state management works", words: []}],
+                is_valid: true,
+                validation_level: "valid",
+                validation_warnings: []
+            },
+            {
+                index: 2,
+                start: 95.0,
+                end: 125.0,
+                duration: 30.0,
+                title: "Advanced Techniques",
+                reason: "Deep dive into optimization strategies and best practices",
+                text: "Now let's explore some advanced techniques for optimizing performance. These patterns will make your application lightning fast and provide a better user experience for everyone",
+                youtube_link: "https://youtube.com/watch?v=test&t=95",
+                keywords: ["advanced", "optimization", "performance"],
+                words: [
+                    {word: "Now", start: 95.0, end: 95.3},
+                    {word: "let's", start: 95.4, end: 95.7},
+                    {word: "explore", start: 95.8, end: 96.5},
+                    {word: "some", start: 96.6, end: 96.9},
+                    {word: "advanced", start: 97.0, end: 97.8},
+                    {word: "techniques", start: 97.9, end: 98.7},
+                    {word: "for", start: 98.8, end: 99.0},
+                    {word: "optimizing", start: 99.1, end: 99.9},
+                    {word: "performance", start: 100.0, end: 100.9},
+                    {word: "These", start: 101.0, end: 101.4},
+                    {word: "patterns", start: 101.5, end: 102.2},
+                    {word: "will", start: 102.3, end: 102.6},
+                    {word: "make", start: 102.7, end: 103.0},
+                    {word: "your", start: 103.1, end: 103.4},
+                    {word: "application", start: 103.5, end: 104.4},
+                    {word: "lightning", start: 104.5, end: 105.2},
+                    {word: "fast", start: 105.3, end: 105.7}
+                ],
+                parts: [{start: 95.0, end: 125.0, text: "Now let's explore some advanced techniques", words: []}],
+                is_valid: true,
+                validation_level: "valid",
+                validation_warnings: []
+            }
+        ];
+
+        // ===== EXACT SAME CODE FROM WEBAPP script.js =====
+
+        // State for clip editor
+        let editorState = {
+            isOpen: false,
+            clips: [],
+            originalClips: [],
+            transcriptSegments: [],
+            transcriptWords: [], // Array of {word, start, end, charStart, charEnd}
+            transcriptFullText: '', // Complete paragraph text
+            selectedClipIndex: null,
+            isAddingClip: false,
+            draggedClipIndex: null,
+            clipModifications: {}, // Track which clips have been modified {clipIndex: {start, end}}
+            isDraggingHandle: false, // Track if user is dragging a handle
+            dragHandleType: null, // 'start' or 'end'
+            pendingClipSelection: null // Store pending clip selection before confirmation
+        };
+
+        // DOM elements for editor
+        const clipEditorModal = document.getElementById('clipEditorModal');
+        const closeClipEditorModal = document.getElementById('closeClipEditorModal');
+        const editorClipsList = document.getElementById('editorClipsList');
+        const editorTranscript = document.getElementById('editorTranscript');
+        const editorClipCount = document.getElementById('editorClipCount');
+        const addClipBtn = document.getElementById('addClipBtn');
+        const editorCancelBtn = document.getElementById('editorCancelBtn');
+        const editorSaveBtn = document.getElementById('editorSaveBtn');
+
+        // Split multi-part clips into individual clips for editor
+        function splitMultiPartClips(clips) {
+            const splitClips = [];
+            let clipCounter = 0;
+
+            clips.forEach((clip) => {
+                // Check if this is a multi-part clip
+                if (clip.parts && clip.parts.length > 1) {
+                    // Split into individual clips - one per part
+                    clip.parts.forEach((part, partIndex) => {
+                        const newClip = {
+                            index: clipCounter++,
+                            start: part.start,
+                            end: part.end,
+                            duration: part.end - part.start,
+                            title: `${clip.title} - Part ${partIndex + 1}`,
+                            reason: clip.reason,
+                            text: part.text || clip.text,
+                            youtube_link: clip.youtube_link ? clip.youtube_link.split('&t=')[0] + `&t=${Math.floor(part.start)}` : '',
+                            keywords: clip.keywords || [],
+                            words: part.words || [],
+                            parts: [{
+                                start: part.start,
+                                end: part.end,
+                                text: part.text || '',
+                                words: part.words || []
+                            }],
+                            is_valid: clip.is_valid,
+                            validation_warnings: clip.validation_warnings || [],
+                            validation_level: clip.validation_level || 'valid'
+                        };
+                        splitClips.push(newClip);
+                    });
+                } else {
+                    // Single-part clip or no parts array - keep as is
+                    clip.index = clipCounter++;
+                    splitClips.push(clip);
+                }
+            });
+
+            return splitClips;
+        }
+
+        // Open Clip Script Editor
+        function openClipEditor(clipIndex = null) {
+            // MOCK DATA INJECTION POINT
+            const analyzedClips = mockClips;
+
+            if (!analyzedClips || analyzedClips.length === 0) {
+                showToast('No clips available to edit', 'error');
+                return;
+            }
+
+            // Deep clone clips to avoid mutating original data
+            let clonedClips = JSON.parse(JSON.stringify(analyzedClips));
+
+            // Split multi-part clips into individual clips
+            editorState.clips = splitMultiPartClips(clonedClips);
+            editorState.originalClips = JSON.parse(JSON.stringify(editorState.clips));
+            editorState.selectedClipIndex = clipIndex;
+            editorState.isOpen = true;
+
+            // Extract transcript segments from clips (word-level timing)
+            editorState.transcriptSegments = extractTranscriptSegments(editorState.clips);
+
+            // Build word mapping for character-level positioning
+            const wordMapping = buildTranscriptWordMapping(editorState.clips);
+            editorState.transcriptWords = wordMapping.words;
+            editorState.transcriptFullText = wordMapping.fullText;
+
+            // Render editor content
+            renderEditorClips();
+            renderEditorTranscript();
+
+            // Show modal with fade-in
+            clipEditorModal.style.display = 'flex';
+            setTimeout(() => {
+                clipEditorModal.style.opacity = '1';
+            }, 10);
+
+            // Select and scroll to clip if specified
+            if (clipIndex !== null) {
+                setTimeout(() => {
+                    selectClip(clipIndex);
+                }, 100);
+            }
+
+            console.log('[EDITOR] Opened with', editorState.clips.length, 'clips');
+        }
+
+        // Close Clip Script Editor
+        function closeClipEditor() {
+            editorState.isOpen = false;
+            editorState.clips = [];
+            editorState.originalClips = [];
+            editorState.transcriptSegments = [];
+            editorState.transcriptWords = [];
+            editorState.transcriptFullText = '';
+            editorState.selectedClipIndex = null;
+            editorState.isAddingClip = false;
+            editorState.clipModifications = {};
+            editorState.isDraggingHandle = false;
+            editorState.dragHandleType = null;
+
+            clipEditorModal.style.opacity = '0';
+            setTimeout(() => {
+                clipEditorModal.style.display = 'none';
+            }, 200);
+        }
+
+        // Extract transcript segments from clips
+        function extractTranscriptSegments(clips) {
+            const segments = [];
+            const segmentMap = new Map();
+
+            // Collect all words from all clips
+            clips.forEach(clip => {
+                if (clip.words && clip.words.length > 0) {
+                    clip.words.forEach(word => {
+                        if (!segmentMap.has(word.start)) {
+                            segmentMap.set(word.start, {
+                                start: word.start,
+                                end: word.end,
+                                text: word.word || word.text || ''
+                            });
+                        }
+                    });
+                }
+            });
+
+            // Convert to array and sort by start time
+            const sortedSegments = Array.from(segmentMap.values()).sort((a, b) => a.start - b.start);
+
+            // Group words into segments (every 10 seconds or sentence-like groups)
+            let currentSegment = null;
+            const SEGMENT_DURATION = 10; // seconds
+
+            sortedSegments.forEach(word => {
+                if (!currentSegment || word.start - currentSegment.start >= SEGMENT_DURATION) {
+                    if (currentSegment) {
+                        segments.push(currentSegment);
+                    }
+                    currentSegment = {
+                        start: word.start,
+                        end: word.end,
+                        text: word.text
+                    };
+                } else {
+                    currentSegment.end = word.end;
+                    currentSegment.text += ' ' + word.text;
+                }
+            });
+
+            if (currentSegment) {
+                segments.push(currentSegment);
+            }
+
+            return segments;
+        }
+
+        // Build character-level word mapping from transcript
+        function buildTranscriptWordMapping(clips) {
+            const words = [];
+            const wordMap = new Map();
+
+            // Collect all words from all clips
+            clips.forEach(clip => {
+                if (clip.words && clip.words.length > 0) {
+                    clip.words.forEach(word => {
+                        const wordText = (word.word || word.text || '').trim();
+                        if (wordText && !wordMap.has(word.start)) {
+                            wordMap.set(word.start, {
+                                word: wordText,
+                                start: word.start,
+                                end: word.end
+                            });
+                        }
+                    });
+                }
+            });
+
+            // Convert to array and sort by start time
+            const sortedWords = Array.from(wordMap.values()).sort((a, b) => a.start - b.start);
+
+            // Build full text paragraph and assign character positions
+            let charPosition = 0;
+            let fullText = '';
+
+            sortedWords.forEach((word, index) => {
+                const charStart = charPosition;
+                const charEnd = charPosition + word.word.length;
+
+                words.push({
+                    word: word.word,
+                    start: word.start,
+                    end: word.end,
+                    charStart: charStart,
+                    charEnd: charEnd
+                });
+
+                fullText += word.word;
+                charPosition = charEnd;
+
+                // Add space after each word except the last
+                if (index < sortedWords.length - 1) {
+                    fullText += ' ';
+                    charPosition += 1;
+                }
+            });
+
+            return { words, fullText };
+        }
+
+        // Get absolute character position in the paragraph from a DOM node and offset
+        function getAbsoluteCharPosition(paragraphEl, targetNode, targetOffset) {
+            // Walk the DOM tree to calculate absolute position
+            let charCount = 0;
+
+            function walk(node) {
+                if (node === targetNode) {
+                    return charCount + targetOffset;
+                }
+
+                if (node.nodeType === Node.TEXT_NODE) {
+                    if (node === targetNode) {
+                        return charCount + targetOffset;
+                    }
+                    charCount += node.textContent.length;
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    for (let child of node.childNodes) {
+                        const result = walk(child);
+                        if (result !== null) {
+                            return result;
+                        }
+                    }
+                }
+
+                return null;
+            }
+
+            const result = walk(paragraphEl);
+            return result !== null ? result : -1;
+        }
+
+        // Find word index by character position in text
+        function findWordIndexByCharPosition(charPos) {
+            for (let i = 0; i < editorState.transcriptWords.length; i++) {
+                const word = editorState.transcriptWords[i];
+                if (charPos >= word.charStart && charPos <= word.charEnd) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        // Find word index by time
+        function findWordIndexByTime(time) {
+            for (let i = 0; i < editorState.transcriptWords.length; i++) {
+                const word = editorState.transcriptWords[i];
+                if (time >= word.start && time <= word.end) {
+                    return i;
+                }
+                if (time < word.start) {
+                    return Math.max(0, i - 1);
+                }
+            }
+            return editorState.transcriptWords.length - 1;
+        }
+
+        // Render clips in editor
+        function renderEditorClips() {
+            editorClipsList.innerHTML = '';
+
+            if (editorState.clips.length === 0) {
+                editorClipsList.innerHTML = `
+                    <div class="editor-empty-state">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="2" width="20" height="20" rx="2"></rect>
+                            <line x1="12" y1="8" x2="12" y2="16"></line>
+                            <line x1="8" y1="12" x2="16" y2="12"></line>
+                        </svg>
+                        <p>No clips yet. Click the + button below to add a clip from the transcript.</p>
+                    </div>
+                `;
+                editorClipCount.textContent = '0 clips';
+                return;
+            }
+
+            editorState.clips.forEach((clip, index) => {
+                const clipCard = createEditorClipCard(clip, index);
+                editorClipsList.appendChild(clipCard);
+            });
+
+            editorClipCount.textContent = `${editorState.clips.length} clip${editorState.clips.length !== 1 ? 's' : ''}`;
+        }
+
+        // Create editor clip card
+        function createEditorClipCard(clip, index) {
+            const card = document.createElement('div');
+            card.className = 'editor-clip-card';
+            card.setAttribute('data-clip-index', index);
+            card.setAttribute('draggable', 'true');
+
+            const startTime = formatTime(clip.start);
+            const endTime = formatTime(clip.end);
+            const text = clip.text || 'No transcript available';
+
+            const isModified = editorState.clipModifications[index] !== undefined;
+
+            card.innerHTML = `
+                <div class="editor-clip-header">
+                    <div class="clip-drag-handle" title="Drag to reorder">☰</div>
+                    <div class="editor-clip-time">Clip ${index + 1} - ${startTime} - ${endTime}</div>
+                    <button class="clip-confirm-btn ${isModified ? 'visible active' : ''}" title="Confirm changes">✓</button>
+                    <button class="clip-delete-btn" title="Delete clip">✕</button>
+                </div>
+                <div class="editor-clip-text">${text}</div>
+            `;
+
+            // Confirm button handler
+            const confirmBtn = card.querySelector('.clip-confirm-btn');
+            confirmBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (editorState.clipModifications[index]) {
+                    const mod = editorState.clipModifications[index];
+                    editorState.clips[index].start = mod.start;
+                    editorState.clips[index].end = mod.end;
+                    editorState.clips[index].duration = mod.end - mod.start;
+
+                    delete editorState.clipModifications[index];
+                    renderEditorClips();
+                    selectClip(index);
+                    showToast('Clip boundaries updated');
+                }
+            });
+
+            // Delete button handler
+            const deleteBtn = card.querySelector('.clip-delete-btn');
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteClip(index);
+            });
+
+            // Drag handlers
+            card.addEventListener('dragstart', (e) => {
+                editorState.draggedClipIndex = index;
+                card.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            card.addEventListener('dragend', () => {
+                card.classList.remove('dragging');
+                editorState.draggedClipIndex = null;
+                document.querySelectorAll('.editor-clip-card').forEach(c => {
+                    c.classList.remove('drag-over');
+                });
+            });
+
+            card.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (editorState.draggedClipIndex !== null && editorState.draggedClipIndex !== index) {
+                    card.classList.add('drag-over');
+                }
+            });
+
+            card.addEventListener('dragleave', () => {
+                card.classList.remove('drag-over');
+            });
+
+            card.addEventListener('drop', (e) => {
+                e.preventDefault();
+                card.classList.remove('drag-over');
+                if (editorState.draggedClipIndex !== null && editorState.draggedClipIndex !== index) {
+                    reorderClip(editorState.draggedClipIndex, index);
+                }
+            });
+
+            // Click to select
+            card.addEventListener('click', () => {
+                selectClip(index);
+            });
+
+            return card;
+        }
+
+        // Format time as HH:MM:SS
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+
+            if (hours > 0) {
+                return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }
+            return `${minutes}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Render transcript as continuous paragraph
+        function renderEditorTranscript() {
+            editorTranscript.innerHTML = '';
+
+            if (editorState.transcriptWords.length === 0) {
+                editorTranscript.innerHTML = `
+                    <div class="editor-empty-state">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                        </svg>
+                        <p>No transcript available</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Create continuous paragraph
+            const paragraphEl = document.createElement('div');
+            paragraphEl.className = 'transcript-paragraph';
+            paragraphEl.id = 'transcriptParagraph';
+            paragraphEl.textContent = editorState.transcriptFullText;
+
+            editorTranscript.appendChild(paragraphEl);
+
+            // Enable text selection for creating clips
+            enableTranscriptSelection();
+        }
+
+        // Enable transcript selection for creating new clips
+        function enableTranscriptSelection() {
+            const paragraphEl = document.getElementById('transcriptParagraph');
+            if (!paragraphEl) return;
+
+            // Show handles during selection (mouseup event)
+            paragraphEl.addEventListener('mouseup', () => {
+                if (!editorState.isAddingClip) return;
+
+                const selection = window.getSelection();
+                if (!selection || selection.rangeCount === 0) return;
+
+                const range = selection.getRangeAt(0);
+                if (range.collapsed) return;
+
+                // Get character positions of selection
+                const startOffset = range.startOffset;
+                const endOffset = range.endOffset;
+
+                // Find corresponding words
+                const startWordIndex = findWordIndexByCharPosition(startOffset);
+                const endWordIndex = findWordIndexByCharPosition(endOffset);
+
+                if (startWordIndex !== -1 && endWordIndex !== -1) {
+                    const startWord = editorState.transcriptWords[startWordIndex];
+                    const endWord = editorState.transcriptWords[endWordIndex];
+                    const selectedText = selection.toString().trim();
+
+                    if (selectedText && startWord.start < endWord.end) {
+                        // Show preview with handles before creating clip
+                        showSelectionPreview(startWord.start, endWord.end, startWordIndex, endWordIndex, selectedText);
+                        selection.removeAllRanges();
+                    }
+                }
+            });
+        }
+
+        // Show selection preview with drag handles before creating clip
+        function showSelectionPreview(startTime, endTime, startWordIndex, endWordIndex, text) {
+            // Highlight the selected range
+            highlightTranscriptRange(startTime, endTime);
+
+            // Store the selection data for later use
+            editorState.pendingClipSelection = {
+                startTime,
+                endTime,
+                text,
+                startWordIndex,
+                endWordIndex
+            };
+
+            // Show a confirm button or toast message
+            showToast('Drag handles to adjust, then click + again to confirm', 'info');
+        }
+
+        // Create new clip from selection
+        function createNewClipFromSelection(startTime, endTime, text) {
+            const newClip = {
+                index: editorState.clips.length,
+                start: startTime,
+                end: endTime,
+                duration: endTime - startTime,
+                title: `Clip ${editorState.clips.length + 1}`,
+                reason: 'Manually added clip',
+                text: text,
+                youtube_link: '',
+                keywords: [],
+                words: [],
+                parts: [],
+                is_valid: true,
+                validation_warnings: [],
+                validation_level: 'valid'
+            };
+
+            editorState.clips.push(newClip);
+            renderEditorClips();
+
+            editorState.isAddingClip = false;
+            addClipBtn.classList.remove('active');
+            showToast('Clip added successfully');
+
+            setTimeout(() => {
+                const clipCard = editorClipsList.querySelector(`[data-clip-index="${editorState.clips.length - 1}"]`);
+                if (clipCard) {
+                    clipCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    clipCard.classList.add('selected');
+                }
+            }, 100);
+        }
+
+        // Delete clip
+        function deleteClip(index) {
+            if (confirm(`Delete Clip ${index + 1}?`)) {
+                editorState.clips.splice(index, 1);
+                editorState.clips.forEach((clip, i) => {
+                    clip.index = i;
+                });
+                renderEditorClips();
+                showToast('Clip deleted');
+            }
+        }
+
+        // Reorder clip
+        function reorderClip(fromIndex, toIndex) {
+            if (fromIndex === toIndex) return;
+
+            const clip = editorState.clips.splice(fromIndex, 1)[0];
+            editorState.clips.splice(toIndex, 0, clip);
+
+            editorState.clips.forEach((clip, i) => {
+                clip.index = i;
+            });
+
+            renderEditorClips();
+            showToast('Clip reordered');
+        }
+
+        // Select clip (highlight text range with iOS/Android-style handles)
+        function selectClip(index) {
+            editorState.selectedClipIndex = index;
+
+            // Remove selection from all cards
+            document.querySelectorAll('.editor-clip-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+
+            // Add selection to clicked card
+            const selectedCard = editorClipsList.querySelector(`[data-clip-index="${index}"]`);
+            if (selectedCard) {
+                selectedCard.classList.add('selected');
+            }
+
+            // Get clip times (use modifications if available)
+            const clip = editorState.clips[index];
+            if (!clip) return;
+
+            const mod = editorState.clipModifications[index];
+            const startTime = mod ? mod.start : clip.start;
+            const endTime = mod ? mod.end : clip.end;
+
+            // Highlight corresponding text range
+            highlightTranscriptRange(startTime, endTime);
+        }
+
+        // Highlight transcript range with text highlighting and drag handles
+        function highlightTranscriptRange(startTime, endTime) {
+            const paragraphEl = document.getElementById('transcriptParagraph');
+            if (!paragraphEl) return;
+
+            // Remove any existing highlights and handles
+            clearTranscriptHighlight();
+
+            // Find word indices for start and end times
+            const startWordIndex = findWordIndexByTime(startTime);
+            const endWordIndex = findWordIndexByTime(endTime);
+
+            if (startWordIndex === -1 || endWordIndex === -1) return;
+
+            const startWord = editorState.transcriptWords[startWordIndex];
+            const endWord = editorState.transcriptWords[endWordIndex];
+
+            // Create highlighted text using Range API
+            const range = document.createRange();
+            const textNode = paragraphEl.firstChild;
+
+            if (!textNode) return;
+
+            try {
+                range.setStart(textNode, startWord.charStart);
+                range.setEnd(textNode, endWord.charEnd);
+
+                // Wrap highlighted text in a span
+                const highlightSpan = document.createElement('span');
+                highlightSpan.className = 'transcript-highlight';
+                highlightSpan.id = 'transcriptHighlight';
+                range.surroundContents(highlightSpan);
+
+                // Create and position drag handles
+                createSelectionHandles(highlightSpan, startWordIndex, endWordIndex);
+
+                // Scroll to highlight
+                setTimeout(() => {
+                    highlightSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 100);
+            } catch (e) {
+                console.error('Error creating highlight:', e);
+            }
+        }
+
+        // Clear transcript highlight and handles
+        function clearTranscriptHighlight() {
+            const existingHighlight = document.getElementById('transcriptHighlight');
+            if (existingHighlight) {
+                const parent = existingHighlight.parentNode;
+                while (existingHighlight.firstChild) {
+                    parent.insertBefore(existingHighlight.firstChild, existingHighlight);
+                }
+                parent.removeChild(existingHighlight);
+                parent.normalize();
+            }
+
+            const existingHandles = document.querySelectorAll('.selection-handle');
+            existingHandles.forEach(handle => handle.remove());
+        }
+
+        // NEW: Create iOS/Android-style selection handles with PRECISE positioning
+        function createSelectionHandles(highlightSpan, startWordIndex, endWordIndex) {
+            const paragraphEl = document.getElementById('transcriptParagraph');
+            if (!paragraphEl) {
+                console.error('❌ Paragraph element not found');
+                return;
+            }
+
+            const startWord = editorState.transcriptWords[startWordIndex];
+            const endWord = editorState.transcriptWords[endWordIndex];
+
+            if (!startWord || !endWord) {
+                console.error('❌ Start or end word not found', { startWordIndex, endWordIndex });
+                return;
+            }
+
+            console.log('🎯 Creating handles for:', {
+                startWord: startWord.word,
+                endWord: endWord.word,
+                charStart: startWord.charStart,
+                charEnd: endWord.charEnd
+            });
+
+            // Get the text node inside the highlight span
+            const textNode = highlightSpan.firstChild;
+            if (!textNode) {
+                console.error('❌ No text node in highlight span');
+                return;
+            }
+
+            // Create ranges for PRECISE character-level positioning
+            const startRange = document.createRange();
+            const endRange = document.createRange();
+
+            // Get the actual character positions within the highlight span
+            // The highlightSpan contains text from startWord.charStart to endWord.charEnd
+            const spanStartChar = startWord.charStart;
+            const spanEndChar = endWord.charEnd;
+            const textLength = textNode.textContent.length;
+
+            console.log('📝 Text info:', {
+                spanStartChar,
+                spanEndChar,
+                textLength,
+                text: textNode.textContent.substring(0, 50)
+            });
+
+            // Create range for first character (start handle)
+            startRange.setStart(textNode, 0);
+            startRange.setEnd(textNode, 1);
+
+            // Create range for last character (end handle)
+            endRange.setStart(textNode, Math.max(0, textLength - 1));
+            endRange.setEnd(textNode, textLength);
+
+            const startRect = startRange.getBoundingClientRect();
+            const endRect = endRange.getBoundingClientRect();
+            const paragraphRect = paragraphEl.getBoundingClientRect();
+
+            console.log('📐 Rectangles:', {
+                start: { left: startRect.left, top: startRect.top },
+                end: { left: endRect.right, top: endRect.top },
+                paragraph: { left: paragraphRect.left, top: paragraphRect.top }
+            });
+
+            // Create start handle
+            const startHandle = document.createElement('div');
+            startHandle.className = 'selection-handle selection-handle-start';
+            startHandle.id = 'selectionHandleStart';
+            startHandle.innerHTML = `
+                <div class="selection-handle-knob"></div>
+                <div class="selection-handle-bar"></div>
+            `;
+
+            // Create end handle
+            const endHandle = document.createElement('div');
+            endHandle.className = 'selection-handle selection-handle-end';
+            endHandle.id = 'selectionHandleEnd';
+            endHandle.innerHTML = `
+                <div class="selection-handle-knob"></div>
+                <div class="selection-handle-bar"></div>
+            `;
+
+            // Position handles at EXACT character boundaries
+            // Both handles are centered on their respective boundaries
+            // Knob width is 20px + 3px border = 26px total, so we offset by 13px to center it
+            const knobRadius = 13; // Half of 26px total knob width (20px + 3px border on each side)
+
+            // Start handle: center the knob on the LEFT edge of the first character
+            const startLeft = (startRect.left - paragraphRect.left) - knobRadius;
+            const startTop = (startRect.top - paragraphRect.top);
+
+            // End handle: center the knob on the RIGHT edge of the last character
+            const endLeft = (endRect.right - paragraphRect.left) - knobRadius;
+            const endTop = (endRect.top - paragraphRect.top);
+
+            console.log('📍 Handle positions:', {
+                start: { left: startLeft, top: startTop },
+                end: { left: endLeft, top: endTop }
+            });
+
+            startHandle.style.left = startLeft + 'px';
+            startHandle.style.top = startTop + 'px';
+
+            endHandle.style.left = endLeft + 'px';
+            endHandle.style.top = endTop + 'px';
+
+            // Add handles to paragraph element (so they scroll with the text)
+            paragraphEl.appendChild(startHandle);
+            paragraphEl.appendChild(endHandle);
+
+            console.log('✅ Handles added to DOM');
+
+            // Attach drag event handlers
+            attachHandleDragListeners(startHandle, 'start', startWordIndex, endWordIndex);
+            attachHandleDragListeners(endHandle, 'end', startWordIndex, endWordIndex);
+        }
+
+        // Attach drag event listeners to selection handles
+        function attachHandleDragListeners(handle, type, initialStartIndex, initialEndIndex) {
+            let isDragging = false;
+            let currentStartIndex = initialStartIndex;
+            let currentEndIndex = initialEndIndex;
+
+            // Mouse events
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isDragging = true;
+                editorState.isDraggingHandle = true;
+                editorState.dragHandleType = type;
+                handle.style.cursor = 'grabbing';
+
+                const highlightSpan = document.getElementById('transcriptHighlight');
+                if (highlightSpan) {
+                    highlightSpan.classList.add('active');
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                handleDragMove(e.clientX, e.clientY);
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (!isDragging) return;
+
+                isDragging = false;
+                editorState.isDraggingHandle = false;
+                editorState.dragHandleType = null;
+                handle.style.cursor = 'grab';
+
+                const highlightSpan = document.getElementById('transcriptHighlight');
+                if (highlightSpan) {
+                    highlightSpan.classList.remove('active');
+                }
+
+                updateClipModification();
+            });
+
+            // Touch events
+            handle.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                isDragging = true;
+                editorState.isDraggingHandle = true;
+                editorState.dragHandleType = type;
+
+                const highlightSpan = document.getElementById('transcriptHighlight');
+                if (highlightSpan) {
+                    highlightSpan.classList.add('active');
+                }
+            });
+
+            document.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+
+                const touch = e.touches[0];
+                handleDragMove(touch.clientX, touch.clientY);
+            });
+
+            document.addEventListener('touchend', () => {
+                if (!isDragging) return;
+
+                isDragging = false;
+                editorState.isDraggingHandle = false;
+                editorState.dragHandleType = null;
+
+                const highlightSpan = document.getElementById('transcriptHighlight');
+                if (highlightSpan) {
+                    highlightSpan.classList.remove('active');
+                }
+
+                updateClipModification();
+            });
+
+            function handleDragMove(clientX, clientY) {
+                const paragraphEl = document.getElementById('transcriptParagraph');
+                if (!paragraphEl) return;
+
+                const range = document.caretRangeFromPoint(clientX, clientY);
+                if (!range) return;
+
+                // Calculate absolute character position in the full text
+                const charPos = getAbsoluteCharPosition(paragraphEl, range.startContainer, range.startOffset);
+                if (charPos === -1) return;
+
+                const wordIndex = findWordIndexByCharPosition(charPos);
+                if (wordIndex === -1) return;
+
+                // Update the appropriate boundary
+                let needsUpdate = false;
+                if (type === 'start') {
+                    if (wordIndex < currentEndIndex) {
+                        currentStartIndex = wordIndex;
+                        needsUpdate = true;
+                    }
+                } else { // type === 'end'
+                    if (wordIndex > currentStartIndex) {
+                        currentEndIndex = wordIndex;
+                        needsUpdate = true;
+                    }
+                }
+
+                if (!needsUpdate) return;
+
+                const newStartWord = editorState.transcriptWords[currentStartIndex];
+                const newEndWord = editorState.transcriptWords[currentEndIndex];
+
+                if (!newStartWord || !newEndWord) return;
+
+                // Re-highlight with new boundaries
+                highlightTranscriptRange(newStartWord.start, newEndWord.end);
+            }
+
+            function updateClipModification() {
+                if (editorState.selectedClipIndex === null) return;
+
+                const newStartWord = editorState.transcriptWords[currentStartIndex];
+                const newEndWord = editorState.transcriptWords[currentEndIndex];
+
+                if (!newStartWord || !newEndWord) return;
+
+                editorState.clipModifications[editorState.selectedClipIndex] = {
+                    start: newStartWord.start,
+                    end: newEndWord.end
+                };
+
+                renderEditorClips();
+                selectClip(editorState.selectedClipIndex);
+            }
+        }
+
+        // Save changes
+        function saveEditorChanges() {
+            console.log('[SAVE] Clip changes:', editorState.clips);
+            showToast('Clips updated successfully');
+            closeClipEditor();
+        }
+
+        // Cancel changes
+        function cancelEditorChanges() {
+            if (JSON.stringify(editorState.clips) !== JSON.stringify(editorState.originalClips)) {
+                if (confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+                    closeClipEditor();
+                }
+            } else {
+                closeClipEditor();
+            }
+        }
+
+        // Show toast notification
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.textContent = message;
+
+            if (type === 'error') {
+                toast.style.background = '#ef4444';
+            } else if (type === 'info') {
+                toast.style.background = '#8b5cf6';
+            }
+
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => {
+                    document.body.removeChild(toast);
+                }, 300);
+            }, 3000);
+        }
+
+        // Event listeners
+        if (closeClipEditorModal) {
+            closeClipEditorModal.addEventListener('click', cancelEditorChanges);
+        }
+
+        if (editorCancelBtn) {
+            editorCancelBtn.addEventListener('click', cancelEditorChanges);
+        }
+
+        if (editorSaveBtn) {
+            editorSaveBtn.addEventListener('click', saveEditorChanges);
+        }
+
+        if (addClipBtn) {
+            addClipBtn.addEventListener('click', () => {
+                // If there's a pending selection, confirm it
+                if (editorState.pendingClipSelection) {
+                    const { startTime, endTime, text } = editorState.pendingClipSelection;
+                    createNewClipFromSelection(startTime, endTime, text);
+                    clearTranscriptHighlight();
+                    delete editorState.pendingClipSelection;
+                    editorState.isAddingClip = false;
+                    addClipBtn.classList.remove('active');
+                    return;
+                }
+
+                // Toggle add mode
+                editorState.isAddingClip = !editorState.isAddingClip;
+                addClipBtn.classList.toggle('active');
+
+                if (editorState.isAddingClip) {
+                    showToast('Select text in transcript to create a new clip');
+                } else {
+                    // Cancel selection preview
+                    clearTranscriptHighlight();
+                    delete editorState.pendingClipSelection;
+                }
+            });
+        }
+
+        if (clipEditorModal) {
+            clipEditorModal.addEventListener('click', (e) => {
+                if (e.target === clipEditorModal) {
+                    cancelEditorChanges();
+                }
+            });
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (!editorState.isOpen) return;
+
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelEditorChanges();
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                saveEditorChanges();
+            }
+        });
+
+        console.log('[INIT] Clip Editor Test Page Loaded (using exact webapp code)');
+        console.log('[INIT] Ready with', mockClips.length, 'mock clips');
+    </script>
+</body>
+</html>

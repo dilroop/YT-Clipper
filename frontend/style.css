@@ -552,6 +552,87 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     min-width: 0;
 }
 
+/* Validation Indicator Styles */
+.validation-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.validation-indicator.validation-valid {
+    background-color: #10b981;
+    color: white;
+}
+
+.validation-indicator.validation-warning {
+    background-color: #f59e0b;
+    color: white;
+}
+
+.validation-indicator.validation-error {
+    background-color: #ef4444;
+    color: white;
+}
+
+/* Validation message below clip header */
+.validation-message {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 12px;
+    line-height: 1.5;
+    border-left: 3px solid;
+}
+
+.validation-message.validation-valid {
+    border-left-color: #10b981;
+    color: #10b981;
+}
+
+.validation-message.validation-warning {
+    border-left-color: #f59e0b;
+    color: #f59e0b;
+}
+
+.validation-message.validation-error {
+    border-left-color: #ef4444;
+    color: #ef4444;
+}
+
+/* Tooltip on hover */
+.validation-indicator::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.95);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: normal;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    margin-bottom: 8px;
+    z-index: 10;
+}
+
+.validation-indicator:hover::after {
+    opacity: 1;
+}
+
 .clip-checkbox {
     width: 24px;
     height: 24px;
@@ -590,16 +671,49 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     font-size: 14px;
     line-height: 1.6;
     margin-bottom: 8px;
-    max-height: 200px;
+    max-height: 400px;
     overflow-y: auto;
     word-wrap: break-word;
     overflow-wrap: break-word;
 }
 
+.clip-part {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.clip-part:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+.clip-part-header {
+    color: var(--primary-color);
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+.clip-part-text {
+    padding-left: 8px;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
 /* Mobile: More compact transcript */
 @media (max-width: 768px) {
     .clip-transcript {
-        max-height: 150px;
+        max-height: 300px;
+    }
+
+    .clip-part-header {
+        font-size: 12px;
+    }
+
+    .clip-part-text {
+        font-size: 13px;
     }
 }
 
@@ -880,6 +994,8 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     align-items: center;
     justify-content: center;
     padding: 20px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
 }
 
 .modal-content {
@@ -1346,4 +1462,728 @@ input[type="checkbox"]:checked + .toggle-slider::before {
         grid-template-columns: 1fr;
         gap: 16px;
     }
+}
+
+/* ========================================
+   CLIP SCRIPT EDITOR MODAL STYLES
+   ======================================== */
+
+/* Edit icon button in clip card */
+.clip-edit-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    min-height: 36px;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+.clip-edit-btn:hover {
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.clip-edit-btn:active {
+    transform: scale(0.95);
+}
+
+.clip-edit-btn svg {
+    display: block;
+}
+
+/* Clip Editor Modal - FULLSCREEN */
+.clip-editor-content {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+}
+
+@media (max-width: 768px) {
+    .clip-editor-content {
+        width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+}
+
+/* Editor body with 2-column layout - FULLSCREEN */
+.clip-editor-body {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    padding: 0;
+    height: calc(100vh - 160px);
+    overflow: hidden;
+}
+
+/* Mobile: stack vertically */
+@media (max-width: 768px) {
+    .clip-editor-body {
+        flex-direction: column;
+    }
+}
+
+/* Editor sections */
+.editor-clips-section,
+.editor-transcript-section {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Clips section - left column, 30% width */
+.editor-clips-section {
+    flex: 0 0 30%;
+    max-width: 30%;
+    border-right: 1px solid var(--border-color);
+    overflow-y: auto;
+}
+
+/* Transcript section - right column, 70% width */
+.editor-transcript-section {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Mobile: full width stacked */
+@media (max-width: 768px) {
+    .editor-clips-section {
+        flex: 0 0 45%;
+        max-width: 100%;
+        max-height: 45%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .editor-transcript-section {
+        flex: 1;
+        max-height: 55%;
+    }
+}
+
+.editor-separator {
+    width: 1px;
+    height: 100%;
+    background: var(--border-color);
+    flex-shrink: 0;
+}
+
+/* Mobile: horizontal separator */
+@media (max-width: 768px) {
+    .editor-separator {
+        width: 100%;
+        height: 1px;
+    }
+}
+
+/* Section headers */
+.editor-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px 12px;
+    flex-shrink: 0;
+}
+
+.editor-section-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+
+.clip-count {
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 4px 12px;
+    border-radius: 12px;
+}
+
+/* Add clip button */
+.add-clip-btn {
+    background: #8b5cf6;
+    border: none;
+    color: white;
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    min-height: 36px;
+}
+
+.add-clip-btn:hover {
+    background: #7c3aed;
+    transform: scale(1.05);
+}
+
+.add-clip-btn:active {
+    transform: scale(0.95);
+}
+
+.add-clip-btn.active {
+    background: #10b981;
+}
+
+.add-clip-btn.active:hover {
+    background: #059669;
+}
+
+/* Clips list in editor */
+.editor-clips-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+}
+
+.editor-clips-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.editor-clips-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.editor-clips-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+.editor-clips-list::-webkit-scrollbar-thumb:hover {
+    background: #8b5cf6;
+}
+
+/* Editor clip card */
+.editor-clip-card {
+    background: var(--bg-dark);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px;
+    transition: all 0.2s;
+    cursor: default;
+}
+
+.editor-clip-card.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+.editor-clip-card.drag-over {
+    border-color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.editor-clip-card.selected {
+    border-color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.05);
+}
+
+/* Clip card header */
+.editor-clip-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.clip-drag-handle {
+    cursor: grab;
+    color: var(--text-secondary);
+    padding: 4px;
+    transition: color 0.2s;
+    flex-shrink: 0;
+    user-select: none;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.clip-drag-handle:hover {
+    color: #8b5cf6;
+}
+
+.clip-drag-handle:active {
+    cursor: grabbing;
+}
+
+.editor-clip-time {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 0;
+}
+
+.clip-delete-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+    flex-shrink: 0;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.clip-delete-btn:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.clip-delete-btn:active {
+    transform: scale(0.9);
+}
+
+/* Clip text content */
+.editor-clip-text {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+/* Drag handles for time adjustment */
+.clip-timing-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.timing-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.timing-handle {
+    flex: 1;
+    height: 8px;
+    background: var(--border-color);
+    border-radius: 4px;
+    position: relative;
+    cursor: pointer;
+}
+
+.timing-handle-fill {
+    height: 100%;
+    background: #8b5cf6;
+    border-radius: 4px;
+    position: relative;
+}
+
+.timing-handle-thumb {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    background: #8b5cf6;
+    border: 2px solid white;
+    border-radius: 50%;
+    cursor: grab;
+    transition: all 0.2s;
+}
+
+.timing-handle-thumb:hover {
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.timing-handle-thumb:active {
+    cursor: grabbing;
+}
+
+.timing-handle-thumb.start {
+    left: 0;
+}
+
+.timing-handle-thumb.end {
+    left: 100%;
+}
+
+/* Transcript content */
+.editor-transcript-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 20px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--text-primary);
+    min-height: 0;
+    user-select: text;
+    position: relative;
+}
+
+.editor-transcript-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.editor-transcript-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.editor-transcript-content::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+.editor-transcript-content::-webkit-scrollbar-thumb:hover {
+    background: #8b5cf6;
+}
+
+/* Transcript paragraph - continuous text without timestamps */
+.transcript-paragraph {
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--text-primary);
+    padding: 20px;
+    position: relative;
+    user-select: text;
+    cursor: text;
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    min-height: 200px;
+}
+
+/* Transcript text highlight - iOS/Android style */
+.transcript-highlight {
+    background: rgba(139, 92, 246, 0.25);
+    border-radius: 2px;
+    position: relative;
+    padding: 2px 0;
+    transition: background 0.2s;
+}
+
+.transcript-highlight.active {
+    background: rgba(139, 92, 246, 0.35);
+}
+
+/* iOS/Android-style selection handles */
+.selection-handle {
+    position: absolute;
+    z-index: 1000;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+    pointer-events: auto;
+}
+
+.selection-handle:active {
+    cursor: grabbing;
+}
+
+/* Handle structure: lollipop design - circular knob on top with vertical bar */
+.selection-handle-knob {
+    width: 20px;
+    height: 20px;
+    background: #8b5cf6;
+    border: 3px solid white;
+    border-radius: 50%;
+    position: relative;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+    margin: 0 auto;
+    z-index: 2;
+}
+
+.selection-handle-bar {
+    width: 4px;
+    height: 30px;
+    background: #8b5cf6;
+    position: relative;
+    margin: 0 auto;
+    margin-top: -2px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 1;
+}
+
+/* Start handle: positioned at the START of the selection */
+/* The handle container's left edge aligns with the character boundary */
+/* We offset it left by half the knob width to center the knob on the boundary */
+.selection-handle-start {
+    /* No additional positioning needed - handled in JS */
+}
+
+/* End handle: positioned at the END of the selection */
+/* The handle container's left edge aligns with the character boundary */
+/* We offset it left by half the knob width to center the knob on the boundary */
+.selection-handle-end {
+    /* No additional positioning needed - handled in JS */
+}
+
+/* Clip confirm button on clip cards */
+.clip-confirm-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+    flex-shrink: 0;
+    font-size: 16px;
+    line-height: 1;
+    margin-left: 8px;
+}
+
+.clip-confirm-btn.visible {
+    display: flex;
+}
+
+.clip-confirm-btn.active {
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.clip-confirm-btn:hover {
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.15);
+}
+
+.clip-confirm-btn:active {
+    transform: scale(0.9);
+}
+
+/* Legacy transcript segments - kept for backward compatibility */
+.transcript-segment {
+    margin-bottom: 16px;
+    padding: 8px;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.transcript-segment:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.transcript-segment.selected {
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    padding: 7px;
+}
+
+.transcript-timestamp {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #8b5cf6;
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: inline-block;
+}
+
+.transcript-text {
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+/* Selection highlight in transcript */
+.transcript-text::selection {
+    background: rgba(139, 92, 246, 0.3);
+    color: white;
+}
+
+/* Empty state */
+.editor-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+    text-align: center;
+    font-size: 14px;
+}
+
+.editor-empty-state svg {
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+/* Editor footer buttons */
+.editor-footer {
+    display: flex;
+    gap: 12px;
+}
+
+.editor-cancel-btn,
+.editor-save-btn {
+    flex: 1;
+    padding: 16px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-height: 56px;
+}
+
+.editor-cancel-btn {
+    background: var(--bg-dark);
+    border: 2px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.editor-cancel-btn:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+}
+
+.editor-cancel-btn:active {
+    transform: scale(0.98);
+}
+
+.editor-save-btn {
+    background: #8b5cf6;
+    border: none;
+    color: white;
+}
+
+.editor-save-btn:hover {
+    background: #7c3aed;
+}
+
+.editor-save-btn:active {
+    transform: scale(0.98);
+}
+
+.editor-save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+    .editor-section-header {
+        padding: 12px 16px 10px;
+    }
+
+    .editor-clips-list,
+    .editor-transcript-content {
+        padding: 0 16px 12px;
+    }
+
+    .editor-footer {
+        flex-direction: column-reverse;
+        gap: 8px;
+    }
+
+    .editor-cancel-btn,
+    .editor-save-btn {
+        width: 100%;
+    }
+}
+
+/* Drag and drop feedback */
+.clip-drop-zone {
+    height: 4px;
+    background: #8b5cf6;
+    border-radius: 2px;
+    margin: 8px 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.clip-drop-zone.active {
+    opacity: 1;
+    height: 48px;
+    background: rgba(139, 92, 246, 0.2);
+    border: 2px dashed #8b5cf6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8b5cf6;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Toast notification for successful save */
+.toast-notification {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #10b981;
+    color: white;
+    padding: 16px 24px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    z-index: 2000;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    animation: toastSlideUp 0.3s ease;
+    pointer-events: none;
+}
+
+@keyframes toastSlideUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* Loading state in editor */
+.editor-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--text-secondary);
+}
+
+.editor-loading .spinner {
+    margin-right: 12px;
 }
