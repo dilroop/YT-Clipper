@@ -2,6 +2,9 @@
 
 A mobile-first web application for automatically clipping interesting moments from YouTube videos, optimized for creating Reels and social media content.
 
+## PreRequests
+- Install ffmpeg from Homebrew
+
 ## ✅ What's Been Built (Phase 1 Complete!)
 
 ### Backend

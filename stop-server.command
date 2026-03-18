@@ -14,16 +14,16 @@ echo "🎬 YTClipper - Stopping Server"
 echo "=================================================="
 echo ""
 
-# Check if server is running on port 5000
-if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+# Check if server is running on port 5001
+if lsof -Pi :5001 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
     echo -e "${YELLOW}Stopping server...${NC}"
     echo ""
 
-    # Kill all processes on port 5000
-    lsof -ti:5000 | xargs kill -9 2>/dev/null
+    # Kill only Python processes on port 5001
+    lsof -n -i:5001 | grep "python" | awk '{print $2}' | xargs kill -9 2>/dev/null
 
-    # Also kill any python server processes
-    pkill -9 -f "python3 backend/server.py" 2>/dev/null
+    # Also kill any python server processes (including those from .venv)
+    pkill -9 -f "python.*backend/server.py" 2>/dev/null
 
     sleep 1
 

@@ -1350,10 +1350,10 @@ if __name__ == "__main__":
     print("🎬 YTClipper Server Starting...")
     print("="*60)
     print(f"\n📱 Access from your phone (Chrome):")
-    print(f"   http://{local_ip}:5000")
+    print(f"   http://{local_ip}:5001")
     print(f"\n💻 Access from this computer:")
-    print(f"   http://localhost:5000")
-    print(f"\n⚙️  Server running on all network interfaces (0.0.0.0:5000)")
+    print(f"   http://localhost:5001")
+    print(f"\n⚙️  Server running on all network interfaces (0.0.0.0:5001)")
     print(f"\n📖 Make sure your phone and computer are on the same WiFi!")
     print("="*60 + "\n")
 
@@ -1361,6 +1361,6 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",  # Listen on all network interfaces
-        port=5000,
+        port=5001,
         log_level="info"
     )
