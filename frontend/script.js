@@ -4,6 +4,7 @@
 let currentVideoData = null;
 let selectedFormat = 'vertical_9x16';  // Default to vertical 9:16 format
 let analyzedClips = null;
+let fullTranscriptSegments = [];
 let selectedClipIndices = [];
 
 // DOM Elements
@@ -891,6 +892,7 @@ async function analyzeAndShowClips() {
 
         const data = await response.json();
         analyzedClips = data.clips;
+        fullTranscriptSegments = data.segments || [];
         selectedClipIndices = [];
 
         // Display clip selection UI
@@ -945,12 +947,15 @@ function displayClipSelection(clips) {
                 const startTime = formatTimeHMS(part.start);
                 const endTime = formatTimeHMS(part.end);
                 const partDuration = (part.end - part.start).toFixed(1);
+                const showPartHeader = clip.parts.length > 1;
 
                 transcriptHTML += `
                     <div class="clip-part">
+                        ${showPartHeader ? `
                         <div class="clip-part-header">
                             [${startTime} - ${endTime}] Part ${partNum} (${partDuration}s)
                         </div>
+                        ` : ''}
                         <div class="clip-part-text">
                             ${part.text || '(No transcript available)'}
                         </div>
@@ -1276,11 +1281,14 @@ function openClipEditor(clipIndex = null) {
     editorState.selectedClipIndex = clipIndex;
     editorState.isOpen = true;
 
-    // Extract transcript segments from clips (word-level timing)
-    editorState.transcriptSegments = extractTranscriptSegments(editorState.clips);
+    // Extract transcript segments from full transcript or clips
+    const sourceData = (fullTranscriptSegments && fullTranscriptSegments.length > 0) ? fullTranscriptSegments : editorState.clips;
+    const isSegments = (fullTranscriptSegments && fullTranscriptSegments.length > 0);
+    
+    editorState.transcriptSegments = isSegments ? sourceData : extractTranscriptSegments(sourceData);
 
     // NEW: Build word mapping for character-level positioning
-    const wordMapping = buildTranscriptWordMapping(editorState.clips);
+    const wordMapping = buildTranscriptWordMapping(sourceData, isSegments);
     editorState.transcriptWords = wordMapping.words;
     editorState.transcriptFullText = wordMapping.fullText;
 
@@ -1374,25 +1382,42 @@ function extractTranscriptSegments(clips) {
 
 // NEW: Build character-level word mapping from transcript
 // Creates array of words with their time and character positions in the full text
-function buildTranscriptWordMapping(clips) {
+function buildTranscriptWordMapping(data, isSegments = false) {
     const words = [];
     const wordMap = new Map();
 
-    // Collect all words from all clips
-    clips.forEach(clip => {
-        if (clip.words && clip.words.length > 0) {
-            clip.words.forEach(word => {
-                const wordText = (word.word || word.text || '').trim();
-                if (wordText && !wordMap.has(word.start)) {
-                    wordMap.set(word.start, {
-                        word: wordText,
-                        start: word.start,
-                        end: word.end
-                    });
-                }
-            });
-        }
-    });
+    // Collect all words from data
+    if (isSegments) {
+        data.forEach(segment => {
+            if (segment.words && segment.words.length > 0) {
+                segment.words.forEach(word => {
+                    const wordText = (word.word || word.text || '').trim();
+                    if (wordText && !wordMap.has(word.start)) {
+                        wordMap.set(word.start, {
+                            word: wordText,
+                            start: word.start,
+                            end: word.end
+                        });
+                    }
+                });
+            }
+        });
+    } else {
+        data.forEach(clip => {
+            if (clip.words && clip.words.length > 0) {
+                clip.words.forEach(word => {
+                    const wordText = (word.word || word.text || '').trim();
+                    if (wordText && !wordMap.has(word.start)) {
+                        wordMap.set(word.start, {
+                            word: wordText,
+                            start: word.start,
+                            end: word.end
+                        });
+                    }
+                });
+            }
+        });
+    }
 
     // Convert to array and sort by start time
     const sortedWords = Array.from(wordMap.values()).sort((a, b) => a.start - b.start);
@@ -1542,6 +1567,15 @@ function createEditorClipCard(clip, index) {
             editorState.clips[index].end = mod.end;
             editorState.clips[index].duration = mod.end - mod.start;
 
+            // Update words array from the full transcript mapping
+            if (editorState.transcriptWords && editorState.transcriptWords.length > 0) {
+                editorState.clips[index].words = editorState.transcriptWords.filter(word => 
+                    word.start >= mod.start && word.end <= mod.end
+                );
+                // Also update the text field for display/info tracking
+                editorState.clips[index].text = editorState.clips[index].words.map(w => w.word).join(' ');
+            }
+
             // Clear modification
             delete editorState.clipModifications[index];
 
@@ -1639,15 +1673,28 @@ function renderEditorTranscript() {
         return;
     }
 
-    // Create continuous paragraph
-    const paragraphEl = document.createElement('div');
-    paragraphEl.className = 'transcript-paragraph';
-    paragraphEl.id = 'transcriptParagraph';
-    paragraphEl.textContent = editorState.transcriptFullText;
+    // Create segments with "Speaker" labels for diarization feel
+    editorState.transcriptSegments.forEach((segment, index) => {
+        const segmentEl = document.createElement('div');
+        segmentEl.className = 'transcript-segment';
+        
+        // Simple speaker heuristic: alternating or same if close
+        const speakerId = 1; // Default to Speaker 1 since we don't have real diarization labels yet
+        
+        segmentEl.innerHTML = `
+            <div class="segment-speaker">
+                <span class="speaker-dot" style="background-color: var(--primary-color)"></span>
+                Speaker ${speakerId}
+            </div>
+            <div class="segment-text" data-start="${segment.start}" data-end="${segment.end}">
+                ${segment.text}
+            </div>
+        `;
+        
+        editorTranscript.appendChild(segmentEl);
+    });
 
-    editorTranscript.appendChild(paragraphEl);
-
-    // Enable text selection for creating clips (if in add mode)
+    // Provide a way to select text across segments
     enableTranscriptSelection();
 }
 

@@ -2187,3 +2187,61 @@ input[type="checkbox"]:checked + .toggle-slider::before {
 .editor-loading .spinner {
     margin-right: 12px;
 }
+
+/* Transcript Editor Diarization Styles */
+.transcript-segment {
+    margin-bottom: 20px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    border-left: 3px solid var(--primary-color);
+    transition: background 0.2s;
+}
+
+.transcript-segment:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.segment-speaker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.speaker-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.segment-text {
+    line-height: 1.6;
+    color: var(--text-color);
+    font-size: 0.95rem;
+}
+
+/* Multi-part UI Fixes */
+.clip-part {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.clip-part:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.clip-part-header {
+    font-size: 0.75rem;
+    color: var(--accent-color);
+    font-weight: 600;
+    margin-bottom: 4px;
+}

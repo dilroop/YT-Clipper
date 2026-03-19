@@ -1,0 +1,55 @@
+# Captions & Watermark Test Results
+Generated: 2026-03-19 15:51:51
+
+## Output Files:
+- No captioned video generated
+- No final video generated
+
+## What to Verify:
+
+### Caption Quality (N/A):
+1. **Word-by-word animation**: Captions should highlight individual words as they're spoken
+2. **Timing accuracy**: Words should appear exactly when spoken
+3. **Readability**: Text should be clear and easy to read
+4. **Positioning**: Captions should be centered at bottom (or configured position)
+5. **No overlap**: Multiple words shouldn't overlap on screen
+6. **Smooth transitions**: Word transitions should be smooth
+
+### Watermark Quality (N/A):
+1. **Visibility**: Watermark text should be clearly visible
+2. **Position**: Should be in top right corner with 50px gap
+3. **Persistence**: Watermark should stay throughout entire video
+4. **Readability**: Text should be legible over background
+5. **Not intrusive**: Should not block important content
+6. **Professional look**: Should look polished and intentional
+
+### Combined Output:
+- Both captions AND watermark should be present in final video
+- Captions at bottom, watermark at top right
+- No interference between the two elements
+- Quality should be maintained (no degradation)
+
+## Manual Verification Steps:
+1. Open captioned video
+   - Verify captions work correctly
+   - Check word-by-word animation
+2. Open final video
+   - Verify both captions AND watermark present
+   - Check watermark position and visibility
+3. If test passes, delete this results folder
+4. If test fails, check caption_generator.py or watermark_processor.py
+
+## Debug Information:
+- Input: tests/test_clip.mp4
+- Clip extracted: 10-30 seconds (20s test clip)
+- Caption format: ASS subtitles with word-level timing
+- Words per line: 2
+- Watermark text: '@YourChannel'
+- Watermark position: top_right (50px gap)
+- Caption generator: backend/caption_generator.py
+- Watermark processor: backend/watermark_processor.py
+
+## Technical Details:
+- Caption style: Bold, white text with black outline
+- Burn method: FFmpeg subtitles filter (libass)
+- Watermark method: FFmpeg drawtext filter

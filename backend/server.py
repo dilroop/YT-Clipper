@@ -543,6 +543,7 @@ async def analyze_video(request: AnalyzeVideoRequest):
             "video_id": video_id,
             "video_info": video_info,
             "clips": formatted_clips,
+            "segments": segments,  # Return full transcript segments
             "total_clips": len(formatted_clips)
         }
 
@@ -854,14 +855,22 @@ async def process_video(request: ProcessVideoRequest):
 
             # NOW burn captions onto the clip (after reels conversion if applicable)
             if request.burn_captions:
-                # Create ASS subtitles in temp folder
-                ass_path = TEMP_DIR / f"clip_{i+1}.ass"
+                # Create subtitles folder in project folder for persistence
+                subtitles_dir = project_folder / "subtitles"
+                subtitles_dir.mkdir(exist_ok=True)
+                
+                # Get current video dimensions (might have changed due to reels conversion)
+                current_width, current_height = clipper.get_video_dimensions(str(clip_path))
+                
+                # Save ASS subtitles in project folder instead of temp
+                ass_path = subtitles_dir / f"clip_{i+1}.ass"
                 caption_gen.create_ass_subtitles(
                     words=clip_words,
                     output_path=str(ass_path),
-                    clip_start_time=clip_start
+                    clip_start_time=clip_start,
+                    video_width=current_width,
+                    video_height=current_height
                 )
-                temp_files.append(str(ass_path))
 
                 # Burn captions (output also in temp folder)
                 captioned_path = TEMP_DIR / f"clip_{i+1}_captioned.mp4"

@@ -18,7 +18,7 @@ class CaptionGenerator:
         """
         self.config = config or {
             'words_per_caption': 2,
-            'font_family': 'Impact',
+            'font_family': 'Arial',
             'font_size': 48,
             'vertical_position': 80  # Percentage from top
         }
@@ -44,11 +44,14 @@ class CaptionGenerator:
         Returns:
             Path to created ASS file
         """
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        final_output_path = Path(output_path)
+        final_output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Calculate vertical position
-        margin_v = int((100 - self.config.get('vertical_position', 80)) * video_height / 100)
+        vertical_pos = self.config.get('vertical_position', 80)
+        if isinstance(vertical_pos, str):
+            vertical_pos = int(vertical_pos)
+        margin_v = int((100 - vertical_pos) * video_height / 100)
 
         # ASS file header
         ass_content = f"""[Script Info]
@@ -70,6 +73,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # Group words according to words_per_caption
         words_per_caption = self.config.get('words_per_caption', 2)
         captions = []
+
+        if not words:
+            # No words to generate captions for, proceed with empty captions
+            print("⚠️ Warning: No words provided for caption generation")
+            # Create a minimal empty ASS file (header already exists)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(ass_content)
+            return
 
         for i in range(0, len(words), words_per_caption):
             word_group = words[i:i + words_per_caption]
@@ -133,29 +144,29 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         Returns:
             dict with result
         """
-        video_path = Path(video_path)
-        subtitle_path = Path(subtitle_path)
+        input_video_path = Path(video_path)
+        sub_path = Path(subtitle_path)
 
         if output_path is None:
-            output_path = video_path.parent / f"{video_path.stem}_captioned.mp4"
+            final_output_path = input_video_path.parent / f"{input_video_path.stem}_captioned.mp4"
         else:
-            output_path = Path(output_path)
+            final_output_path = Path(output_path)
 
         # Escape subtitle path for ffmpeg filter
         # Need to escape special characters for ffmpeg filter syntax
-        escaped_subtitle_path = str(subtitle_path.absolute()).replace('\\', '\\\\').replace(':', '\\:')
+        escaped_subtitle_path = str(sub_path.absolute()).replace('\\', '\\\\').replace(':', '\\:')
 
         # Build ffmpeg command to burn subtitles using subtitles filter with filename parameter
         cmd = [
             'ffmpeg',
-            '-i', str(video_path),
+            '-i', str(input_video_path),
             '-vf', f"subtitles=filename='{escaped_subtitle_path}'",
             '-c:v', 'libx264',
             '-c:a', 'copy',  # Copy audio without re-encoding
             '-preset', 'medium',
             '-crf', '23',
             '-y',
-            str(output_path)
+            str(final_output_path)
         ]
 
         try:
@@ -163,7 +174,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             return {
                 'success': True,
-                'output_path': str(output_path)
+                'output_path': str(final_output_path)
             }
 
         except subprocess.CalledProcessError as e:
