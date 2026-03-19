@@ -63,7 +63,7 @@ class AudioTranscriber:
 
     def transcribe(self, video_path: str, progress_callback=None) -> dict:
         """
-        Transcribe video audio with word-level timestamps
+        Transcribe video audio with word-level timestamps, with caching.
 
         Args:
             video_path: Path to video file
@@ -73,7 +73,32 @@ class AudioTranscriber:
             dict with segments and word-level timestamps
         """
         try:
-            # Extract audio
+            video_path_obj = Path(video_path)
+            video_id = video_path_obj.stem
+            
+            # Setup specific directory for transcript caches
+            # Use same directory as where we placed the target file, normally Downloads
+            cache_dir = video_path_obj.parent
+            cache_file = cache_dir / f"{video_id}_transcript.json"
+
+            # 1. Check if we already have a cached transcript!
+            if cache_file.exists():
+                print(f"Found cached transcript for {video_id}, loading from disk...")
+                if progress_callback:
+                    progress_callback({
+                        'stage': 'transcribing',
+                        'percent': 100,
+                        'message': 'Using cached transcript...'
+                    })
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    cached_data = json.load(f)
+                    
+                    # Ensure cached transcripts don't return an audio_path 
+                    # that server.py might try to incorrectly delete
+                    cached_data['audio_path'] = None
+                    return cached_data
+
+            # 2. Extract audio
             if progress_callback:
                 progress_callback({
                     'stage': 'transcribing',
@@ -129,13 +154,26 @@ class AudioTranscriber:
 
                 segments.append(segment_data)
 
-            return {
+            result_dict = {
                 'success': True,
                 'language': result.get('language', 'unknown'),
                 'segments': segments,
                 'full_text': result['text'],
                 'audio_path': audio_path  # Return audio path for cleanup by caller
             }
+            
+            # Save the result to cache for future requests
+            # (Set audio_path to None so if loaded later, caller doesn't try to delete phantom files)
+            cache_clone = result_dict.copy()
+            cache_clone['audio_path'] = None
+            try:
+                with open(cache_file, 'w', encoding='utf-8') as f:
+                    json.dump(cache_clone, f, ensure_ascii=False)
+                print(f"Transcript cached successfully to {cache_file}")
+            except Exception as cache_err:
+                print(f"Warning: Failed to cache transcript: {cache_err}")
+
+            return result_dict
 
         except Exception as e:
             return {
