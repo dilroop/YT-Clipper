@@ -394,8 +394,10 @@ function connectWebSocketAndWait() {
 
         // Add timeout to prevent hanging forever
         setTimeout(() => {
-            if (ws.readyState !== WebSocket.OPEN) {
+            if (ws && ws.readyState !== WebSocket.OPEN) {
                 reject(new Error('WebSocket connection timeout'));
+            } else if (!ws) {
+                reject(new Error('WebSocket connection failed'));
             }
         }, 5000); // 5 second timeout
     });
@@ -566,17 +568,20 @@ function showProcessingError(errorMessage, failedStage, onRetry = null) {
         }
 
         if (detailsElem) {
+            // Ensure errorMessage is a string
+            const safeErrorMessage = errorMessage || 'Unknown Error';
+            
             // Format error message nicely
             let errorHTML = `<div style="color: #ef4444; margin-top: 8px;">
-                <strong>Error:</strong> ${errorMessage}
+                <strong>Error:</strong> ${safeErrorMessage}
             </div>`;
 
             // Add helpful tips for common errors
-            if (errorMessage.includes('Could not find any interesting clips')) {
+            if (safeErrorMessage.includes('Could not find any interesting clips')) {
                 errorHTML += `<div style="margin-top: 8px; color: var(--text-secondary); font-size: 12px;">
                     <strong>Tip:</strong> Try adjusting the duration settings in Settings, or use a different AI strategy.
                 </div>`;
-            } else if (errorMessage.includes('OPENAI_QUOTA_ERROR') || errorMessage.includes('Insufficient OpenAI credits')) {
+            } else if (safeErrorMessage.includes('OPENAI_QUOTA_ERROR') || safeErrorMessage.includes('Insufficient OpenAI credits')) {
                 errorHTML += `<div style="margin-top: 8px; color: var(--text-secondary); font-size: 12px;">
                     <strong>Tip:</strong> Add credits at <a href="https://platform.openai.com/account/billing" target="_blank" style="color: var(--primary-color);">OpenAI Billing</a>
                 </div>`;

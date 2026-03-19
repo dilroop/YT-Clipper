@@ -1,11 +1,12 @@
 fastapi==0.115.5
 uvicorn==0.30.6
-yt-dlp==2024.11.18
+yt-dlp
 pytubefix
-whisper
+openai-whisper
 torch==2.9.0
 torchaudio==2.9.0
 opencv-python==4.8.1.78
 numpy==2.4.3
 openai==2.8.1
 python-dotenv==1.2.2
+websockets
