@@ -327,7 +327,7 @@ async def get_thumbnail(request: VideoURLRequest):
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(request.url, download=False)
+            info = ydl.extract_info(request.url, download=False, process=False)
 
             title = info.get('title', 'Unknown')
             channel = info.get('uploader', 'Unknown')

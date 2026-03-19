@@ -28,8 +28,14 @@ fi
 echo "Starting server..."
 echo ""
 
-# Start the server
-python3 backend/server.py &
+# Start the server using virtual environment if it exists
+if [ -d ".venv" ]; then
+    .venv/bin/python backend/server.py &
+elif [ -d "venv" ]; then
+    venv/bin/python backend/server.py &
+else
+    python3 backend/server.py &
+fi
 
 sleep 3
 
