@@ -13,3 +13,4 @@ websockets
 mediapipe
 moviepy
 scipy
+requests

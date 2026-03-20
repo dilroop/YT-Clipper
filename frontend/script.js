@@ -734,7 +734,7 @@ async function loadHistory() {
 
                 return `
                     <div class="history-item" data-url="${item.url}">
-                        <img class="history-thumbnail" src="${item.thumbnail}" alt="${item.title}" onerror="this.src='${item.thumbnail}'">
+                        <img class="history-thumbnail" src="${item.thumbnail}" alt="${item.title}" onerror="if(this.src.includes('maxresdefault')) this.src='https://img.youtube.com/vi/${item.video_id}/hqdefault.jpg'; else this.style.display='none';">
                         <div class="history-info">
                             <div class="history-title">${item.title} ${viewBadge}</div>
                             <div class="history-meta">${item.channel} • ${formatDuration(item.duration)}</div>

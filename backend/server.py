@@ -5,6 +5,7 @@ Mobile-first web app for clipping YouTube videos
 
 import ssl
 import certifi
+import requests
 
 # Disable SSL certificate verification globally (for corporate networks/proxies)
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -173,8 +174,18 @@ def get_thumbnail_url(video_id: str) -> dict:
     return {
         "maxres": f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg",
         "hq": f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+        "mq": f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg",
         "default": f"https://img.youtube.com/vi/{video_id}/default.jpg"
     }
+
+
+def check_url_exists(url: str) -> bool:
+    """Check if a URL exists using a HEAD request"""
+    try:
+        response = requests.head(url, timeout=1.5)
+        return response.status_code == 200
+    except:
+        return False
 
 
 def load_config() -> dict:
@@ -333,7 +344,11 @@ async def get_thumbnail(request: VideoURLRequest):
             channel = info.get('uploader', 'Unknown')
             duration = info.get('duration', 0)
             description = info.get('description', '')
+
+            # Check if maxres exists to avoid browser console 404 errors
             thumbnail = thumbnail_urls['maxres']
+            if not check_url_exists(thumbnail):
+                thumbnail = thumbnail_urls['hq']
 
             # Save to history
             save_to_history(
