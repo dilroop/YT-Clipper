@@ -844,6 +844,9 @@ async def process_video(request: ProcessVideoRequest):
                 if reels_result['success']:
                     clip_path = reels_result['output_path']
                     temp_files.append(clip_path)
+                else:
+                    print(f"[ERROR] Reels conversion failed for clip {i+1}: {reels_result.get('error', 'Unknown error')}")
+                    # Continue with original clip if reels conversion failed
 
             # Generate caption text
             caption_text = caption_gen.generate_clip_caption(

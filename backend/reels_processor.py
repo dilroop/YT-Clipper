@@ -828,6 +828,7 @@ class ReelsProcessor:
             )
 
         # FORMAT_VERTICAL_9_16 - existing logic
+        print(f"[DEBUG] Converting to Reels (Vertical 9:16)...")
         # If dynamic mode is enabled, check for dual-face segments
         if dynamic_mode and auto_detect:
             # Quick check: detect segments to see if we have dual-face segments
@@ -1149,9 +1150,13 @@ class ReelsProcessor:
                 'error': f"Error in smooth conversion: {e.stderr.decode()}"
             }
         except Exception as e:
+            error_msg = str(e)
+            print(f"[ERROR] Smooth conversion failed: {error_msg}")
+            import traceback
+            traceback.print_exc()
             return {
                 'success': False,
-                'error': f"Error in smooth conversion: {str(e)}"
+                'error': f"Error in smooth conversion: {error_msg}"
             }
 
     def _convert_to_reels_dynamic(self, video_path: Path, output_path: Path) -> Dict:
@@ -1510,9 +1515,13 @@ class ReelsProcessor:
                 'error': f"Error in dynamic conversion: {e.stderr.decode()}"
             }
         except Exception as e:
+            error_msg = str(e)
+            print(f"[ERROR] Dynamic conversion failed: {error_msg}")
+            import traceback
+            traceback.print_exc()
             return {
                 'success': False,
-                'error': f"Error in dynamic conversion: {str(e)}"
+                'error': f"Error in dynamic conversion: {error_msg}"
             }
 
     def _merge_segments(self, segments: List[Dict]) -> List[Dict]:

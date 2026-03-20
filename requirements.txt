@@ -5,8 +5,11 @@ pytubefix
 openai-whisper
 torch==2.9.0
 torchaudio==2.9.0
-opencv-python==4.8.1.78
+opencv-python>=4.10.0
 numpy==2.4.3
 openai==2.8.1
 python-dotenv==1.2.2
 websockets
+mediapipe
+moviepy
+scipy
