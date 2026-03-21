@@ -12,6 +12,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 
 # ==================== FACE TRACKING SETTINGS ====================
@@ -1800,44 +1801,24 @@ class ReelsProcessor:
                 ]
                 subprocess.run(cmd, check=True, capture_output=True)
             else:
-                # Generate placeholder
-                if ai_content_type == "photo":
-                    self._generate_ai_photo_placeholder(box_width, box_height, duration, fps, top_box_path)
-                else:  # video
-                    self._generate_ai_video_placeholder(box_width, box_height, duration, fps, top_box_path)
+                # Generate high-quality Pillow-based placeholder with "TODO" text
+                print(f"[DEBUG] Generating Pillow-based placeholder for {ai_content_type}...")
+                self._generate_pillow_placeholder(box_width, box_height, duration, fps, top_box_path, ai_content_type)
 
-            print(f"[DEBUG] Top box created: {box_width}x{box_height}")
+            print(f"[DEBUG] Top box created/prepared: {box_width}x{box_height}")
 
             # Step 3: Stack boxes vertically
             print(f"[DEBUG] Stacking boxes vertically...")
             stacked_path = temp_dir / "stacked.mp4"
 
             # Use filter_complex to stack with audio from bottom
-            vf_filter = "[0:v][1:v]vstack"
-
-            cmd = [
-                'ffmpeg',
-                '-i', str(top_box_path),
-                '-i', str(bottom_box_path),
-                '-filter_complex', vf_filter,
-                '-map', '[out]',  # This will be auto-named by vstack
-                '-map', '1:a',  # Audio from bottom box (second input)
-                '-c:v', 'libx264',
-                '-c:a', 'aac',
-                '-preset', 'medium',
-                '-crf', '23',
-                '-y',
-                str(stacked_path)
-            ]
-
-            # Actually, vstack doesn't auto-name, let's fix the command
             cmd = [
                 'ffmpeg',
                 '-i', str(top_box_path),
                 '-i', str(bottom_box_path),
                 '-filter_complex', '[0:v][1:v]vstack[stacked]',
                 '-map', '[stacked]',
-                '-map', '1:a',  # Audio from bottom box
+                '-map', '1:a?',  # Audio from bottom box (optional)
                 '-c:v', 'libx264',
                 '-c:a', 'aac',
                 '-preset', 'medium',
@@ -1879,60 +1860,62 @@ class ReelsProcessor:
                 'error': f"Error in stacked conversion: {str(e)}"
             }
 
-    def _generate_ai_photo_placeholder(self, width: int, height: int, duration: float, fps: float, output_path: Path):
+    def _generate_pillow_placeholder(self, width: int, height: int, duration: float, fps: float, output_path: Path, content_type: str):
         """
-        Generate placeholder for AI-animated photo (solid color with text)
+        Generate a placeholder image using Pillow and convert to video.
+        Uses Pillow to avoid dependency on FFmpeg's drawtext filter (which may be missing).
 
         Args:
             width: Box width
             height: Box height
             duration: Video duration in seconds
             fps: Frames per second
-            output_path: Output path for placeholder
+            output_path: Output path for video placeholder
+            content_type: "photo" or "video"
         """
-        print(f"[DEBUG] Generating AI photo placeholder...")
-
-        # Create solid color with text overlay
-        # Using lavfi to generate test pattern
+        print(f"[DEBUG] Generating {content_type} placeholder with Pillow...")
+        
+        # Create image with nice dark theme color (Nord theme)
+        # Background: Photo = Dark Grayish Blue, Video = Slightly different Grayish Blue
+        bg_color = (46, 52, 64) if content_type == "photo" else (59, 66, 82)
+        img = Image.new('RGB', (width, height), color=bg_color)
+        draw = ImageDraw.Draw(img)
+        
+        # Load font (fallback to default if necessary)
+        try:
+            # Common Mac system font
+            font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 60)
+            small_font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 40)
+        except:
+            font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
+            
+        # Draw text
+        text = "TODO: Generate with AI"
+        subtext = f"({content_type.upper()} PLACEHOLDER)"
+        
+        # Calculate positions (centered)
+        # anchor="mm" centers the text on the given point
+        draw.text((width // 2, height // 2 - 40), text, fill=(216, 222, 233), font=font, anchor="mm")
+        draw.text((width // 2, height // 2 + 40), subtext, fill=(136, 192, 208), font=small_font, anchor="mm")
+        
+        # Save temporary image
+        img_path = output_path.with_suffix('.png')
+        img.save(img_path)
+        
+        # Convert image to video using FFmpeg
         cmd = [
-            'ffmpeg',
-            '-f', 'lavfi',
-            '-i', f'color=c=0x2E3440:s={width}x{height}:d={duration}:r={fps}',
-            '-vf', f"drawtext=text='AI Photo Placeholder':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2",
-            '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '23',
-            '-y',
-            str(output_path)
+            'ffmpeg', '-loop', '1', '-i', str(img_path),
+            '-t', str(duration),
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', str(fps),
+            '-preset', 'ultrafast',
+            '-y', str(output_path)
         ]
         subprocess.run(cmd, check=True, capture_output=True)
-
-    def _generate_ai_video_placeholder(self, width: int, height: int, duration: float, fps: float, output_path: Path):
-        """
-        Generate placeholder for AI-generated video (animated gradient)
-
-        Args:
-            width: Box width
-            height: Box height
-            duration: Video duration in seconds
-            fps: Frames per second
-            output_path: Output path for placeholder
-        """
-        print(f"[DEBUG] Generating AI video placeholder...")
-
-        # Create animated gradient using testsrc2
-        cmd = [
-            'ffmpeg',
-            '-f', 'lavfi',
-            '-i', f'testsrc2=size={width}x{height}:rate={fps}:duration={duration}',
-            '-vf', f"drawtext=text='AI Video Placeholder':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2",
-            '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '23',
-            '-y',
-            str(output_path)
-        ]
-        subprocess.run(cmd, check=True, capture_output=True)
+        
+        # Cleanup temporary image
+        if img_path.exists():
+            img_path.unlink()
 
     def _add_captions_overlay(self, video_path: Path, output_path: Path, caption_text: str):
         """

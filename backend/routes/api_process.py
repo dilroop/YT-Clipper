@@ -258,6 +258,15 @@ async def process_video(request: ProcessVideoRequest):
                 if burn_result['success']:
                     clip_path = burn_result['output_path']
                     temp_files.append(clip_path)
+                else:
+                    # Provide feedback on failure but continue with uncaptioned clip
+                    error_msg = burn_result.get('error', 'Unknown error')
+                    print(f"[WARNING] Subtitle burning failed: {error_msg}")
+                    await update_progress({
+                        'stage': 'clipping',
+                        'percent': clip_progress,
+                        'message': f"⚠️ Caption burning failed for clip {i+1}. Proceeding without captions."
+                    })
 
             # Watermark
             watermark_result = await run_in_executor(

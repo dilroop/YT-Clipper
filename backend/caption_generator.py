@@ -158,8 +158,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             str(output_path)
         ]
 
+        print(f"[DEBUG] Burning captions with command: {' '.join(cmd)}")
+
         try:
-            subprocess.run(cmd, check=True, capture_output=True)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            print(f"[DEBUG] Captions burned successfully to: {output_path}")
 
             return {
                 'success': True,
@@ -167,9 +170,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             }
 
         except subprocess.CalledProcessError as e:
+            error_msg = e.stderr or e.stdout or "Unknown ffmpeg error"
+            print(f"[ERROR] FFmpeg caption burning failed: {error_msg}")
             return {
                 'success': False,
-                'error': f"Error burning captions: {e.stderr.decode()}"
+                'error': f"Error burning captions: {error_msg}"
             }
 
     def generate_clip_caption(
