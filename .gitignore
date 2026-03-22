@@ -12,6 +12,7 @@
 
 # Allow test samples
 !tests/*.mp4
+tests/results/
 
 # Audio files
 *.mp3
