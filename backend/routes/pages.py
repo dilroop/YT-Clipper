@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
-from core.constants import BASE_DIR
+from backend.core.constants import BASE_DIR
 
 router = APIRouter()
 

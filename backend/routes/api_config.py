@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from models.schemas import ConfigUpdate
-from core.config import load_config, save_config
+from backend.models.schemas import ConfigUpdate
+from backend.core.config import load_config, save_config
 
 router = APIRouter()
 
@@ -38,7 +38,7 @@ async def update_config(config_update: ConfigUpdate):
 @router.get("/api/strategies")
 async def get_strategies():
     """Get list of available AI prompt strategies"""
-    from core.constants import BASE_DIR
+    from backend.core.constants import BASE_DIR
     try:
         strategy_folder = BASE_DIR / "ai-prompt-strategy"
 

@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
-from core.constants import BASE_DIR
+from backend.core.constants import BASE_DIR
 
 router = APIRouter()
 

@@ -20,17 +20,19 @@ import os
 import sys
 from pathlib import Path
 
-# Add the current directory to sys.path to allow absolute imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add the project root to sys.path to allow absolute imports from backend.
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 
 # Import core infrastructure
-from core.constants import BASE_DIR
-from core.logging_utils import setup_logging
-from core.executor import executor
-from database import init_database, migrate_database
+from backend.core.constants import BASE_DIR
+from backend.core.logging_utils import setup_logging
+from backend.core.executor import executor
+from backend.database import init_database, migrate_database
 
 # Import routers
-from routes import (
+from backend.routes import (
     pages,
     api_thumbnail,
     api_analyze,

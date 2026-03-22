@@ -2,11 +2,11 @@ import os
 import asyncio
 import traceback
 from fastapi import APIRouter, HTTPException
-from models.schemas import AnalyzeVideoRequest
-from utils.video_helpers import extract_video_id
-from core.config import load_config
-from core.executor import run_in_executor
-from core.connection_manager import manager
+from backend.models.schemas import AnalyzeVideoRequest
+from backend.utils.video_helpers import extract_video_id
+from backend.core.config import load_config
+from backend.core.executor import run_in_executor
+from backend.core.connection_manager import manager
 
 router = APIRouter()
 
@@ -18,11 +18,11 @@ async def analyze_video(request: AnalyzeVideoRequest):
     """
     try:
         # Import processing modules
-        from downloader import VideoDownloader
-        from pytube_downloader import PytubeDownloader
-        from transcriber import AudioTranscriber
-        from ai_analyzer import AIAnalyzer
-        from analyzer import SectionAnalyzer
+        from backend.downloader import VideoDownloader
+        from backend.pytube_downloader import PytubeDownloader
+        from backend.transcriber import AudioTranscriber
+        from backend.ai_analyzer import AIAnalyzer
+        from backend.analyzer import SectionAnalyzer
 
         video_id = extract_video_id(request.url)
 

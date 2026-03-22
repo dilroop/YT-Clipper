@@ -2,12 +2,12 @@ import os
 import asyncio
 import traceback
 from fastapi import APIRouter, HTTPException
-from models.schemas import ProcessVideoRequest
-from utils.video_helpers import extract_video_id
-from core.config import load_config
-from core.executor import run_in_executor
-from core.connection_manager import manager
-from core.constants import TEMP_DIR
+from backend.models.schemas import ProcessVideoRequest
+from backend.utils.video_helpers import extract_video_id
+from backend.core.config import load_config
+from backend.core.executor import run_in_executor
+from backend.core.connection_manager import manager
+from backend.core.constants import TEMP_DIR
 
 router = APIRouter()
 
@@ -18,16 +18,16 @@ async def process_video(request: ProcessVideoRequest):
     """
     try:
         # Import processing modules
-        from downloader import VideoDownloader
-        from pytube_downloader import PytubeDownloader
-        from transcriber import AudioTranscriber
-        from analyzer import SectionAnalyzer
-        from ai_analyzer import AIAnalyzer
-        from clipper import VideoClipper
-        from caption_generator import CaptionGenerator
-        from reels_processor import ReelsProcessor
-        from watermark_processor import WatermarkProcessor
-        from file_manager import FileManager
+        from backend.downloader import VideoDownloader
+        from backend.pytube_downloader import PytubeDownloader
+        from backend.transcriber import AudioTranscriber
+        from backend.analyzer import SectionAnalyzer
+        from backend.ai_analyzer import AIAnalyzer
+        from backend.clipper import VideoClipper
+        from backend.caption_generator import CaptionGenerator
+        from backend.reels_processor import ReelsProcessor
+        from backend.watermark_processor import WatermarkProcessor
+        from backend.file_manager import FileManager
 
         video_id = extract_video_id(request.url)
 

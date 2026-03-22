@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
-from models.schemas import VideoURLRequest
-from utils.video_helpers import extract_video_id, get_thumbnail_url, check_url_exists
+from backend.models.schemas import VideoURLRequest
+from backend.utils.video_helpers import extract_video_id, get_thumbnail_url, check_url_exists
 # Note: database is expected to be in the parent directory context or installed
-from database import save_to_history
+from backend.database import save_to_history
 import yt_dlp
 
 router = APIRouter()

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from database import get_history, clear_history
+from backend.database import get_history, clear_history
 
 router = APIRouter()
 

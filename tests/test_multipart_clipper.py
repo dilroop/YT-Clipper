@@ -8,7 +8,7 @@ import sys
 import subprocess
 from pathlib import Path
 
-# Add parent directory to path
+# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backend.clipper import VideoClipper

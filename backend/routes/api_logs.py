@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from core.constants import BASE_DIR
-from core.logging_utils import LOG_FILE
+from backend.core.constants import BASE_DIR
+from backend.core.logging_utils import LOG_FILE
 
 router = APIRouter()
 

@@ -15,14 +15,14 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-# Add backend to sys.path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'backend'))
+# Add project root to sys.path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from clipper import VideoClipper
-from transcriber import AudioTranscriber
-from reels_processor import ReelsProcessor
-from caption_generator import CaptionGenerator
-from core.config import load_config
+from backend.clipper import VideoClipper
+from backend.transcriber import AudioTranscriber
+from backend.reels_processor import ReelsProcessor
+from backend.caption_generator import CaptionGenerator
+from backend.core.config import load_config
 
 def run_full_pipeline_test():
     print("\n" + "="*60)
