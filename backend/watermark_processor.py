@@ -4,8 +4,11 @@ Adds text or image watermarks to videos
 """
 
 import subprocess
+import os
+import tempfile
 from pathlib import Path
 from typing import Dict
+from PIL import Image, ImageDraw, ImageFont
 
 
 class WatermarkProcessor:
@@ -120,6 +123,7 @@ class WatermarkProcessor:
         ]
 
         try:
+            print(f"[DEBUG] Adding text watermark with command: {' '.join(cmd)}")
             subprocess.run(cmd, check=True, capture_output=True)
 
             return {
@@ -130,9 +134,104 @@ class WatermarkProcessor:
             }
 
         except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode()
+            if "No such filter: 'drawtext'" in stderr:
+                print("[DEBUG] FFmpeg 'drawtext' filter missing. Attempting PNG fallback...")
+                return self._add_text_watermark_png_fallback(video_path, output_path, config)
+            
             return {
                 'success': False,
-                'error': f"Error adding text watermark: {e.stderr.decode()}"
+                'error': f"Error adding text watermark: {stderr}"
+            }
+
+    def _add_text_watermark_png_fallback(self, video_path: str, output_path: str, config: dict) -> Dict:
+        """
+        Fallback: Create a transparent PNG with text and overlay it.
+        """
+        import cv2
+        text = config.get('text', 'YT-Clipper')
+        position = config.get('position', 'top_right')
+        gap = config.get('gap', 100)
+
+        # 1. Get video dimensions
+        cap = cv2.VideoCapture(video_path)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+
+        # 2. Create transparent image
+        img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        # 3. Load font
+        try:
+            # Use a common system font
+            font_path = "/System/Library/Fonts/Supplemental/Arial Bold.ttf" # Mac specific
+            if not os.path.exists(font_path):
+                font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" # Linux
+            
+            font = ImageFont.truetype(font_path, 32)
+        except:
+            font = ImageFont.load_default()
+
+        # 4. Calculate position
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+
+        if position == 'top_right':
+            x, y = width - tw - gap, gap
+        elif position == 'top_left':
+            x, y = gap, gap
+        elif position == 'bottom_right':
+            x, y = width - tw - gap, height - th - gap
+        elif position == 'bottom_left':
+            x, y = gap, height - th - gap
+        else:
+            x, y = width - tw - gap, gap
+
+        # 5. Draw text (white with 70% opacity, and shadow)
+        # Shadow
+        draw.text((x+2, y+2), text, font=font, fill=(0, 0, 0, 128))
+        # Main text
+        draw.text((x, y), text, font=font, fill=(255, 255, 255, 180))
+
+        # 6. Save temp PNG
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            tmp_png_path = tmp.name
+            img.save(tmp_png_path)
+
+        # 7. Overlay with FFmpeg
+        overlay_cmd = [
+            'ffmpeg',
+            '-i', video_path,
+            '-i', tmp_png_path,
+            '-filter_complex', 'overlay=0:0',
+            '-c:a', 'copy',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '23',
+            '-y',
+            output_path
+        ]
+
+        try:
+            subprocess.run(overlay_cmd, check=True, capture_output=True)
+            if os.path.exists(tmp_png_path):
+                os.remove(tmp_png_path)
+            
+            return {
+                'success': True,
+                'output_path': output_path,
+                'watermark_added': True,
+                'watermark_type': 'text_png_fallback'
+            }
+        except subprocess.CalledProcessError as e:
+            if os.path.exists(tmp_png_path):
+                os.remove(tmp_png_path)
+            return {
+                'success': False,
+                'error': f"PNG Fallback watermark failed: {e.stderr.decode()}"
             }
 
     def _add_image_watermark(self, video_path: str, output_path: str, config: dict) -> Dict:

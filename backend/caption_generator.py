@@ -5,7 +5,11 @@ Creates ASS subtitle files with dynamic word-by-word captions
 
 from pathlib import Path
 import subprocess
-from typing import List, Dict
+import shutil
+import os
+import tempfile
+from typing import List, Dict, Optional
+from PIL import Image, ImageDraw, ImageFont
 
 
 class CaptionGenerator:
@@ -22,6 +26,7 @@ class CaptionGenerator:
             'font_size': 48,
             'vertical_position': 80  # Percentage from top
         }
+        print(f"[DEBUG] CaptionGenerator Initialized (Version 2.1 - PNG Fallback Enabled)")
 
     def create_ass_subtitles(
         self,
@@ -68,7 +73,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
         # Group words according to words_per_caption
-        words_per_caption = self.config.get('words_per_caption', 2)
+        words_per_caption = int(self.config.get('words_per_caption', 2))
         captions = []
 
         for i in range(0, len(words), words_per_caption):
@@ -120,7 +125,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         self,
         video_path: str,
         subtitle_path: str,
-        output_path: str = None
+        output_path: Optional[str] = None
     ) -> dict:
         """
         Burn subtitles into video using ffmpeg
@@ -133,49 +138,218 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         Returns:
             dict with result
         """
-        video_path = Path(video_path)
-        subtitle_path = Path(subtitle_path)
+        v_path = Path(video_path)
+        sub_path = Path(subtitle_path)
 
         if output_path is None:
-            output_path = video_path.parent / f"{video_path.stem}_captioned.mp4"
+            out_path = v_path.parent / f"{v_path.stem}_captioned.mp4"
         else:
-            output_path = Path(output_path)
+            out_path = Path(output_path)
 
         # Escape subtitle path for ffmpeg filter
         # Need to escape special characters for ffmpeg filter syntax
-        escaped_subtitle_path = str(subtitle_path.absolute()).replace('\\', '\\\\').replace(':', '\\:')
+        escaped_subtitle_path = str(sub_path.absolute()).replace('\\', '\\\\').replace(':', '\\:')
 
         # Build ffmpeg command to burn subtitles using subtitles filter with filename parameter
         cmd = [
             'ffmpeg',
-            '-i', str(video_path),
+            '-i', str(v_path),
             '-vf', f"subtitles=filename='{escaped_subtitle_path}'",
             '-c:v', 'libx264',
             '-c:a', 'copy',  # Copy audio without re-encoding
             '-preset', 'medium',
             '-crf', '23',
             '-y',
-            str(output_path)
+            str(out_path)
         ]
 
-        print(f"[DEBUG] Burning captions with command: {' '.join(cmd)}")
+        print(f"[DEBUG] [V2.1] Burning captions with command: {' '.join(cmd)}")
 
         try:
             result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            print(f"[DEBUG] Captions burned successfully to: {output_path}")
+            print(f"[DEBUG] Captions burned successfully to: {out_path}")
 
+            return {
+                'success': True,
+                'output_path': str(out_path)
+            }
+
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr or e.stdout or "Unknown ffmpeg error"
+            print(f"[ERROR] FFmpeg caption burning (subtitles filter) failed: {error_msg}")
+            
+            # FALLBACK: Try burning with PNG overlays if subtitles filter fails
+            print(f"[DEBUG] Attempting PNG-based rendering fallback...")
+            return self.burn_captions_with_pngs(video_path, subtitle_path, output_path)
+
+    def burn_captions_with_pngs(
+        self,
+        video_path: str,
+        subtitle_path: str,
+        output_path: Optional[str] = None
+    ) -> dict:
+        """
+        Fallback method: Burn captions using transparent PNG overlays via FFmpeg's overlay filter.
+        Used when 'subtitles' filter is missing in FFmpeg.
+        """
+        v_path = Path(video_path)
+        if output_path is None:
+            out_path = v_path.parent / f"{v_path.stem}_captioned_png.mp4"
+        else:
+            out_path = Path(output_path)
+
+        # 1. Parse ASS file to get caption timings and text
+        captions = self._parse_ass_file(Path(subtitle_path))
+        if not captions:
+            print("[WARNING] No captions found in ASS file for PNG rendering.")
+            return {'success': False, 'error': "No captions found in ASS file"}
+
+        # 2. Get video dimensions
+        import cv2
+        cap = cv2.VideoCapture(str(video_path))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+
+        # 3. Create temporary directory for PNGs
+        temp_png_dir = Path(tempfile.gettempdir()) / f"captions_{os.getpid()}"
+        temp_png_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # 4. Generate PNGs
+            png_overlays = []
+            for i, caption in enumerate(captions):
+                png_path = temp_png_dir / f"cap_{i}.png"
+                self._render_single_caption_png(
+                    text=caption['text'],
+                    width=width,
+                    height=height,
+                    output_path=png_path
+                )
+                png_overlays.append({
+                    'path': png_path,
+                    'start': caption['start'],
+                    'end': caption['end']
+                })
+
+            # 5. Build FFmpeg command with complex filter
+            # filter_complex example: [0][1]overlay=enable='between(t,1,2)'[v1]; [v1][2]overlay=enable='between(t,3,4)'[v2]...
+            inputs = ['-i', str(video_path)]
+            for overlay in png_overlays:
+                inputs.extend(['-i', str(overlay['path'])])
+
+            filter_chains = []
+            last_v = "[0]"
+            for i, overlay in enumerate(png_overlays):
+                next_v = f"[v{i+1}]"
+                filter_chains.append(f"{last_v}[{i+1}]overlay=enable='between(t,{overlay['start']},{overlay['end']})'{next_v}")
+                last_v = next_v
+
+            cmd = [
+                'ffmpeg',
+                *inputs,
+                '-filter_complex', ';'.join(filter_chains),
+                '-map', last_v if filter_chains else '0:v',
+                '-map', '0:a?',
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-crf', '23',
+                '-y',
+                str(out_path)
+            ]
+
+            print(f"[DEBUG] Running PNG overlay FFmpeg command...")
+            subprocess.run(cmd, check=True, capture_output=True)
+            
             return {
                 'success': True,
                 'output_path': str(output_path)
             }
 
-        except subprocess.CalledProcessError as e:
-            error_msg = e.stderr or e.stdout or "Unknown ffmpeg error"
-            print(f"[ERROR] FFmpeg caption burning failed: {error_msg}")
-            return {
-                'success': False,
-                'error': f"Error burning captions: {error_msg}"
-            }
+        except Exception as e:
+            print(f"[ERROR] PNG-based captioning failed: {str(e)}")
+            return {'success': False, 'error': str(e)}
+        finally:
+            # Cleanup PNGs
+            shutil.rmtree(temp_png_dir, ignore_errors=True)
+
+    def _render_single_caption_png(self, text: str, width: int, height: int, output_path: Path):
+        """Render a single caption segment to a transparent PNG."""
+        img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        # Load style from config
+        font_name = self.config.get('font_family', 'Impact')
+        font_size = int(self.config.get('font_size', 48))
+        v_pos_percent = int(self.config.get('vertical_position', 80))
+
+        # Attempt to load font
+        try:
+            # Try some common Mac paths
+            font_paths = [
+                f"/System/Library/Fonts/Supplemental/{font_name}.ttf",
+                f"/System/Library/Fonts/{font_name}.ttf",
+                "/System/Library/Fonts/Supplemental/Arial.ttf" # Fallback
+            ]
+            font = None
+            for fp in font_paths:
+                if Path(fp).exists():
+                    font = ImageFont.truetype(fp, font_size)
+                    break
+            if not font:
+                font = ImageFont.load_default()
+        except:
+            font = ImageFont.load_default()
+
+        # Calculate bounding box for background
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+
+        # Calculate position (centered horizontally, configured vertically)
+        x = (width - text_w) // 2
+        y = int(v_pos_percent * height / 100) - text_h
+
+        # Draw background box (rounded-ish)
+        padding = 15
+        draw.rectangle(
+            [x - padding, y - padding, x + text_w + padding, y + text_h + padding],
+            fill=(0, 0, 0, 160) # Semi-transparent black
+        )
+
+        # Draw text
+        draw.text((x, y), text, fill=(255, 255, 255, 255), font=font)
+
+        img.save(output_path)
+
+    def _parse_ass_file(self, ass_path: Path) -> List[Dict]:
+        """Simple parser to extract timings and text from ASS file."""
+        import re
+        captions = []
+        try:
+            with open(ass_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Match Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,TEXT
+            # Dialogue: 0,0:00:23.10,0:00:23.70,Default,,0,0,0,,THE
+            pattern = r"Dialogue: \d+,(\d+:\d+:\d+\.\d+),(\d+:\d+:\d+\.\d+),.*,,(.*)"
+            matches = re.finditer(pattern, content)
+            
+            for m in matches:
+                start_str, end_str, text = m.groups()
+                captions.append({
+                    'start': self._ass_time_to_seconds(start_str),
+                    'end': self._ass_time_to_seconds(end_str),
+                    'text': text.strip()
+                })
+        except Exception as e:
+            print(f"[ERROR] Parsing ASS for fallback failed: {e}")
+        return captions
+
+    def _ass_time_to_seconds(self, time_str: str) -> float:
+        """Convert H:MM:SS.CS to seconds."""
+        h, m, s = time_str.split(':')
+        return int(h) * 3600 + int(m) * 60 + float(s)
 
     def generate_clip_caption(
         self,

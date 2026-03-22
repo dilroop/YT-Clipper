@@ -47,16 +47,17 @@ class VideoClipper:
         # Calculate duration
         duration = end_time - start_time
 
-        # Build ffmpeg command
+        # Build ffmpeg command with accurate seeking
+        # Placing -ss after -i is slower but ensures frame-accurate extraction
         cmd = [
             'ffmpeg',
-            '-ss', str(start_time),  # Start time
             '-i', str(video_path),  # Input file
+            '-ss', str(start_time),  # Accurate seek after input
             '-t', str(duration),  # Duration
             '-c:v', 'libx264',  # Video codec
             '-c:a', 'aac',  # Audio codec
             '-preset', 'medium',  # Encoding speed/quality
-            '-crf', '23',  # Quality (lower = better, 23 is default)
+            '-crf', '23',  # Quality
             '-y',  # Overwrite output
             str(output_path)
         ]

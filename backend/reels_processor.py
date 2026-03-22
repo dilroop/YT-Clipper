@@ -1829,13 +1829,8 @@ class ReelsProcessor:
             subprocess.run(cmd, check=True, capture_output=True)
             print(f"[DEBUG] Stacked video created: 1080x1920")
 
-            # Step 4: Add captions if provided
-            if caption_text:
-                print(f"[DEBUG] Adding captions...")
-                self._add_captions_overlay(stacked_path, output_path, caption_text)
-            else:
-                # Just copy stacked to output
-                shutil.copy(stacked_path, output_path)
+            # Copy result to output
+            shutil.copy(stacked_path, output_path)
 
             # Cleanup
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1917,30 +1912,3 @@ class ReelsProcessor:
         if img_path.exists():
             img_path.unlink()
 
-    def _add_captions_overlay(self, video_path: Path, output_path: Path, caption_text: str):
-        """
-        Add caption text overlay to video
-
-        Args:
-            video_path: Input video path
-            output_path: Output video path
-            caption_text: Caption text to overlay
-        """
-        print(f"[DEBUG] Adding caption overlay: {caption_text[:50]}...")
-
-        # Add caption at bottom using drawtext filter
-        # Position captions in bottom 20% of frame with padding
-        vf_filter = f"drawtext=text='{caption_text}':fontcolor=white:fontsize=36:box=1:boxcolor=black@0.5:boxborderw=10:x=(w-text_w)/2:y=h-th-100"
-
-        cmd = [
-            'ffmpeg',
-            '-i', str(video_path),
-            '-vf', vf_filter,
-            '-c:v', 'libx264',
-            '-c:a', 'copy',
-            '-preset', 'medium',
-            '-crf', '23',
-            '-y',
-            str(output_path)
-        ]
-        subprocess.run(cmd, check=True, capture_output=True)

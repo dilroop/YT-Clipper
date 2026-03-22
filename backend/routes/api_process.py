@@ -238,12 +238,32 @@ async def process_video(request: ProcessVideoRequest):
             # Captions
             caption_text = caption_gen.generate_clip_caption(clip_words, clip_start, clip_end)
 
+
+            # Watermark
+            watermark_result = await run_in_executor(
+                watermark_proc.add_watermark,
+                clip_path
+            )
+            if watermark_result['success'] and watermark_result.get('watermark_added'):
+                clip_path = watermark_result['output_path']
+                temp_files.append(clip_path)
+
+            # Step 5: Final Call - Subtitle Burning (happens last to respect dimensions)
             if request.burn_captions:
+                import cv2
+                # Detect final video dimensions for correct caption positioning
+                cap = cv2.VideoCapture(str(clip_path))
+                v_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1920
+                v_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
+                cap.release()
+
                 ass_path = TEMP_DIR / f"clip_{i+1}.ass"
                 caption_gen.create_ass_subtitles(
                     words=clip_words,
                     output_path=str(ass_path),
-                    clip_start_time=clip_start
+                    clip_start_time=clip_start,
+                    video_width=v_width,
+                    video_height=v_height
                 )
                 temp_files.append(str(ass_path))
 
@@ -267,15 +287,6 @@ async def process_video(request: ProcessVideoRequest):
                         'percent': clip_progress,
                         'message': f"⚠️ Caption burning failed for clip {i+1}. Proceeding without captions."
                     })
-
-            # Watermark
-            watermark_result = await run_in_executor(
-                watermark_proc.add_watermark,
-                clip_path
-            )
-            if watermark_result['success'] and watermark_result.get('watermark_added'):
-                clip_path = watermark_result['output_path']
-                temp_files.append(clip_path)
 
             # Collect info for organization
             if 'parts' in clip and len(clip['parts']) > 1:
