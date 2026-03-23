@@ -1222,20 +1222,23 @@ const editorCancelBtn = document.getElementById('editorCancelBtn');
 const editorSaveBtn = document.getElementById('editorSaveBtn');
 
 // Split multi-part clips into separate cards for the editor
-function splitMultiPartClips(clips) {
+function splitMultiPartClips(clips, singleClipIndex = null) {
     let splitClips = [];
     let partCounter = 0;
 
-    clips.forEach((clip, idx) => {
-        // Assign a stable groupId if not present
-        const groupId = clip.groupId || `group-${idx}-${Date.now().toString().slice(-6)}`;
+    const sourceClips = singleClipIndex !== null ? [clips[singleClipIndex]] : clips;
+
+    sourceClips.forEach((clip, idx) => {
+        // Use the actual index from analyzedClips if we are editing a single clip
+        const actualIdx = singleClipIndex !== null ? singleClipIndex : idx;
+        const groupId = clip.groupId || `group-${actualIdx}-${Date.now().toString().slice(-6)}`;
         
         if (clip.parts && clip.parts.length > 0) {
             clip.parts.forEach((part, partIdx) => {
                 const newClip = {
                     ...clip, // Inherit metadata (title, reason, etc.)
                     index: partCounter++,
-                    parentIndex: idx, // Keep track of which original clip this belongs to
+                    parentIndex: actualIdx, // Points to original index in analyzedClips
                     groupId: groupId,
                     partIndex: partIdx,
                     start: part.start,
@@ -1252,7 +1255,7 @@ function splitMultiPartClips(clips) {
             const newClip = {
                 ...clip,
                 index: partCounter++,
-                parentIndex: idx,
+                parentIndex: actualIdx,
                 groupId: groupId,
                 partIndex: 0,
                 parts: [{
@@ -1276,23 +1279,22 @@ function openClipEditor(clipIndex = null) {
         return;
     }
 
-    // Deep clone clips to avoid mutating original data
+    if (clipIndex === null) {
+        showToast('Please select a clip to edit', 'info');
+        return;
+    }
+
+    // Store which clip we are editing
+    editorState.editingClipIndex = clipIndex;
+
+    // Deep clone the specific clip to avoid mutating original data until save
     let clonedClips = JSON.parse(JSON.stringify(analyzedClips));
 
-    // Split multi-part clips into separate cards for the editor
-    editorState.clips = splitMultiPartClips(clonedClips);
+    // Split ONLY the selected clip into separate cards for the editor
+    editorState.clips = splitMultiPartClips(clonedClips, clipIndex);
     editorState.originalClips = JSON.parse(JSON.stringify(editorState.clips));
-    editorState.selectedClipIndex = null; // Clear card selection by default
+    editorState.selectedClipIndex = 0; // Select the first part by default
     editorState.isOpen = true;
-
-    // If a specific clip was requested to be edited, find its first card and select it
-    if (clipIndex !== null) {
-        // findIndex based on parentIndex is the most reliable way now
-        const firstCardInGroup = editorState.clips.findIndex(c => c.parentIndex === clipIndex);
-        if (firstCardInGroup !== -1) {
-            editorState.selectedClipIndex = firstCardInGroup;
-        }
-    }
 
     // Extract transcript segments from clips (word-level timing)
     editorState.transcriptSegments = extractTranscriptSegments(editorState.clips);
@@ -1314,10 +1316,8 @@ function openClipEditor(clipIndex = null) {
     }, 10);
     document.body.style.overflow = 'hidden';
 
-    // Select and scroll to clip if specified
-    if (editorState.selectedClipIndex !== null) {
-        selectClip(editorState.selectedClipIndex);
-    }
+    // Select and scroll to the first part
+    selectClip(0);
 }
 
 // Close Clip Script Editor
@@ -1338,6 +1338,7 @@ function closeClipEditor() {
     setTimeout(() => {
         clipEditorModal.style.display = 'none';
     }, 200);
+    document.body.style.overflow = 'auto';
 }
 
 // Extract transcript segments from clips
@@ -2196,86 +2197,61 @@ function attachHandleDragListeners(handle, type, initialStartIndex, initialEndIn
     }
 }
 
-// Save changes
 // Save changes and return to suggestion list
 function saveEditorChanges() {
-    if (!editorState.isOpen) return;
+    if (!editorState.isOpen || editorState.clips.length === 0) return;
 
-    // Group the editor cards by groupId to reconstruct multi-part clips
-    const groups = new Map();
+    const cards = editorState.clips;
+    const firstCard = cards[0];
+    const editingIndex = editorState.editingClipIndex;
+
+    console.log(`[EDITOR] Merging all ${cards.length} parts into ONE clip for index ${editingIndex}`);
     
-    editorState.clips.forEach(card => {
-        const gid = card.groupId;
-        if (!groups.has(gid)) {
-            groups.set(gid, []);
-        }
-        groups.get(gid).push(card);
-    });
+    // Construct the single merged clip from all cards in the editor
+    const mergedClip = {
+        ...firstCard, // Inherit metadata (original title, reasons, keywords, etc.)
+        start: cards.reduce((min, c) => Math.min(min, c.start), cards[0].start),
+        end: cards.reduce((max, c) => Math.max(max, c.end), cards[0].end),
+        duration: cards.reduce((sum, c) => sum + (c.end - c.start), 0),
+        text: cards.map(c => {
+            const cardText = c.text || (c.words && c.words.length > 0 ? c.words.map(w => w.word).join(' ') : '');
+            return cardText;
+        }).filter(t => t).join(' ... '),
+        words: cards.reduce((acc, c) => acc.concat(c.words || []), []),
+        parts: cards.map(c => {
+            const partText = c.text || (c.words && c.words.length > 0 ? c.words.map(w => w.word).join(' ') : '');
+            return {
+                start: c.start,
+                end: c.end,
+                duration: c.end - c.start,
+                text: partText,
+                words: c.words || []
+            };
+        })
+    };
 
-    // Reconstruct analyzedClips from groups
-    const newAnalyzedClips = [];
-    
-    // Iterate through groups in the order they appear in the editor
-    // (We extract unique group IDs in order of first appearance)
-    const seenGroups = new Set();
-    const groupOrder = [];
-    editorState.clips.forEach(c => {
-        if (!seenGroups.has(c.groupId)) {
-            seenGroups.add(c.groupId);
-            groupOrder.push(c.groupId);
-        }
-    });
-
-    groupOrder.forEach((gid, idx) => {
-        const cards = groups.get(gid);
+    // Maintain the original index and title if possible
+    if (editingIndex !== null && editingIndex < analyzedClips.length) {
+        // Preserving the original title was requested ("do not update title")
+        const originalClip = analyzedClips[editingIndex];
+        mergedClip.title = originalClip.title;
+        mergedClip.index = editingIndex;
         
-        // Sort parts within the group by start time to ensure chronological stitching
-        // (unless we want to allow out-of-order stitching? The user mentioned "sequence" 
-        // and "drag feature" so let's respect the editor order instead).
-        // Actually, cards is already in editor order. Let's use that.
-        
-        const firstCard = cards[0];
-        const lastCard = cards[cards.length - 1];
-        
-        console.log(`[EDITOR] Merging group ${gid} with ${cards.length} parts`);
-        
-        const mergedClip = {
-            ...firstCard, // Inherit metadata from the first card in group
-            start: cards.reduce((min, c) => Math.min(min, c.start), cards[0].start),
-            end: cards.reduce((max, c) => Math.max(max, c.end), cards[0].end),
-            duration: cards.reduce((sum, c) => sum + (c.end - c.start), 0),
-            text: cards.map(c => {
-                const cardText = c.text || (c.words && c.words.length > 0 ? c.words.map(w => w.word).join(' ') : '');
-                return cardText;
-            }).filter(t => t).join(' ... '),
-            words: cards.reduce((acc, c) => acc.concat(c.words || []), []),
-            parts: cards.map(c => {
-                const partText = c.text || (c.words && c.words.length > 0 ? c.words.map(w => w.word).join(' ') : '');
-                console.log(`[EDITOR] - Part: ${c.start.toFixed(1)}s - ${c.end.toFixed(1)}s: "${partText.substring(0, 30)}..."`);
-                return {
-                    start: c.start,
-                    end: c.end,
-                    duration: c.end - c.start,
-                    text: partText,
-                    words: c.words || []
-                };
-            })
-        };
-        
-        mergedClip.index = idx;
-        mergedClip.title = `Clip ${idx + 1}`;
-        newAnalyzedClips.push(mergedClip);
-    });
-
-    // Update global analyzedClips state
-    analyzedClips = newAnalyzedClips;
+        // Update in-place
+        analyzedClips[editingIndex] = mergedClip;
+    } else {
+        // Fallback or append if it's somehow a new sequence
+        mergedClip.index = analyzedClips.length;
+        mergedClip.title = mergedClip.title || `New Clip ${analyzedClips.length + 1}`;
+        analyzedClips.push(mergedClip);
+    }
     
     // Refresh main list
     displayClipSelection(analyzedClips);
     
     // Close editor
     closeClipEditor();
-    showToast('Clips updated successfully');
+    showToast('Clip updated successfully');
 }
 
 // Cancel changes
