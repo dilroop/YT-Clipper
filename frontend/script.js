@@ -5,6 +5,7 @@ let currentVideoData = null;
 let selectedFormat = 'vertical_9x16';  // Default to vertical 9:16 format
 let analyzedClips = null;
 let selectedClipIndices = [];
+let fullTranscriptWords = []; // Full video transcript words from Whisper (for clip editor)
 
 // DOM Elements
 const urlInput = document.getElementById('urlInput');
@@ -891,6 +892,7 @@ async function analyzeAndShowClips() {
 
         const data = await response.json();
         analyzedClips = data.clips;
+        fullTranscriptWords = data.full_transcript_words || [];
         selectedClipIndices = [];
 
         // Display clip selection UI
@@ -923,6 +925,7 @@ function formatTimeHMS(seconds) {
 // Display clip selection UI
 function displayClipSelection(clips) {
     clipsList.innerHTML = '';
+    selectedClipIndices = []; // Clear previous selections to avoid stale indices
 
     clips.forEach((clip, index) => {
         const clipElement = document.createElement('div');
@@ -1087,6 +1090,7 @@ async function generateSelectedClips() {
                 burn_captions: burnCaptionsToggle.checked,
                 selected_clips: selectedClipIndices,
                 preanalyzed_clips: selectedClipsData,  // Pass the full clip data to skip re-analysis
+                full_transcript_words: fullTranscriptWords, // Pass full transcript for subtitle re-derivation
                 client_id: wsClientId  // Send client ID for targeted progress updates
             }),
         });
@@ -1217,43 +1221,48 @@ const addClipBtn = document.getElementById('addClipBtn');
 const editorCancelBtn = document.getElementById('editorCancelBtn');
 const editorSaveBtn = document.getElementById('editorSaveBtn');
 
-// Split multi-part clips into individual clips for editor
+// Split multi-part clips into separate cards for the editor
 function splitMultiPartClips(clips) {
-    const splitClips = [];
-    let clipCounter = 0;
+    let splitClips = [];
+    let partCounter = 0;
 
-    clips.forEach((clip) => {
-        // Check if this is a multi-part clip
-        if (clip.parts && clip.parts.length > 1) {
-            // Split into individual clips - one per part
-            clip.parts.forEach((part, partIndex) => {
+    clips.forEach((clip, idx) => {
+        // Assign a stable groupId if not present
+        const groupId = clip.groupId || `group-${idx}-${Date.now().toString().slice(-6)}`;
+        
+        if (clip.parts && clip.parts.length > 0) {
+            clip.parts.forEach((part, partIdx) => {
                 const newClip = {
-                    index: clipCounter++,
+                    ...clip, // Inherit metadata (title, reason, etc.)
+                    index: partCounter++,
+                    parentIndex: idx, // Keep track of which original clip this belongs to
+                    groupId: groupId,
+                    partIndex: partIdx,
                     start: part.start,
                     end: part.end,
                     duration: part.end - part.start,
-                    title: `${clip.title} - Part ${partIndex + 1}`,
-                    reason: clip.reason,
-                    text: part.text || clip.text,
-                    youtube_link: clip.youtube_link ? clip.youtube_link.split('&t=')[0] + `&t=${Math.floor(part.start)}` : '',
-                    keywords: clip.keywords || [],
+                    text: part.text || '',
                     words: part.words || [],
-                    parts: [{
-                        start: part.start,
-                        end: part.end,
-                        text: part.text || '',
-                        words: part.words || []
-                    }],
-                    is_valid: clip.is_valid,
-                    validation_warnings: clip.validation_warnings || [],
-                    validation_level: clip.validation_level || 'valid'
+                    parts: [part] // Each editor card has exactly one part
                 };
                 splitClips.push(newClip);
             });
         } else {
-            // Single-part clip or no parts array - keep as is
-            clip.index = clipCounter++;
-            splitClips.push(clip);
+            // Single part clip - keep as is but ensure it has the group structure
+            const newClip = {
+                ...clip,
+                index: partCounter++,
+                parentIndex: idx,
+                groupId: groupId,
+                partIndex: 0,
+                parts: [{
+                    start: clip.start,
+                    end: clip.end,
+                    text: clip.text || '',
+                    words: clip.words || []
+                }]
+            };
+            splitClips.push(newClip);
         }
     });
 
@@ -1270,17 +1279,27 @@ function openClipEditor(clipIndex = null) {
     // Deep clone clips to avoid mutating original data
     let clonedClips = JSON.parse(JSON.stringify(analyzedClips));
 
-    // Split multi-part clips into individual clips
+    // Split multi-part clips into separate cards for the editor
     editorState.clips = splitMultiPartClips(clonedClips);
     editorState.originalClips = JSON.parse(JSON.stringify(editorState.clips));
-    editorState.selectedClipIndex = clipIndex;
+    editorState.selectedClipIndex = null; // Clear card selection by default
     editorState.isOpen = true;
+
+    // If a specific clip was requested to be edited, find its first card and select it
+    if (clipIndex !== null) {
+        // findIndex based on parentIndex is the most reliable way now
+        const firstCardInGroup = editorState.clips.findIndex(c => c.parentIndex === clipIndex);
+        if (firstCardInGroup !== -1) {
+            editorState.selectedClipIndex = firstCardInGroup;
+        }
+    }
 
     // Extract transcript segments from clips (word-level timing)
     editorState.transcriptSegments = extractTranscriptSegments(editorState.clips);
 
-    // NEW: Build word mapping for character-level positioning
-    const wordMapping = buildTranscriptWordMapping(editorState.clips);
+    // Build word mapping for character-level positioning
+    // Uses the full video transcript when available, falls back to clip-only words
+    const wordMapping = buildTranscriptWordMappingFromWords(fullTranscriptWords, editorState.clips);
     editorState.transcriptWords = wordMapping.words;
     editorState.transcriptFullText = wordMapping.fullText;
 
@@ -1288,17 +1307,16 @@ function openClipEditor(clipIndex = null) {
     renderEditorClips();
     renderEditorTranscript();
 
-    // Show modal with fade-in
+    // Show modal
     clipEditorModal.style.display = 'flex';
     setTimeout(() => {
         clipEditorModal.style.opacity = '1';
     }, 10);
+    document.body.style.overflow = 'hidden';
 
     // Select and scroll to clip if specified
-    if (clipIndex !== null) {
-        setTimeout(() => {
-            selectClip(clipIndex);
-        }, 100);
+    if (editorState.selectedClipIndex !== null) {
+        selectClip(editorState.selectedClipIndex);
     }
 }
 
@@ -1372,58 +1390,66 @@ function extractTranscriptSegments(clips) {
     return segments;
 }
 
-// NEW: Build character-level word mapping from transcript
-// Creates array of words with their time and character positions in the full text
-function buildTranscriptWordMapping(clips) {
-    const words = [];
-    const wordMap = new Map();
+// Build character-level word mapping from the full transcript.
+// When fullWords (from /api/analyze full_transcript_words) is available it is used as the
+// source of truth so the editor shows the WHOLE video transcript.
+// Falls back to collecting words from the clips array if no full transcript is present.
+function buildTranscriptWordMappingFromWords(fullWords, clips) {
+    let sourceWords;
 
-    // Collect all words from all clips
-    clips.forEach(clip => {
-        if (clip.words && clip.words.length > 0) {
-            clip.words.forEach(word => {
-                const wordText = (word.word || word.text || '').trim();
-                if (wordText && !wordMap.has(word.start)) {
-                    wordMap.set(word.start, {
-                        word: wordText,
-                        start: word.start,
-                        end: word.end
-                    });
+    if (fullWords && fullWords.length > 0) {
+        // Use the complete video transcript
+        sourceWords = fullWords;
+    } else {
+        // Fallback: collect unique words from the AI-suggested clips
+        const wordMap = new Map();
+        clips.forEach(clip => {
+            (clip.words || []).forEach(w => {
+                const wordText = (w.word || w.text || '').trim();
+                if (wordText && !wordMap.has(w.start)) {
+                    wordMap.set(w.start, { word: wordText, start: w.start, end: w.end });
                 }
             });
-        }
-    });
-
-    // Convert to array and sort by start time
-    const sortedWords = Array.from(wordMap.values()).sort((a, b) => a.start - b.start);
+        });
+        sourceWords = Array.from(wordMap.values()).sort((a, b) => a.start - b.start);
+    }
 
     // Build full text paragraph and assign character positions
     let charPosition = 0;
     let fullText = '';
+    const words = [];
 
-    sortedWords.forEach((word, index) => {
+    sourceWords.forEach((word, index) => {
+        const wordText = (word.word || word.text || '').trim();
+        if (!wordText) return;
+
         const charStart = charPosition;
-        const charEnd = charPosition + word.word.length;
+        const charEnd = charPosition + wordText.length;
 
         words.push({
-            word: word.word,
+            word: wordText,
             start: word.start,
             end: word.end,
-            charStart: charStart,
-            charEnd: charEnd
+            charStart,
+            charEnd
         });
 
-        fullText += word.word;
+        fullText += wordText;
         charPosition = charEnd;
 
         // Add space after each word except the last
-        if (index < sortedWords.length - 1) {
+        if (index < sourceWords.length - 1) {
             fullText += ' ';
             charPosition += 1;
         }
     });
 
     return { words, fullText };
+}
+
+// Legacy alias kept for any future internal use (clip-only fallback)
+function buildTranscriptWordMapping(clips) {
+    return buildTranscriptWordMappingFromWords([], clips);
 }
 
 // NEW: Get absolute character position in the paragraph from a DOM node and offset
@@ -1516,20 +1542,31 @@ function createEditorClipCard(clip, index) {
     card.setAttribute('data-clip-index', index);
     card.setAttribute('draggable', 'true');
 
-    const startTime = formatTime(clip.start);
-    const endTime = formatTime(clip.end);
-    const text = clip.text || 'No transcript available';
-
     const isModified = editorState.clipModifications[index] !== undefined;
+
+    // Display as a single part card
+    const startTime = formatTime(clip.start);
+    const endTime   = formatTime(clip.end);
+    const text = clip.text || 'No transcript available';
+    
+    // Group label (e.g., "Clip 1")
+    const groupLabel = clip.title || `Clip ${clip.groupId}`;
+
+    const bodyHTML = `
+        <div class="editor-clip-info">
+            <div class="editor-clip-time">${groupLabel} &middot; ${startTime} &mdash; ${endTime}</div>
+            <div class="editor-clip-text">${text}</div>
+        </div>`;
 
     card.innerHTML = `
         <div class="editor-clip-header">
             <div class="clip-drag-handle" title="Drag to reorder">☰</div>
-            <div class="editor-clip-time">Clip ${index + 1} - ${startTime} - ${endTime}</div>
-            <button class="clip-confirm-btn ${isModified ? 'visible active' : ''}" title="Confirm changes">✓</button>
-            <button class="clip-delete-btn" title="Delete clip">✕</button>
+            <div class="editor-clip-header-actions">
+                <button class="clip-confirm-btn ${isModified ? 'visible active' : ''}" title="Confirm changes">✓</button>
+                <button class="clip-delete-btn" title="Delete part">✕</button>
+            </div>
         </div>
-        <div class="editor-clip-text">${text}</div>
+        ${bodyHTML}
     `;
 
     // Confirm button handler - apply cached modifications to clip
@@ -1537,10 +1574,27 @@ function createEditorClipCard(clip, index) {
     confirmBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (editorState.clipModifications[index]) {
+            const clip = editorState.clips[index];
             const mod = editorState.clipModifications[index];
-            editorState.clips[index].start = mod.start;
-            editorState.clips[index].end = mod.end;
-            editorState.clips[index].duration = mod.end - mod.start;
+
+            // Confirm modification for this specific card (part)
+            clip.start = mod.start;
+            clip.end = mod.end;
+            clip.duration = mod.end - mod.start;
+
+            // Update the part text to reflect new boundaries
+            const newWords = fullTranscriptWords.filter(w => w.start >= mod.start && w.end <= mod.end);
+            if (newWords.length > 0) {
+                clip.text = newWords.map(w => w.word).join(' ');
+                clip.words = newWords;
+                // Also update the internal parts array for this card
+                clip.parts = [{
+                    start: clip.start,
+                    end: clip.end,
+                    text: clip.text,
+                    words: clip.words
+                }];
+            }
 
             // Clear modification
             delete editorState.clipModifications[index];
@@ -1548,10 +1602,10 @@ function createEditorClipCard(clip, index) {
             // Re-render clips to update display
             renderEditorClips();
 
-            // Re-select the clip to update highlight
+            // Re-select to update highlight
             selectClip(index);
 
-            showToast('Clip boundaries updated');
+            showToast('Part updated');
         }
     });
 
@@ -1600,9 +1654,16 @@ function createEditorClipCard(clip, index) {
         }
     });
 
-    // Click to select
-    card.addEventListener('click', () => {
-        selectClip(index);
+    // Click to select clip or specific part
+    card.addEventListener('click', (e) => {
+        const partEl = e.target.closest('.editor-clip-part');
+        if (partEl) {
+            e.stopPropagation();
+            const pIdx = parseInt(partEl.dataset.partIndex);
+            selectClip(index, pIdx);
+        } else {
+            selectClip(index);
+        }
     });
 
     return card;
@@ -1688,61 +1749,60 @@ function enableTranscriptSelection() {
     });
 }
 
-// NEW: Show selection preview with drag handles before creating clip
+// NEW: Show selection preview — immediately create a new part card
 function showSelectionPreview(startTime, endTime, startWordIndex, endWordIndex, text) {
-    // Highlight the selected range
-    highlightTranscriptRange(startTime, endTime);
+    // Clear previous highlight first
+    clearTranscriptHighlight();
 
-    // Store the selection data for later use
-    editorState.pendingClipSelection = {
-        startTime,
-        endTime,
-        text,
-        startWordIndex,
-        endWordIndex
-    };
+    const selectedIndex = editorState.selectedClipIndex;
+    let groupId;
+    let groupTitle;
 
-    // Show a confirm button or toast message
-    showToast('Drag handles to adjust, then click + again to confirm', 'info');
-}
+    if (selectedIndex !== null && editorState.clips[selectedIndex]) {
+        // ADD A PART to the currently selected card's group
+        const selectedClip = editorState.clips[selectedIndex];
+        groupId = selectedClip.groupId;
+        groupTitle = selectedClip.title;
+        showToast(`Adding part to ${groupTitle}...`);
+    } else {
+        // No card selected — create a new standalone group
+        groupId = `group-custom-${Date.now()}`;
+        groupTitle = `New Clip`;
+        showToast('Creating new standalone clip...');
+    }
 
-// Create new clip from selection
-function createNewClipFromSelection(startTime, endTime, text) {
-    const newClip = {
+    const newPartCard = {
         index: editorState.clips.length,
+        groupId: groupId,
+        title: groupTitle,
         start: startTime,
         end: endTime,
         duration: endTime - startTime,
-        title: `Clip ${editorState.clips.length + 1}`,
-        reason: 'Manually added clip',
         text: text,
         youtube_link: analyzedClips[0]?.youtube_link?.split('&t=')[0] + `&t=${Math.floor(startTime)}` || '',
-        keywords: [],
-        words: [],
-        parts: [],
+        words: fullTranscriptWords.filter(w => w.start >= startTime && w.end <= endTime),
+        parts: [{ start: startTime, end: endTime, text, words: fullTranscriptWords.filter(w => w.start >= startTime && w.end <= endTime) }],
         is_valid: true,
         validation_warnings: [],
         validation_level: 'valid'
     };
 
-    editorState.clips.push(newClip);
+    // Add to editor clips list
+    editorState.clips.push(newPartCard);
+    
+    // Re-render and select the new part
     renderEditorClips();
+    selectClip(editorState.clips.length - 1);
 
-    // Toggle add mode off
+    // Exit add mode
     editorState.isAddingClip = false;
-    addClipBtn.classList.remove('active');
+    if (addClipBtn) addClipBtn.classList.remove('active');
+    editorState.pendingClipSelection = null;
+}
 
-    // Show success feedback
-    showToast('Clip added successfully');
-
-    // Scroll to new clip
-    setTimeout(() => {
-        const clipCard = editorClipsList.querySelector(`[data-clip-index="${editorState.clips.length - 1}"]`);
-        if (clipCard) {
-            clipCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            clipCard.classList.add('selected');
-        }
-    }, 100);
+// (Legacy function, no longer used as showSelectionPreview handles both cases now)
+function addNewStandaloneClip(startTime, endTime, text) {
+    showSelectionPreview(startTime, endTime, 0, 0, text);
 }
 
 // Delete clip
@@ -1779,11 +1839,10 @@ function reorderClip(fromIndex, toIndex) {
 // NEW: Select clip (highlight text range with iOS/Android-style handles)
 function selectClip(index) {
     editorState.selectedClipIndex = index;
+    editorState.selectedPartIndex = null; // No longer needed for sub-part selection
 
     // Remove selection from all cards
-    document.querySelectorAll('.editor-clip-card').forEach(card => {
-        card.classList.remove('selected');
-    });
+    document.querySelectorAll('.editor-clip-card').forEach(card => card.classList.remove('selected'));
 
     // Add selection to clicked card
     const selectedCard = editorClipsList.querySelector(`[data-clip-index="${index}"]`);
@@ -1791,15 +1850,14 @@ function selectClip(index) {
         selectedCard.classList.add('selected');
     }
 
-    // Get clip times (use modifications if available)
     const clip = editorState.clips[index];
     if (!clip) return;
 
     const mod = editorState.clipModifications[index];
+    
+    // Every card is a single part now, so just highlight its range
     const startTime = mod ? mod.start : clip.start;
-    const endTime = mod ? mod.end : clip.end;
-
-    // Highlight corresponding text range
+    const endTime   = mod ? mod.end   : clip.end;
     highlightTranscriptRange(startTime, endTime);
 }
 
@@ -2116,7 +2174,8 @@ function attachHandleDragListeners(handle, type, initialStartIndex, initialEndIn
 
     // Update clip modification (cache, don't save to clip yet)
     function updateClipModification() {
-        if (editorState.selectedClipIndex === null) return;
+        const cIdx = editorState.selectedClipIndex;
+        if (cIdx === null) return;
 
         const newStartWord = editorState.transcriptWords[currentStartIndex];
         const newEndWord = editorState.transcriptWords[currentEndIndex];
@@ -2124,7 +2183,7 @@ function attachHandleDragListeners(handle, type, initialStartIndex, initialEndIn
         if (!newStartWord || !newEndWord) return;
 
         // Cache modification (user must click confirm button to apply)
-        editorState.clipModifications[editorState.selectedClipIndex] = {
+        editorState.clipModifications[cIdx] = {
             start: newStartWord.start,
             end: newEndWord.end
         };
@@ -2132,23 +2191,90 @@ function attachHandleDragListeners(handle, type, initialStartIndex, initialEndIn
         // Re-render clips to show confirm button
         renderEditorClips();
 
-        // Re-select the clip to maintain selection
-        selectClip(editorState.selectedClipIndex);
+        // Re-select to maintain selection
+        selectClip(cIdx);
     }
 }
 
 // Save changes
+// Save changes and return to suggestion list
 function saveEditorChanges() {
-    // Update analyzedClips with edited clips
-    analyzedClips = JSON.parse(JSON.stringify(editorState.clips));
+    if (!editorState.isOpen) return;
 
-    // Re-render clip selection UI
+    // Group the editor cards by groupId to reconstruct multi-part clips
+    const groups = new Map();
+    
+    editorState.clips.forEach(card => {
+        const gid = card.groupId;
+        if (!groups.has(gid)) {
+            groups.set(gid, []);
+        }
+        groups.get(gid).push(card);
+    });
+
+    // Reconstruct analyzedClips from groups
+    const newAnalyzedClips = [];
+    
+    // Iterate through groups in the order they appear in the editor
+    // (We extract unique group IDs in order of first appearance)
+    const seenGroups = new Set();
+    const groupOrder = [];
+    editorState.clips.forEach(c => {
+        if (!seenGroups.has(c.groupId)) {
+            seenGroups.add(c.groupId);
+            groupOrder.push(c.groupId);
+        }
+    });
+
+    groupOrder.forEach((gid, idx) => {
+        const cards = groups.get(gid);
+        
+        // Sort parts within the group by start time to ensure chronological stitching
+        // (unless we want to allow out-of-order stitching? The user mentioned "sequence" 
+        // and "drag feature" so let's respect the editor order instead).
+        // Actually, cards is already in editor order. Let's use that.
+        
+        const firstCard = cards[0];
+        const lastCard = cards[cards.length - 1];
+        
+        console.log(`[EDITOR] Merging group ${gid} with ${cards.length} parts`);
+        
+        const mergedClip = {
+            ...firstCard, // Inherit metadata from the first card in group
+            start: cards.reduce((min, c) => Math.min(min, c.start), cards[0].start),
+            end: cards.reduce((max, c) => Math.max(max, c.end), cards[0].end),
+            duration: cards.reduce((sum, c) => sum + (c.end - c.start), 0),
+            text: cards.map(c => {
+                const cardText = c.text || (c.words && c.words.length > 0 ? c.words.map(w => w.word).join(' ') : '');
+                return cardText;
+            }).filter(t => t).join(' ... '),
+            words: cards.reduce((acc, c) => acc.concat(c.words || []), []),
+            parts: cards.map(c => {
+                const partText = c.text || (c.words && c.words.length > 0 ? c.words.map(w => w.word).join(' ') : '');
+                console.log(`[EDITOR] - Part: ${c.start.toFixed(1)}s - ${c.end.toFixed(1)}s: "${partText.substring(0, 30)}..."`);
+                return {
+                    start: c.start,
+                    end: c.end,
+                    duration: c.end - c.start,
+                    text: partText,
+                    words: c.words || []
+                };
+            })
+        };
+        
+        mergedClip.index = idx;
+        mergedClip.title = `Clip ${idx + 1}`;
+        newAnalyzedClips.push(mergedClip);
+    });
+
+    // Update global analyzedClips state
+    analyzedClips = newAnalyzedClips;
+    
+    // Refresh main list
     displayClipSelection(analyzedClips);
-
+    
     // Close editor
     closeClipEditor();
-
-    // Show success message
     showToast('Clips updated successfully');
 }
 
@@ -2200,27 +2326,19 @@ if (editorSaveBtn) {
 
 if (addClipBtn) {
     addClipBtn.addEventListener('click', () => {
-        // If there's a pending selection, confirm it
-        if (editorState.pendingClipSelection) {
-            const { startTime, endTime, text } = editorState.pendingClipSelection;
-            createNewClipFromSelection(startTime, endTime, text);
-            clearTranscriptHighlight();
-            delete editorState.pendingClipSelection;
-            editorState.isAddingClip = false;
-            addClipBtn.classList.remove('active');
-            return;
-        }
-
-        // Toggle add mode
+        // Toggle add-part mode
         editorState.isAddingClip = !editorState.isAddingClip;
-        addClipBtn.classList.toggle('active');
+        addClipBtn.classList.toggle('active', editorState.isAddingClip);
 
         if (editorState.isAddingClip) {
-            showToast('Select text in transcript to create a new clip');
+            const sel = editorState.selectedClipIndex;
+            const hint = (sel !== null)
+                ? `Select text in transcript to add a part to Clip ${sel + 1}`
+                : 'Select text in transcript to create a new clip';
+            showToast(hint, 'info');
         } else {
-            // Cancel selection preview
             clearTranscriptHighlight();
-            delete editorState.pendingClipSelection;
+            editorState.pendingClipSelection = null;
         }
     });
 }

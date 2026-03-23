@@ -161,12 +161,25 @@ async def analyze_video(request: AnalyzeVideoRequest):
 
         await update_progress({'stage': 'complete', 'percent': 100, 'message': 'Analysis complete!'})
 
+        # Build full transcript word list from all Whisper segments (for clip editor)
+        full_transcript_words = []
+        for seg in segments:
+            for w in seg.get('words', []):
+                word_text = (w.get('word') or w.get('text') or '').strip()
+                if word_text:
+                    full_transcript_words.append({
+                        'word': word_text,
+                        'start': w['start'],
+                        'end': w['end']
+                    })
+
         return {
             "success": True,
             "video_id": video_id,
             "video_info": video_info,
             "clips": formatted_clips,
-            "total_clips": len(formatted_clips)
+            "total_clips": len(formatted_clips),
+            "full_transcript_words": full_transcript_words
         }
 
     except Exception as e:

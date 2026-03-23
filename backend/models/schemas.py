@@ -15,6 +15,7 @@ class ProcessVideoRequest(BaseModel):
     burn_captions: bool = True
     selected_clips: Optional[List] = None
     preanalyzed_clips: Optional[List] = None
+    full_transcript_words: Optional[List] = None  # Full video words for re-deriving subtitles
     ai_strategy: Optional[str] = "viral-moments"
     client_id: Optional[str] = None
 

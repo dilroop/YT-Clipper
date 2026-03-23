@@ -150,20 +150,27 @@ class VideoClipper:
 
                 print(f"   Extracting part {i+1}/{len(parts)}: {start}s for {duration}s")
 
-                # Use -ss and -t for reliable extraction
+                # Use accurate seek (SS after -i) for precise transitions
+                # Also force consistent dimensions to prevent xfade filter mismatch
                 cmd = [
                     'ffmpeg',
-                    '-ss', str(start),
                     '-i', str(video_path),
+                    '-ss', str(start),
                     '-t', str(duration),
+                    # Force scale and pad to 1080p or consistent size
+                    '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
                     '-c:v', 'libx264',
                     '-c:a', 'aac',
-                    '-preset', 'ultrafast',  # Fast extraction
+                    '-preset', 'ultrafast',
                     '-y',
                     str(part_file)
                 ]
 
-                subprocess.run(cmd, check=True, capture_output=True)
+                part_proc = subprocess.run(cmd, check=False, capture_output=True)
+                if part_proc.returncode != 0:
+                    print(f"   ❌ Part {i+1} extraction failed: {part_proc.stderr.decode()}")
+                    return {'success': False, 'error': f"Part {i+1} extraction failed"}
+                
                 part_files.append(part_file)
 
             # Step 2: Build xfade filter chain to stitch parts
@@ -219,7 +226,11 @@ class VideoClipper:
                 ])
 
                 print(f"   Stitching {len(part_files)} parts with crossfade...")
-                subprocess.run(cmd, check=True, capture_output=True)
+                stitch_proc = subprocess.run(cmd, check=False, capture_output=True)
+                if stitch_proc.returncode != 0:
+                    error_msg = stitch_proc.stderr.decode()
+                    print(f"   ❌ Stitching failed: {error_msg}")
+                    return {'success': False, 'error': f"ffmpeg stitching error: {error_msg}"}
 
             # Cleanup temp files
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -241,6 +252,7 @@ class VideoClipper:
 
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.decode() if e.stderr else str(e)
+            print(f"   ❌ ffmpeg process failed: {error_msg}")
             return {
                 'success': False,
                 'error': f"ffmpeg error during multi-part stitching: {error_msg}"

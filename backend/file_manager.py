@@ -229,26 +229,19 @@ class FileManager:
 
     def get_project_summary(self, project_folder: Path) -> Dict:
         """
-        Get summary of project folder
-
-        Args:
-            project_folder: Path to project folder
-
-        Returns:
-            dict with summary info
+        Get summary of project folder by scanning all subfolders
         """
-        original_folder = project_folder / "original"
-        reels_folder = project_folder / "reels"
-
-        # Only scan folders that exist
-        original_clips = list(original_folder.glob("clip_*.mp4")) if original_folder.exists() else []
-        reels_clips = list(reels_folder.glob("clip_*.mp4")) if reels_folder.exists() else []
+        all_clips = list(project_folder.glob("**/clip_*.mp4"))
+        
+        # Categorize by parent folder
+        original_clips = [str(p) for p in all_clips if "original" in str(p)]
+        reels_clips = [str(p) for p in all_clips if "reels" in str(p) or "video" in str(p)] # Include video as reels format
 
         return {
             'project_folder': str(project_folder),
             'original_count': len(original_clips),
             'reels_count': len(reels_clips),
-            'total_clips': len(original_clips) + len(reels_clips),
-            'original_clips': [str(p) for p in original_clips],
-            'reels_clips': [str(p) for p in reels_clips]
+            'total_clips': len(all_clips),
+            'original_clips': original_clips,
+            'reels_clips': reels_clips
         }

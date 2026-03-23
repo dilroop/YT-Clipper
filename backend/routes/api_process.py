@@ -153,17 +153,18 @@ async def process_video(request: ProcessVideoRequest):
                 interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
                 interesting_clips = [analyzer.adjust_clip_timing(clip) for clip in interesting_clips]
 
-            # Filter clips based on mode
-            if request.selected_clips is not None:
-                interesting_clips = [
-                    clip for i, clip in enumerate(interesting_clips)
-                    if i in request.selected_clips
-                ]
-            else:
-                interesting_clips = [
-                    clip for clip in interesting_clips
-                    if clip.get('validation_level', 'valid') != 'error'
-                ]
+            # Filter clips based on mode (Only if not using pre-analyzed clips)
+            if not request.preanalyzed_clips:
+                if request.selected_clips is not None:
+                    interesting_clips = [
+                        clip for i, clip in enumerate(interesting_clips)
+                        if i in request.selected_clips
+                    ]
+                else:
+                    interesting_clips = [
+                        clip for clip in interesting_clips
+                        if clip.get('validation_level', 'valid') != 'error'
+                    ]
 
         # Step 4: Create project folder
         project_folder = file_mgr.create_project_folder(video_info['title'])
@@ -201,22 +202,69 @@ async def process_video(request: ProcessVideoRequest):
                 )
 
             if not clip_result['success']:
+                print(f"[REELS] Clipping failed for clip {i+1}: {clip_result.get('error', 'Unknown error')}")
                 continue
 
+            print(f"[REELS] Clip {i+1} extraction successful: {clip_result['clip_path']}")
             clip_path = clip_result['clip_path']
             temp_files.append(clip_path)
 
-            # Get timing and words
+            # Get timing and words (Initial collection)
             if 'parts' in clip and len(clip['parts']) > 1:
-                clip_words = []
-                for part in clip['parts']:
-                    clip_words.extend(part.get('words', []))
-                clip_start = clip['parts'][0]['start']
-                clip_end = clip['parts'][-1]['end']
+                # MULTI-PART: Always re-map words to a synthetic contiguous timeline
+                all_mapped_words = []
+                current_output_time = 0
+                transition_duration = 0.1 # Matches clipper.py
+                
+                # Determine source of words (full transcript is preferred for better coverage)
+                word_source = request.full_transcript_words if request.full_transcript_words else None
+
+                for pi, part in enumerate(clip['parts']):
+                    p_start = part['start']
+                    p_end = part['end']
+                    p_duration = p_end - p_start
+                    
+                    # Find words for this part
+                    if word_source:
+                        part_words = [
+                            w.copy() for w in word_source
+                            if not (w['end'] <= p_start or w['start'] >= p_end)
+                        ]
+                    else:
+                        # Fallback to existing words in part, but still copy and shift
+                        part_words = [w.copy() for w in part.get('words', [])]
+                    
+                    print(f"[REELS] Part {pi+1}: Mapping {len(part_words)} words (Offset: {current_output_time:.2f}s)")
+                    
+                    # Shift word times to match the stitched output timeline
+                    for w in part_words:
+                        # Time relative to part start
+                        rel_start = max(0, w['start'] - p_start)
+                        rel_end = w['end'] - p_start
+                        # New time in stitched video
+                        w['start'] = current_output_time + rel_start
+                        w['end'] = current_output_time + rel_end
+                        
+                    all_mapped_words.extend(part_words)
+                    current_output_time += p_duration - transition_duration
+                    
+                clip_words = all_mapped_words
+                clip_start = 0
+                clip_end = current_output_time + transition_duration
+                print(f"[REELS] Multi-part sync complete: {len(clip_words)} words, duration {clip_end:.1f}s")
             else:
-                clip_words = clip.get('words', [])
+                # SINGLE-PART: Normal timing and optional re-derivation
                 clip_start = clip.get('start', 0)
                 clip_end = clip.get('end', 0)
+                clip_words = clip.get('words', [])
+                
+                if request.full_transcript_words:
+                    derived_words = [
+                        w for w in request.full_transcript_words
+                        if not (w['end'] <= clip_start or w['start'] >= clip_end)
+                    ]
+                    if derived_words:
+                        clip_words = derived_words
 
             # Reels conversion
             if request.format in ["reels", "vertical_9x16", "stacked_photo", "stacked_video"]:
