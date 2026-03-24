@@ -36,7 +36,7 @@ class AIAnalyzer:
         self.min_clip_duration = min_clip_duration
         self.max_clip_duration = max_clip_duration
 
-    def get_system_prompt(self, num_clips: int, video_info: Dict = None, strategy: str = "viral-moments") -> str:
+    def get_system_prompt(self, num_clips: int, video_info: Dict = None, strategy: str = "viral-moments", extra_context: str = None) -> str:
         """
         Generate system prompt for GPT by reading from ai-prompt-strategy folder
 
@@ -44,6 +44,7 @@ class AIAnalyzer:
             num_clips: Number of clips to find
             video_info: Optional video metadata (title, description, etc.)
             strategy: Strategy name (filename without .txt extension)
+            extra_context: Optional user-provided context or instructions
 
         Returns:
             Formatted prompt string
@@ -78,6 +79,13 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
 
 """
 
+        # Add user extra context if provided - HIGHEST PRIORITY
+        if extra_context and extra_context.strip():
+            video_context += f"""⚠️ SPECIAL USER INSTRUCTIONS / CUSTOM STORY:
+{extra_context.strip()}
+
+"""
+
         # Calculate target duration
         target_duration = (self.min_clip_duration + self.max_clip_duration) // 2
 
@@ -102,7 +110,8 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
         segments: List[Dict],
         num_clips: int = 5,
         video_info: Dict = None,
-        strategy: str = "viral-moments"
+        strategy: str = "viral-moments",
+        extra_context: str = None
     ) -> List[Dict]:
         """
         Use AI to find the most interesting clips from transcript
@@ -112,6 +121,7 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
             num_clips: Number of clips to extract
             video_info: Optional video metadata
             strategy: AI strategy to use (viral-moments, context-rich, educational)
+            extra_context: Optional user-provided context or instructions
 
         Returns:
             List of clip metadata (start, end, text, score, title, reason)
@@ -130,7 +140,7 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
         request_clips = num_clips + 3
 
         # Generate prompt with selected strategy
-        system_prompt = self.get_system_prompt(request_clips, video_info, strategy)
+        system_prompt = self.get_system_prompt(request_clips, video_info, strategy, extra_context)
         print(f"\n🎯 Using AI Strategy: {strategy}")
 
         # Format full prompt

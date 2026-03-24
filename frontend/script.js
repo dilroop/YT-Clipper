@@ -71,36 +71,45 @@ function hideElement(element) {
 }
 
 // Event Listeners
-urlInput.addEventListener('input', (e) => {
-    const value = e.target.value.trim();
+if (urlInput) {
+    urlInput.addEventListener('input', (e) => {
+        const value = e.target.value.trim();
 
-    // Show/hide clear button
-    if (value) {
-        clearBtn.classList.add('visible');
-    } else {
-        clearBtn.classList.remove('visible');
-    }
-});
-
-urlInput.addEventListener('paste', async (e) => {
-    // Wait for paste to complete
-    setTimeout(async () => {
-        const url = urlInput.value.trim();
-        if (url) {
-            await fetchThumbnail(url);
+        // Show/hide clear button
+        if (value) {
+            clearBtn.classList.add('visible');
+        } else {
+            clearBtn.classList.remove('visible');
         }
-    }, 100);
-});
+    });
+}
 
-clearBtn.addEventListener('click', () => {
-    urlInput.value = '';
-    clearBtn.classList.remove('visible');
-    hideElement(loadingIndicator);
-    hideElement(previewSection);
-    hideElement(progressSection);
-    hideElement(resultsSection);
-    currentVideoData = null;
-});
+
+if (urlInput) {
+    urlInput.addEventListener('paste', async (e) => {
+        // Wait for paste to complete
+        setTimeout(async () => {
+            const url = urlInput.value.trim();
+            if (url) {
+                await fetchThumbnail(url);
+            }
+        }, 100);
+    });
+}
+
+
+if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+        urlInput.value = '';
+        clearBtn.classList.remove('visible');
+        hideElement(loadingindicator);
+        hideElement(previewSection);
+        hideElement(progressSection);
+        hideElement(resultsSection);
+        currentVideoData = null;
+    });
+}
+
 
 // Format selection
 formatBtns.forEach(btn => {
@@ -141,13 +150,32 @@ galleryBtn.addEventListener('click', () => {
 });
 
 // Settings modal
-settingsBtn.addEventListener('click', () => {
-    settingsModal.style.display = 'flex';
-    setTimeout(() => {
-        settingsModal.style.opacity = '1';
-    }, 10);
-    loadSettings();
-});
+if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+        settingsModal.style.display = 'flex';
+        setTimeout(() => {
+            settingsModal.style.opacity = '1';
+        }, 10);
+        loadSettings();
+    });
+}
+
+
+
+// Extra context toggle
+const extraContextToggle = document.getElementById('extraContextToggle');
+const extraContextContainer = document.getElementById('extraContextContainer');
+const extraContext = document.getElementById('extraContext');
+
+if (extraContextToggle) {
+    extraContextToggle.addEventListener('click', () => {
+        const isVisible = extraContextContainer.style.display === 'block';
+        extraContextContainer.style.display = isVisible ? 'none' : 'block';
+        extraContextToggle.classList.toggle('active', !isVisible);
+        extraContextToggle.querySelector('.toggle-icon').textContent = isVisible ? '＋' : '－';
+    });
+}
+
 
 closeModal.addEventListener('click', () => {
     settingsModal.style.opacity = '0';
@@ -319,6 +347,7 @@ async function processVideo() {
                 format: selectedFormat,
                 burn_captions: burnCaptionsToggle.checked,
                 ai_strategy: selectedStrategy,
+                extra_context: extraContext.value.trim() || null,
                 client_id: wsClientId,  // Send client ID for targeted progress updates
             }),
         });

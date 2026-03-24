@@ -151,10 +151,19 @@
 
                     <!-- AI Strategy Card (spans 2 columns) -->
                     <div class="option-card option-card-full">
-                        <h3>AI Strategy:</h3>
+                        <div class="strategy-header">
+                            <h3>AI Strategy:</h3>
+                            <div class="extra-context-toggle" id="extraContextToggle">
+                                <span class="toggle-icon">＋</span> Advanced Instructions
+                            </div>
+                        </div>
                         <select id="aiStrategySelect" class="strategy-dropdown">
+                            <!-- Strategies loaded dynamically -->
                             <option value="viral-moments">Viral Moments</option>
                         </select>
+                        <div class="extra-context-container" id="extraContextContainer" style="display: none;">
+                            <textarea id="extraContext" class="extra-context-textarea" placeholder="Tell the AI exactly what story to extract or which themes to focus on... (e.g. 'Focus on the discussion about the Pentagon's involvement')"></textarea>
+                        </div>
                     </div>
                 </div>
 

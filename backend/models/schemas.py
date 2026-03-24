@@ -7,6 +7,7 @@ class VideoURLRequest(BaseModel):
 class AnalyzeVideoRequest(BaseModel):
     url: str
     ai_strategy: Optional[str] = "viral-moments"
+    extra_context: Optional[str] = None
     client_id: Optional[str] = None
 
 class ProcessVideoRequest(BaseModel):
@@ -17,6 +18,7 @@ class ProcessVideoRequest(BaseModel):
     preanalyzed_clips: Optional[List] = None
     full_transcript_words: Optional[List] = None  # Full video words for re-deriving subtitles
     ai_strategy: Optional[str] = "viral-moments"
+    extra_context: Optional[str] = None
     client_id: Optional[str] = None
 
 class ConfigUpdate(BaseModel):

@@ -116,7 +116,8 @@ async def analyze_video(request: AnalyzeVideoRequest):
                 segments,
                 num_clips=5,
                 video_info=video_info,
-                strategy=request.ai_strategy or "viral-moments"
+                strategy=request.ai_strategy or "viral-moments",
+                extra_context=request.extra_context
             )
         else:
             interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
