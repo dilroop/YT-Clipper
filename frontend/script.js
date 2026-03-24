@@ -1513,6 +1513,23 @@ function getAbsoluteCharPosition(paragraphEl, targetNode, targetOffset) {
     return result !== null ? result : -1;
 }
 
+// NEW: Get absolute character selection offset relative to a container node
+function getAbsoluteSelectionOffset(container) {
+    const selection = window.getSelection();
+    if (selection.rangeCount === 0) return { start: 0, end: 0 };
+    
+    const range = selection.getRangeAt(0);
+    const preSelectionRange = range.cloneRange();
+    preSelectionRange.selectNodeContents(container);
+    preSelectionRange.setEnd(range.startContainer, range.startOffset);
+    
+    const start = preSelectionRange.toString().length;
+    return {
+        start: start,
+        end: start + range.toString().length
+    };
+}
+
 // NEW: Find word index by character position in text
 function findWordIndexByCharPosition(charPos) {
     for (let i = 0; i < editorState.transcriptWords.length; i++) {
@@ -1757,13 +1774,15 @@ function enableTranscriptSelection() {
         const range = selection.getRangeAt(0);
         if (range.collapsed) return;
 
-        // Get character positions of selection
-        const startOffset = range.startOffset;
-        const endOffset = range.endOffset;
+        // Get character positions of selection (ABSOLUTE relative to paragraph)
+        const offsets = getAbsoluteSelectionOffset(paragraphEl);
+        const startOffset = offsets.start;
+        const endOffset = offsets.end;
 
         // Find corresponding words
         const startWordIndex = findWordIndexByCharPosition(startOffset);
-        const endWordIndex = findWordIndexByCharPosition(endOffset);
+        const endWordIndex = findWordIndexByCharPosition(endOffset - 1); // Use endWordIndex by subtracting 1 for inclusive end
+
 
         if (startWordIndex !== -1 && endWordIndex !== -1) {
             const startWord = editorState.transcriptWords[startWordIndex];
@@ -2336,7 +2355,11 @@ if (addClipBtn) {
         addClipBtn.classList.toggle('active', editorState.isAddingClip);
 
         if (editorState.isAddingClip) {
+            // Clear any existing highlight when entering add mode to ensure clean selection
+            clearTranscriptHighlight();
+            
             const sel = editorState.selectedClipIndex;
+
             const hint = (sel !== null)
                 ? `Select text in transcript to add a part to Clip ${sel + 1}`
                 : 'Select text in transcript to create a new clip';
