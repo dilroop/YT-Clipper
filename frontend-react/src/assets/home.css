@@ -1,0 +1,329 @@
+/* Home Page Specific Styles */
+
+/* Eventually extract from style.css:
+   - Input section styles
+   - Progress section styles
+   - Preview section styles
+   - Clip selection styles
+   - Settings modal
+   - History modal
+
+   For now, styles are still in /static/style.css
+*/
+
+/* Home page specific overrides can go here */
+
+/* ─── Clip Selection Section ─── */
+.clip-selection-section {
+  margin-top: 24px;
+}
+
+.clip-selection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.clip-selection-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.select-all-btn {
+  background: var(--surface-elevated, #2a2a3a);
+  color: var(--text-secondary, #aaa);
+  border: 1px solid var(--border, #444);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+/* Grid: 2 columns */
+.clips-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+/* ─── Clip Card ─── */
+.clip-card {
+  background: var(--surface-elevated, #1e1e2e);
+  border: 2px solid var(--border, #333);
+  border-radius: 12px;
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clip-card:hover { border-color: #555; }
+
+.clip-card--selected {
+  border-color: #e53935 !important;
+  box-shadow: 0 0 0 1px #e53935;
+}
+
+.clip-card--overlap { border-color: #b85c00 !important; }
+
+/* Card header row */
+.clip-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clip-checkbox {
+  appearance: none;
+  width: 18px; height: 18px;
+  border: 2px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: transparent;
+}
+
+.clip-checkbox:checked {
+  background: #e53935;
+  border-color: #e53935;
+}
+
+.clip-validation-dot {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.clip-validation-dot--valid    { background: #2e7d32; color: #fff; }
+.clip-validation-dot--overlap  { background: #b85c00; color: #fff; }
+.clip-validation-dot--error    { background: #c62828; color: #fff; }
+
+.clip-card-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clip-card-duration {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #aaa);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.clip-edit-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary, #aaa);
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.clip-edit-btn:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+}
+
+/* Validation message */
+.clip-validation-msg {
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border-left: 3px solid;
+}
+
+.clip-validation-msg--valid   { color: #81c784; border-color: #2e7d32; background: rgba(46,125,50,0.1); }
+.clip-validation-msg--overlap { color: #ffb74d; border-color: #b85c00; background: rgba(184,92,0,0.1); }
+.clip-validation-msg--error   { color: #ef9a9a; border-color: #c62828; background: rgba(198,40,40,0.1); }
+
+.clip-card-desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #aaa);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Parts / Timestamps */
+.clip-parts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.clip-part {}
+
+.clip-part-header {}
+
+.clip-part-time {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #ef5350;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.clip-part-text {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #aaa);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ─── Sticky Generate Bar ─── */
+.clip-generate-bar {
+  position: sticky;
+  bottom: 0;
+  background: #e53935;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-radius: 12px;
+  margin-top: 14px;
+  z-index: 10;
+}
+
+.clip-generate-count {
+  color: rgba(255,255,255,0.85);
+  font-size: 0.88rem;
+}
+
+.generate-btn {
+  background: transparent;
+  border: 2px solid rgba(255,255,255,0.6);
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 8px 20px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.generate-btn:not(:disabled):hover { border-color: #fff; }
+
+/* ─── Clip Editor Modal ─── */
+.clip-editor-content {
+  max-width: 900px !important;
+  width: 90vw !important;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.clip-editor-body {
+  display: flex;
+  flex: 1;
+  gap: 0;
+  overflow: hidden;
+}
+
+.editor-clips-section {
+  width: 260px;
+  min-width: 220px;
+  padding: 16px;
+  border-right: 1px solid var(--border, #333);
+  overflow-y: auto;
+}
+
+.editor-separator {
+  width: 1px;
+  background: var(--border, #333);
+}
+
+.editor-transcript-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editor-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border, #333);
+}
+
+.editor-section-header h3 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary, #aaa);
+  margin: 0;
+}
+
+.editor-transcript-content {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--text-primary, #eee);
+}
+
+.editor-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border, #333);
+  gap: 12px;
+}
+
+.editor-cancel-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border, #444);
+  color: var(--text-secondary, #aaa);
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.editor-save-btn {
+  flex: 1;
+  background: #7c4dff;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 700;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.add-clip-btn {
+  background: #7c4dff;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  width: 32px; height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}

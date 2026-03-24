@@ -1,0 +1,143 @@
+import type { VideoData, Clip, TranscriptWord } from '../domain/types';
+
+export interface AnalyzeResult {
+  video: VideoData;
+  clips: Clip[];
+  full_transcript_words?: TranscriptWord[];
+}
+
+export interface HistoryEntry {
+  id: number;
+  url: string;
+  video_id: string;
+  title: string;
+  channel: string;
+  duration: number;
+  thumbnail: string;
+  view_count: number;
+  last_viewed: string;
+}
+
+export interface CaptionSettings {
+  words_per_caption: number;
+  font_family: string;
+  font_size: number;
+  vertical_position: number;
+}
+
+export interface AIValidation {
+  min_clip_duration: number;
+  max_clip_duration: number;
+}
+
+export interface AppConfig {
+  caption_settings: CaptionSettings;
+  ai_validation: AIValidation;
+  downloader_backend?: string;
+}
+
+export class VideoRepository {
+  private static readonly API_BASE = '/api';
+
+  static async fetchThumbnail(url: string): Promise<VideoData> {
+    const response = await fetch(`${this.API_BASE}/thumbnail`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch video thumbnail');
+    }
+
+    return response.json();
+  }
+
+  static async analyzeVideo(url: string, strategy: string, extraContext: string | null = null, clientId: string): Promise<AnalyzeResult> {
+    const response = await fetch(`${this.API_BASE}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url,
+        ai_strategy: strategy,
+        extra_context: extraContext,
+        client_id: clientId,
+      }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to analyze video');
+    }
+
+    return response.json();
+  }
+
+  static async processVideo(
+    url: string,
+    format: string,
+    burnCaptions: boolean,
+    strategy: string,
+    extraContext: string | null = null,
+    clientId: string,
+    clipIds?: string[],
+  ): Promise<void> {
+    const response = await fetch(`${this.API_BASE}/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url,
+        format,
+        burn_captions: burnCaptions,
+        ai_strategy: strategy,
+        extra_context: extraContext,
+        client_id: clientId,
+        ...(clipIds ? { clip_ids: clipIds } : {}),
+      }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to process video');
+    }
+  }
+
+  // ─── History ─────────────────────────────────────────────────────────────
+
+  static async getHistory(limit: number = 50): Promise<HistoryEntry[]> {
+    const response = await fetch(`${this.API_BASE}/history?limit=${limit}`);
+    if (!response.ok) throw new Error('Failed to fetch history');
+    const data = await response.json();
+    return data.history || [];
+  }
+
+  static async clearHistory(): Promise<void> {
+    const response = await fetch(`${this.API_BASE}/history`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to clear history');
+  }
+
+  static async deleteHistoryEntry(videoId: string): Promise<void> {
+    const response = await fetch(`${this.API_BASE}/history/${videoId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete history entry');
+  }
+
+  // ─── Config ──────────────────────────────────────────────────────────────
+
+  static async getConfig(): Promise<AppConfig> {
+    const response = await fetch(`${this.API_BASE}/config`);
+    if (!response.ok) throw new Error('Failed to fetch config');
+    return response.json();
+  }
+
+  static async saveConfig(configUpdate: Partial<AppConfig>): Promise<AppConfig> {
+    const response = await fetch(`${this.API_BASE}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(configUpdate),
+    });
+    if (!response.ok) throw new Error('Failed to save config');
+    const data = await response.json();
+    return data.config;
+  }
+}

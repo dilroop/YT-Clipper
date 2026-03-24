@@ -1,0 +1,134 @@
+import { useReducer, useCallback, useEffect, useRef } from 'react';
+import { homeReducer, initialHomeState } from './HomeIntents';
+import type { Clip } from '../../../domain/types';
+import { VideoRepository } from '../../../data/VideoRepository';
+
+export function useHomeMVI() {
+  const [state, dispatch] = useReducer(homeReducer, initialHomeState);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // ─── WebSocket Connection ──────────────────────────────────────────────────
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'connection') {
+          dispatch({ type: 'WS_CONNECTED', payload: data.client_id });
+        } else if (data.type === 'progress') {
+          dispatch({
+            type: 'WS_PROGRESS',
+            payload: { percent: data.percent || 0, message: data.message || 'Processing...', stage: data.stage || null }
+          });
+        }
+      } catch (e) {
+        console.error('WS parse error', e);
+      }
+    };
+
+    return () => { ws.close(); wsRef.current = null; };
+  }, []);
+
+  // ─── URL Auto-Fetch ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const isValidUrl = state.url && (
+      state.url.includes('youtube.com') ||
+      state.url.includes('youtu.be') ||
+      state.url.includes('x.com') ||
+      state.url.includes('twitter.com')
+    );
+    if (isValidUrl && !state.videoInfo && state.infoStatus === 'idle') {
+      fetchVideoInfo(state.url);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.url, state.infoStatus, state.videoInfo]);
+
+  // ─── Intent Dispatchers ────────────────────────────────────────────────────
+  const updateUrl = useCallback((url: string) => dispatch({ type: 'UPDATE_URL', payload: url }), []);
+  const clearInput = useCallback(() => dispatch({ type: 'CLEAR_INPUT' }), []);
+  const updateFormat = useCallback((f: string) => dispatch({ type: 'UPDATE_FORMAT', payload: f }), []);
+  const toggleCaptions = useCallback((v: boolean) => dispatch({ type: 'TOGGLE_CAPTIONS', payload: v }), []);
+  const updateStrategy = useCallback((s: string) => dispatch({ type: 'UPDATE_STRATEGY', payload: s }), []);
+  const updateExtraContext = useCallback((s: string) => dispatch({ type: 'UPDATE_EXTRA_CONTEXT', payload: s }), []);
+
+  const resetToVideoInfo = useCallback(() => dispatch({ type: 'RESET_TO_VIDEO_INFO' }), []);
+
+  // ─── Async Workflows ───────────────────────────────────────────────────────
+  const fetchVideoInfo = useCallback(async (urlToFetch: string) => {
+    if (!urlToFetch) return;
+    dispatch({ type: 'START_INFO_FETCH' });
+    try {
+      const videoData = await VideoRepository.fetchThumbnail(urlToFetch);
+      dispatch({ type: 'INFO_FETCH_SUCCESS', payload: videoData });
+    } catch (err: any) {
+      dispatch({ type: 'INFO_FETCH_ERROR', payload: err.message });
+    }
+  }, []);
+
+  const analyzeVideo = useCallback(async () => {
+    if (!state.url || !state.clientId) return;
+    dispatch({ type: 'START_ANALYSIS' });
+    try {
+      const result = await VideoRepository.analyzeVideo(state.url, state.aiStrategy, state.extraContext || null, state.clientId);
+      dispatch({ type: 'ANALYSIS_SUCCESS', payload: result.clips });
+    } catch (err: any) {
+      dispatch({ type: 'ANALYSIS_ERROR', payload: err.message });
+    }
+  }, [state.url, state.aiStrategy, state.extraContext, state.clientId]);
+
+  const processVideo = useCallback(async () => {
+    if (!state.url || !state.clientId) return;
+    dispatch({ type: 'START_PROCESS', payload: 'auto' });
+    try {
+      await VideoRepository.processVideo(state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext || null, state.clientId);
+      dispatch({ type: 'PROCESS_SUCCESS' });
+    } catch (err: any) {
+      dispatch({ type: 'PROCESS_ERROR', payload: err.message });
+    }
+  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId]);
+
+  const processVideoSelection = useCallback(async (clipIds: string[]) => {
+    if (!state.url || !state.clientId) return;
+    dispatch({ type: 'START_PROCESS', payload: 'manual' });
+    try {
+      await VideoRepository.processVideo(
+        state.url,
+        state.selectedFormat,
+        state.burnCaptions,
+        state.aiStrategy,
+        state.extraContext || null,
+        state.clientId,
+        clipIds,
+      );
+      dispatch({ type: 'PROCESS_SUCCESS' });
+    } catch (err: any) {
+      dispatch({ type: 'PROCESS_ERROR', payload: err.message });
+    }
+  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId]);
+
+  const updateClip = useCallback((index: number, clip: Clip) => {
+    dispatch({ type: 'UPDATE_CLIP', payload: { index, clip } });
+  }, []);
+
+  return {
+    state,
+    intents: {
+      updateUrl,
+      clearInput,
+      updateFormat,
+      toggleCaptions,
+      updateStrategy,
+      updateExtraContext,
+      fetchVideoInfo,
+      analyzeVideo,
+      processVideo,
+      processVideoSelection,
+      updateClip,
+      resetToVideoInfo,
+    }
+  };
+}
