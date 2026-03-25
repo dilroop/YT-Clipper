@@ -140,4 +140,20 @@ export class VideoRepository {
     const data = await response.json();
     return data.config;
   }
+
+  // ─── Generated Clips (Gallery) ───────────────────────────────────────────
+
+  static async getGeneratedClips(): Promise<any[]> {
+    const response = await fetch(`${this.API_BASE}/clips`);
+    if (!response.ok) throw new Error('Failed to fetch generated clips');
+    const data = await response.json();
+    return data.clips || [];
+  }
+
+  static async getClipDetails(project: string, format: string, filename: string): Promise<any> {
+    const response = await fetch(`${this.API_BASE}/clips/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`);
+    if (!response.ok) throw new Error('Failed to fetch clip details');
+    const data = await response.json();
+    return data.clip;
+  }
 }

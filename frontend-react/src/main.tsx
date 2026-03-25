@@ -1,9 +1,12 @@
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import './assets/common.css'
 import './assets/style.css'
 import './assets/home.css'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(
-  <App />,
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>,
 )
