@@ -411,11 +411,13 @@ export const StrategySelector: React.FC<Props> = ({ state, intents }) => {
 export const ProgressSection: React.FC<Props> = ({ state, intents }) => {
   const p = state.progress;
   const percent = p ? p.percent : 0;
+  const stage = p?.stage || '';
+  const isActuallyClipping = stage === 'clipping' || stage === 'organizing' || stage === 'complete';
   const isActive = (stageName: string) => p?.stage === stageName;
 
   return (
     <div className="progress-section">
-      <h3>{state.generationMode === 'manual' ? 'Analyzing Video...' : 'Creating Clips...'}</h3>
+      <h3>{isActuallyClipping ? 'Creating Clips...' : (state.generationMode === 'manual' ? 'Analyzing Video...' : 'Creating Clips...')}</h3>
       <div className="progress-bar">
         <div className="progress-fill" style={{ width: `${percent}%` }}></div>
         <span className="progress-percent">{Math.round(percent)}%</span>

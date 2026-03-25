@@ -81,7 +81,9 @@ export class VideoRepository {
     strategy: string,
     extraContext: string | null = null,
     clientId: string,
-    clipIds?: string[],
+    selectedClips?: string[],
+    preanalyzedClips?: Clip[],
+    fullTranscriptWords?: TranscriptWord[],
   ): Promise<void> {
     const response = await fetch(`${this.API_BASE}/process`, {
       method: 'POST',
@@ -93,7 +95,9 @@ export class VideoRepository {
         ai_strategy: strategy,
         extra_context: extraContext,
         client_id: clientId,
-        ...(clipIds ? { clip_ids: clipIds } : {}),
+        ...(selectedClips ? { selected_clips: selectedClips } : {}),
+        ...(preanalyzedClips ? { preanalyzed_clips: preanalyzedClips } : {}),
+        ...(fullTranscriptWords ? { full_transcript_words: fullTranscriptWords } : {}),
       }),
     });
 

@@ -24,6 +24,12 @@ export function useHomeMVI() {
             type: 'WS_PROGRESS',
             payload: { percent: data.percent || 0, message: data.message || 'Processing...', stage: data.stage || null }
           });
+          
+          if (data.stage === 'complete') {
+            dispatch({ type: 'PROCESS_SUCCESS' });
+          } else if (data.stage === 'error') {
+            dispatch({ type: 'PROCESS_ERROR', payload: data.message || 'Unknown processing error' });
+          }
         }
       } catch (e) {
         console.error('WS parse error', e);
@@ -74,7 +80,13 @@ export function useHomeMVI() {
     dispatch({ type: 'START_ANALYSIS' });
     try {
       const result = await VideoRepository.analyzeVideo(state.url, state.aiStrategy, state.extraContext || null, state.clientId);
-      dispatch({ type: 'ANALYSIS_SUCCESS', payload: result.clips });
+      dispatch({ 
+        type: 'ANALYSIS_SUCCESS', 
+        payload: { 
+          clips: result.clips, 
+          fullTranscriptWords: result.full_transcript_words 
+        } 
+      });
     } catch (err: any) {
       dispatch({ type: 'ANALYSIS_ERROR', payload: err.message });
     }
@@ -85,15 +97,19 @@ export function useHomeMVI() {
     dispatch({ type: 'START_PROCESS', payload: 'auto' });
     try {
       await VideoRepository.processVideo(state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext || null, state.clientId);
-      dispatch({ type: 'PROCESS_SUCCESS' });
+      // No dispatch here - wait for WS 'complete' stage
     } catch (err: any) {
       dispatch({ type: 'PROCESS_ERROR', payload: err.message });
     }
   }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId]);
 
   const processVideoSelection = useCallback(async (clipIds: string[]) => {
-    if (!state.url || !state.clientId) return;
+    if (!state.url || !state.clientId || !state.clips) return;
     dispatch({ type: 'START_PROCESS', payload: 'manual' });
+    
+    // Get the actual clip objects for the selected IDs
+    const selectedClipObjects = state.clips.filter(c => clipIds.includes(c.id));
+    
     try {
       await VideoRepository.processVideo(
         state.url,
@@ -103,12 +119,14 @@ export function useHomeMVI() {
         state.extraContext || null,
         state.clientId,
         clipIds,
+        selectedClipObjects,
+        state.fullTranscriptWords || undefined
       );
-      dispatch({ type: 'PROCESS_SUCCESS' });
+      // No dispatch here - wait for WS 'complete' stage
     } catch (err: any) {
       dispatch({ type: 'PROCESS_ERROR', payload: err.message });
     }
-  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId]);
+  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId, state.clips, state.fullTranscriptWords]);
 
   const updateClip = useCallback((index: number, clip: Clip) => {
     dispatch({ type: 'UPDATE_CLIP', payload: { index, clip } });

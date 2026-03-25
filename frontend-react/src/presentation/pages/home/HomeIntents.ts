@@ -40,6 +40,7 @@ export interface HomeState {
 
   // Clips (shown in aiSuggestions or clipsReady)
   clips: Clip[] | null;
+  fullTranscriptWords: any[] | null;
 
   error: string | null;
   clientId: string | null;
@@ -57,6 +58,7 @@ export const initialHomeState: HomeState = {
   generationMode: null,
   progress: null,
   clips: null,
+  fullTranscriptWords: null,
   error: null,
   clientId: null,
 };
@@ -79,7 +81,7 @@ export type HomeIntent =
   | { type: 'INFO_FETCH_ERROR'; payload: string }
   // Analysis (manual flow)
   | { type: 'START_ANALYSIS' }
-  | { type: 'ANALYSIS_SUCCESS'; payload: Clip[] }
+  | { type: 'ANALYSIS_SUCCESS'; payload: { clips: Clip[]; fullTranscriptWords?: any[] } }
   | { type: 'ANALYSIS_ERROR'; payload: string }
   // Process (auto or generate-selected flow)
   | { type: 'START_PROCESS'; payload: GenerationMode }
@@ -134,7 +136,13 @@ export function homeReducer(state: HomeState, intent: HomeIntent): HomeState {
     case 'START_ANALYSIS':
       return { ...state, screen: 'generating', generationMode: 'manual', progress: null, clips: null, error: null };
     case 'ANALYSIS_SUCCESS':
-      return { ...state, screen: 'aiSuggestions', clips: intent.payload, progress: null };
+      return { 
+        ...state, 
+        screen: 'aiSuggestions', 
+        clips: intent.payload.clips, 
+        fullTranscriptWords: intent.payload.fullTranscriptWords || null,
+        progress: null 
+      };
     case 'ANALYSIS_ERROR':
       return { ...state, screen: 'videoInfo', error: intent.payload };
 

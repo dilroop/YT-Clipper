@@ -4,6 +4,8 @@ Cuts video clips using ffmpeg
 """
 
 import subprocess
+import time
+import shutil
 from pathlib import Path
 from typing import List, Dict
 
@@ -34,31 +36,34 @@ class VideoClipper:
         Returns:
             dict with clip info
         """
-        video_path = Path(video_path)
-
+        video_path_obj = Path(video_path)
         if output_path is None:
-            output_path = self.output_dir / f"clip_{start_time}_{end_time}.mp4"
+            output_path = str(self.output_dir / f"clip_{start_time}_{end_time}.mp4")
         else:
-            output_path = Path(output_path)
+            output_path = str(output_path)
 
         # Ensure output directory exists
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         # Calculate duration
         duration = end_time - start_time
 
         # Build ffmpeg command with accurate seeking
         # Placing -ss after -i is slower but ensures frame-accurate extraction
+        # Build ffmpeg command with fast seeking before -i
+        # Also force consistent dimensions and frame rate
         cmd = [
             'ffmpeg',
-            '-i', str(video_path),  # Input file
-            '-ss', str(start_time),  # Accurate seek after input
-            '-t', str(duration),  # Duration
-            '-c:v', 'libx264',  # Video codec
-            '-c:a', 'aac',  # Audio codec
-            '-preset', 'medium',  # Encoding speed/quality
-            '-crf', '23',  # Quality
-            '-y',  # Overwrite output
+            '-ss', str(start_time),
+            '-t', str(duration),
+            '-i', str(video_path_obj),
+            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS',
+            '-r', '30',
+            '-c:v', 'libx264',
+            '-c:a', 'aac',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-y',
             str(output_path)
         ]
 
@@ -104,15 +109,15 @@ class VideoClipper:
         Returns:
             dict with clip info
         """
-        video_path = Path(video_path)
+        video_path_obj = Path(video_path)
 
         if output_path is None:
-            output_path = self.output_dir / f"multipart_clip_{parts[0]['start']}.mp4"
+            output_path = str(self.output_dir / f"multipart_clip_{video_path_obj.stem}_{int(time.time() * 1000)}.mp4")
         else:
-            output_path = Path(output_path)
+            output_path = str(output_path)
 
         # Ensure output directory exists
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         # Validate parts
         if len(parts) < 1:
@@ -124,7 +129,7 @@ class VideoClipper:
         # Single part - use regular clip creation
         if len(parts) == 1:
             return self.create_clip(
-                video_path=str(video_path),
+                video_path=str(video_path_obj),
                 start_time=parts[0]['start'],
                 end_time=parts[0]['end'],
                 output_path=str(output_path),
@@ -150,15 +155,15 @@ class VideoClipper:
 
                 print(f"   Extracting part {i+1}/{len(parts)}: {start}s for {duration}s")
 
-                # Use accurate seek (SS after -i) for precise transitions
-                # Also force consistent dimensions to prevent xfade filter mismatch
+                # Use accurate seek before -i for better stability with long files
+                # Also force consistent dimensions and frame rate to prevent xfade filter mismatch
                 cmd = [
                     'ffmpeg',
-                    '-i', str(video_path),
                     '-ss', str(start),
                     '-t', str(duration),
-                    # Force scale and pad to 1080p or consistent size
-                    '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
+                    '-i', str(video_path_obj),
+                    '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS',
+                    '-r', '30',
                     '-c:v', 'libx264',
                     '-c:a', 'aac',
                     '-preset', 'ultrafast',
@@ -190,7 +195,7 @@ class VideoClipper:
                     offset = cumulative_duration - transition_duration
 
                     filter_parts.append(
-                        f"{video_chain}[{i}:v]xfade=transition=fade:duration={transition_duration}:offset={offset}[vt{i}]"
+                        f"{video_chain}[{i}:v]xfade=transition=fade:duration={transition_duration}:offset={offset},setpts=PTS-STARTPTS[vt{i}]"
                     )
                     video_chain = f"[vt{i}]"
 
@@ -382,15 +387,16 @@ class VideoClipper:
         Returns:
             dict with result
         """
-        clip_path = Path(clip_path)
+        clip_path_obj = Path(clip_path)
 
         if output_path is None:
-            output_path = clip_path.parent / f"{clip_path.stem}_reels.mp4"
+            # If output_path is not provided, derive it from clip_path
+            output_path = str(clip_path_obj.parent / f"{clip_path_obj.stem}_reels.mp4")
         else:
-            output_path = Path(output_path)
+            output_path = str(output_path)
 
         # Get original dimensions
-        orig_width, orig_height = self.get_video_dimensions(str(clip_path))
+        orig_width, orig_height = self.get_video_dimensions(str(clip_path_obj))
 
         # Calculate reels dimensions (9:16 aspect ratio)
         target_width = 1080
@@ -410,8 +416,9 @@ class VideoClipper:
         # Build ffmpeg command
         cmd = [
             'ffmpeg',
-            '-i', str(clip_path),
-            '-vf', f"{crop_filter},scale={target_width}:{target_height}",
+            '-i', str(clip_path_obj),
+            '-vf', f"{crop_filter},scale={target_width}:{target_height},setpts=PTS-STARTPTS",
+            '-r', '30',
             '-c:v', 'libx264',
             '-c:a', 'aac',
             '-preset', 'medium',
