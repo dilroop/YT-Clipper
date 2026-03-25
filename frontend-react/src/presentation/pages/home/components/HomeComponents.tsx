@@ -462,7 +462,7 @@ export const ClipSelectionSection: React.FC<Props> = ({ state, intents }) => {
 
   const toggleAll = () => {
     if (allSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(state.clips!.map(c => c.id)));
+    else setSelectedIds(new Set(state.clips!.map((c, i) => c.id || `clip-${i}`)));
   };
 
   const formatTime = (secs: number) => {
@@ -482,56 +482,65 @@ export const ClipSelectionSection: React.FC<Props> = ({ state, intents }) => {
       </div>
       <div className="clips-grid">
         {state.clips.map((clip, idx) => {
-          const isSelected = selectedIds.has(clip.id);
+          const clipId = clip.id || `clip-${idx}`;
+          const isSelected = selectedIds.has(clipId);
           const validStatus = clip.validation_status || 'valid';
-          const validMsg = clip.validation_message || 'No validation errors — clip is good to use';
-          const partCount = clip.parts?.length ?? 1;
 
           return (
             <div
-              key={clip.id}
-              className={`clip-card ${isSelected ? 'clip-card--selected' : ''} clip-card--${validStatus}`}
-              onClick={() => toggleSelect(clip.id)}
+              key={clipId}
+              className={`clip-item ${isSelected ? 'selected' : ''} status-${validStatus}`}
+              onClick={() => toggleSelect(clipId)}
             >
-              <div className="clip-card-header">
-                <input type="checkbox" className="clip-checkbox" checked={isSelected}
-                  onClick={e => e.stopPropagation()} onChange={() => toggleSelect(clip.id)} />
-                <span className={`clip-validation-dot clip-validation-dot--${validStatus}`}>✓</span>
-                <span className="clip-card-title">{clip.title}</span>
-                <span className="clip-card-duration">{(clip.duration || 0).toFixed(1)}s</span>
-                <button className="clip-edit-btn" title="Open Clip Script Editor"
-                  onClick={e => { e.stopPropagation(); setEditorClip({ clip, index: idx }); }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
+              <div className="clip-header-new">
+                <div className="clip-header-left">
+                  <div className={`custom-checkbox ${isSelected ? 'checked' : ''}`}>
+                    {isSelected && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>}
+                  </div>
+                  <div className={`status-icon-circle ${validStatus}`}>
+                    {validStatus === 'valid' ? (
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg>
+                    )}
+                  </div>
+                  <span className="clip-title-new">{clip.title}</span>
+                </div>
+                <div className="clip-header-right">
+                  <span className="clip-duration-new">{(clip.duration || 0).toFixed(1)}s</span>
+                  <button className="clip-edit-btn-new" title="Edit Clip"
+                    onClick={e => { e.stopPropagation(); setEditorClip({ clip, index: idx }); }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
 
-              <div className={`clip-validation-msg clip-validation-msg--${validStatus}`}>{validMsg}</div>
-              <p className="clip-card-desc">{clip.explanation}</p>
+              <div className={`clip-status-bar ${validStatus}`}>
+                {validStatus === 'valid' ? 'No validation errors - clip is good to use' : clip.validation_message || 'Overlap detected - this clip overlaps with another clip and may have quality issues.'}
+              </div>
 
-              {clip.parts && clip.parts.length > 0 ? (
-                <div className="clip-parts-list">
-                  {clip.parts.map((part, pi) => (
-                    <div key={pi} className="clip-part">
-                      <span className="clip-part-time">
-                        [{formatTime(part.start)} — {formatTime(part.end)}] Part {pi + 1} ({part.duration.toFixed(1)}s)
-                      </span>
-                      <p className="clip-part-text">{part.text}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : clip.words && clip.words.length > 0 ? (
-                <div className="clip-parts-list">
-                  <div className="clip-part">
-                    <span className="clip-part-time">
-                      [{formatTime(clip.start)} — {formatTime(clip.end)}] {partCount} part · {(clip.duration || 0).toFixed(1)}s
+              <p className="clip-explanation-new">{clip.explanation}</p>
+
+              <div className="clip-parts-new">
+                {(clip.parts || []).map((part, pi) => (
+                  <div key={pi} className="clip-part-new">
+                    <span className="clip-part-time-new">
+                      [{formatTime(part.start)} — {formatTime(part.end)}] Part {pi + 1} ({part.duration.toFixed(1)}s)
                     </span>
-                    <p className="clip-part-text">{clip.words.slice(0, 30).map(w => w.word).join(' ')}{clip.words.length > 30 ? '…' : ''}</p>
+                    <p className="clip-part-text-new">{part.text}</p>
                   </div>
-                </div>
-              ) : null}
+                ))}
+                {!clip.parts && clip.words && (
+                  <div className="clip-part-new">
+                    <span className="clip-part-time-new">
+                      [{formatTime(clip.start)} — {formatTime(clip.end)}] {(clip.duration || 0).toFixed(1)}s
+                    </span>
+                    <p className="clip-part-text-new">{clip.words.slice(0, 30).map(w => w.word).join(' ')}...</p>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}

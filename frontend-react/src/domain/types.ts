@@ -30,7 +30,7 @@ export interface Clip {
   parts?: ClipPart[];
   
   // Validation
-  validation_status?: 'valid' | 'overlap' | 'error';
+  validation_status?: 'valid' | 'overlap' | 'error' | 'warning';
   validation_message?: string;
   
   // Extension properties for the Clip Editor features (grouping/parts)

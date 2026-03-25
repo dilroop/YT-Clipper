@@ -144,6 +144,7 @@ async def analyze_video(request: AnalyzeVideoRequest):
                 words = clip.get('words', [])
 
             formatted_clips.append({
+                'id': str(i),
                 'index': i,
                 'start': start,
                 'end': end,

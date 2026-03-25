@@ -153,12 +153,13 @@ async def process_video(request: ProcessVideoRequest):
                 interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
                 interesting_clips = [analyzer.adjust_clip_timing(clip) for clip in interesting_clips]
 
-            # Filter clips based on mode (Only if not using pre-analyzed clips)
             if not request.preanalyzed_clips:
                 if request.selected_clips is not None:
+                    # Handle both integer indices and string IDs from frontend
+                    selected_indices = {int(x) if isinstance(x, str) and x.isdigit() else x for x in request.selected_clips}
                     interesting_clips = [
                         clip for i, clip in enumerate(interesting_clips)
-                        if i in request.selected_clips
+                        if i in selected_indices
                     ]
                 else:
                     interesting_clips = [
