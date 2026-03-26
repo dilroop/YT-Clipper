@@ -125,6 +125,7 @@ export const ClipSelectionSection: React.FC<Props> = ({ state, intents }) => {
       <div className="clip-editor-fullscreen">
         <ClipScriptEditorPage 
           clip={editorClip.clip} 
+          fullTranscript={state.fullTranscriptWords || []}
           onSave={(updatedClip: Clip) => {
             intents.updateClip(editorClip.index, updatedClip);
             setEditorClip(null);

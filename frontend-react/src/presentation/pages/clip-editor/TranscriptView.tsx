@@ -20,6 +20,14 @@ export const TranscriptView: React.FC<Props> = ({
   onCommitSelection,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const highlightRef = useRef<HTMLElement | null>(null);
+
+  // Auto-scroll to highlighted text when selection changes
+  useEffect(() => {
+    if (selectedPartIndex !== null && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [selectedPartIndex]);
 
   // Build highlighted HTML from current selected part
   const buildHighlightedHtml = useCallback(() => {
@@ -90,7 +98,7 @@ export const TranscriptView: React.FC<Props> = ({
     >
       {segments.map((seg, i) =>
         seg.highlighted ? (
-          <mark key={i} className="transcript-highlight">{seg.text}</mark>
+          <mark key={i} ref={highlightRef} className="transcript-highlight">{seg.text}</mark>
         ) : (
           <span key={i}>{seg.text}</span>
         )

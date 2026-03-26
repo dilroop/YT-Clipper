@@ -1,5 +1,5 @@
 import React, { useReducer, useCallback } from 'react';
-import type { Clip } from '../../../domain/types';
+import type { Clip, TranscriptWord } from '../../../domain/types';
 import {
   editorReducer,
   buildInitialEditorState,
@@ -9,12 +9,13 @@ import { TranscriptView } from './TranscriptView';
 
 interface Props {
   clip: Clip;
+  fullTranscript: TranscriptWord[];
   onSave: (updatedClip: Clip) => void;
   onClose: () => void;
 }
 
-export const ClipScriptEditorPage: React.FC<Props> = ({ clip, onSave, onClose }) => {
-  const [editorState, dispatch] = useReducer(editorReducer, clip, buildInitialEditorState);
+export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, onSave, onClose }) => {
+  const [editorState, dispatch] = useReducer(editorReducer, clip, (c) => buildInitialEditorState(c, fullTranscript));
 
   const formatTime = (secs: number) => {
     const h = Math.floor(secs / 3600);

@@ -1964,15 +1964,16 @@ input[type="checkbox"]:checked + .toggle-slider::before {
 
 /* Transcript text highlight - iOS/Android style */
 .transcript-highlight {
-    background: rgba(139, 92, 246, 0.25);
-    border-radius: 2px;
+    background: rgba(139, 92, 246, 0.45);
+    color: #ffffff !important;
+    border-radius: 4px;
     position: relative;
-    padding: 2px 0;
+    padding: 2px 4px;
     transition: background 0.2s;
 }
 
 .transcript-highlight.active {
-    background: rgba(139, 92, 246, 0.35);
+    background: rgba(139, 92, 246, 0.6);
 }
 
 /* iOS/Android-style selection handles */
@@ -2569,9 +2570,10 @@ input[type="checkbox"]:checked + .toggle-slider::before {
 
 /* Transcript highlight (selected part) */
 .transcript-highlight {
-  background: rgba(124, 77, 255, 0.3);
-  border-radius: 2px;
-  padding: 1px 0;
+  background: rgba(124, 77, 255, 0.5);
+  color: #ffffff !important;
+  border-radius: 4px;
+  padding: 2px 4px;
 }
 
 /* Footer */

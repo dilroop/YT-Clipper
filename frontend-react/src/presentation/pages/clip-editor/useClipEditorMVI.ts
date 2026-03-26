@@ -137,9 +137,8 @@ export function editorReducer(state: EditorState, intent: EditorIntent): EditorS
 
 // ─── Initialiser ─────────────────────────────────────────────────────────────
 
-export function buildInitialEditorState(clip: Clip): EditorState {
-  const words = clip.words ?? [];
-  const { fullText, mappedWords } = buildWordMapping(words);
+export function buildInitialEditorState(clip: Clip, fullTranscript: TranscriptWord[]): EditorState {
+  const { fullText, mappedWords } = buildWordMapping(fullTranscript);
 
   let parts: EditorPart[];
   if (clip.parts && clip.parts.length > 0) {
