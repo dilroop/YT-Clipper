@@ -153,7 +153,8 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
 
         try:
             # Call GPT API
-            app_logger.analyze(f"🚀 Sending request to {self.provider_name}...")
+            host_address = getattr(self.client, 'base_url', 'https://api.openai.com/v1')
+            app_logger.analyze(f"🚀 Sending request to {self.provider_name} at Host: {host_address} ...")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": full_prompt}],

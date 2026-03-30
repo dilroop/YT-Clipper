@@ -64,7 +64,7 @@ init_database()
 migrate_database()
 
 # Mount static files (frontend)
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "frontend")), name="static")
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "frontend-react")), name="static")
 
 # Mount ToUpload folder for serving generated clips
 app.mount("/clips", StaticFiles(directory=str(BASE_DIR / "ToUpload")), name="clips")

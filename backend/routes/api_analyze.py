@@ -134,7 +134,8 @@ async def analyze_video(request: AnalyzeVideoRequest):
         segments = transcript_result['segments']
 
         # Step 3: Find interesting clips using AI
-        await update_progress({'stage': 'analyzing', 'percent': 60, 'message': 'Finding interesting clips...'})
+        provider_name = getattr(analyzer, 'provider_name', 'Basic AI')
+        await update_progress({'stage': 'analyzing', 'percent': 60, 'message': f'Finding clips with {provider_name}...'})
         if isinstance(analyzer, AIAnalyzer):
             interesting_clips = analyzer.find_interesting_clips(
                 segments,

@@ -146,8 +146,8 @@ async def _perform_video_processing(request: ProcessVideoRequest):
             if not transcript_result['success']: raise Exception(transcript_result['error'])
             segments = transcript_result['segments']
             audio_path = transcript_result.get('audio_path')
-
-            await update_progress({'stage': 'analyzing', 'percent': 35, 'message': 'Finding interesting clips...'})
+            provider_name = getattr(analyzer, 'provider_name', 'Basic AI')
+            await update_progress({'stage': 'analyzing', 'percent': 35, 'message': f'Finding clips with {provider_name}...'})
             if isinstance(analyzer, AIAnalyzer):
                 interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5, video_info=video_info, strategy=request.ai_strategy or "viral-moments")
             else:

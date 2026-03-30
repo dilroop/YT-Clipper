@@ -91,18 +91,18 @@ export function useHomeMVI() {
     } catch (err: any) {
       dispatch({ type: 'ANALYSIS_ERROR', payload: err.message });
     }
-  }, [state.url, state.aiStrategy, state.extraContext, state.clientId]);
+  }, [state.url, state.aiStrategy, state.extraContext, state.clientId, state.aiProvider]);
 
   const processVideo = useCallback(async () => {
     if (!state.url || !state.clientId) return;
     dispatch({ type: 'START_PROCESS', payload: 'auto' });
     try {
-      await VideoRepository.processVideo(state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext || null, state.clientId);
+      await VideoRepository.processVideo(state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext || null, state.clientId, undefined, undefined, undefined, state.aiProvider);
       // No dispatch here - wait for WS 'complete' stage
     } catch (err: any) {
       dispatch({ type: 'PROCESS_ERROR', payload: err.message });
     }
-  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId]);
+  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId, state.aiProvider]);
 
   const processVideoSelection = useCallback(async (clipIds: string[]) => {
     if (!state.url || !state.clientId || !state.clips) return;

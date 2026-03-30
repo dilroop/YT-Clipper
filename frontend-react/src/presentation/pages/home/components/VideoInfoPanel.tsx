@@ -55,37 +55,33 @@ export const VideoInfoPanel: React.FC<Props> = ({ state, intents }) => (
 
 
 export const FormatSelector: React.FC<Props> = ({ state, intents }) => (
-  <>
-    <div className="option-card option-card-full">
-      <h3>Reels Format:</h3>
-      <div className="format-buttons-multi">
-        {[
-          { key: 'vertical_9x16', label: 'Vertical', svg: <svg width="40" height="60" viewBox="0 0 40 60" fill="none"><rect x="2" y="2" width="36" height="56" stroke="currentColor" strokeWidth="3" rx="4"/><text x="20" y="35" textAnchor="middle" fill="currentColor" fontSize="10" fontWeight="bold">9:16</text></svg> },
-          { key: 'stacked_photo', label: 'Photo', svg: <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="4" y="4" width="40" height="40" stroke="currentColor" strokeWidth="2.5" rx="8"/><text x="24" y="30" textAnchor="middle" fill="currentColor" fontSize="16" fontWeight="bold">AI</text></svg> },
-          { key: 'stacked_video', label: 'Video', svg: <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="4" y="4" width="40" height="40" stroke="currentColor" strokeWidth="2.5" rx="8"/><path d="M19 16 L19 32 L33 24 Z" fill="currentColor"/></svg> },
-          { key: 'original', label: 'Original', svg: <svg width="60" height="40" viewBox="0 0 60 40" fill="none"><rect x="2" y="2" width="56" height="36" stroke="currentColor" strokeWidth="3" rx="4"/><text x="30" y="25" textAnchor="middle" fill="currentColor" fontSize="9" fontWeight="bold">16:9</text></svg> },
-        ].map(({ key, label, svg }) => (
-          <button
-            key={key}
-            className={`format-btn-icon ${state.selectedFormat === key ? 'active' : ''}`}
-            onClick={() => intents.updateFormat(key)}
-          >
-            <div className="format-icon">{svg}</div>
-            <span className="format-label">{label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-
-    <div className="option-card">
-      <h3>Captions:</h3>
-      <label className="toggle-label">
+  <div className="option-card option-card-full">
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <h3 style={{ margin: 0 }}>Reels Format:</h3>
+      <label className="toggle-label" style={{ margin: 0 }}>
         <input type="checkbox" checked={state.burnCaptions} onChange={e => intents.toggleCaptions(e.target.checked)} />
         <span className="toggle-slider"></span>
-        <span className="toggle-text">Burn into Video</span>
+        <span className="toggle-text">Burn Captions</span>
       </label>
     </div>
-  </>
+    <div className="format-buttons-multi">
+      {[
+        { key: 'vertical_9x16', label: 'Vertical', svg: <svg width="40" height="60" viewBox="0 0 40 60" fill="none"><rect x="2" y="2" width="36" height="56" stroke="currentColor" strokeWidth="3" rx="4"/><text x="20" y="35" textAnchor="middle" fill="currentColor" fontSize="10" fontWeight="bold">9:16</text></svg> },
+        { key: 'stacked_photo', label: 'Photo', svg: <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="4" y="4" width="40" height="40" stroke="currentColor" strokeWidth="2.5" rx="8"/><text x="24" y="30" textAnchor="middle" fill="currentColor" fontSize="16" fontWeight="bold">AI</text></svg> },
+        { key: 'stacked_video', label: 'Video', svg: <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="4" y="4" width="40" height="40" stroke="currentColor" strokeWidth="2.5" rx="8"/><path d="M19 16 L19 32 L33 24 Z" fill="currentColor"/></svg> },
+        { key: 'original', label: 'Original', svg: <svg width="60" height="40" viewBox="0 0 60 40" fill="none"><rect x="2" y="2" width="56" height="36" stroke="currentColor" strokeWidth="3" rx="4"/><text x="30" y="25" textAnchor="middle" fill="currentColor" fontSize="9" fontWeight="bold">16:9</text></svg> },
+      ].map(({ key, label, svg }) => (
+        <button
+          key={key}
+          className={`format-btn-icon ${state.selectedFormat === key ? 'active' : ''}`}
+          onClick={() => intents.updateFormat(key)}
+        >
+          <div className="format-icon">{svg}</div>
+          <span className="format-label">{label}</span>
+        </button>
+      ))}
+    </div>
+  </div>
 );
 
 export const StrategySelector: React.FC<Props> = ({ state, intents }) => {
