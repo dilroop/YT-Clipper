@@ -18,14 +18,14 @@ async def _perform_video_processing(request: ProcessVideoRequest):
     # Import processing modules inside task to avoid circular imports
     from backend.downloader import VideoDownloader
     from backend.pytube_downloader import PytubeDownloader
-    from backend.transcriber import AudioTranscriber
+    from backend.videoprocessor.transcriber import AudioTranscriber
     from backend.analyzer import SectionAnalyzer
     from backend.ai_analyzer import AIAnalyzer
     from backend.logger import app_logger
-    from backend.clipper import VideoClipper
-    from backend.caption_generator import CaptionGenerator
-    from backend.reels_processor import ReelsProcessor
-    from backend.watermark_processor import WatermarkProcessor
+    from backend.videoprocessor.section_cutter import SectionCutter
+    from backend.videoprocessor.subtitle_burner import SubtitleBurner
+    from backend.videoprocessor.video_cropper import VideoCropper
+    from backend.videoprocessor.watermarker import Watermarker
     from backend.file_manager import FileManager
 
     client_id = request.client_id
@@ -96,10 +96,10 @@ async def _perform_video_processing(request: ProcessVideoRequest):
             else:
                 analyzer = SectionAnalyzer(min_clip_duration=min_duration, max_clip_duration=max_duration)
 
-        clipper = VideoClipper()
-        caption_gen = CaptionGenerator(caption_config)
-        reels_proc = ReelsProcessor()
-        watermark_proc = WatermarkProcessor(watermark_config)
+        cutter = SectionCutter()
+        subtitle_burner = SubtitleBurner(caption_config)
+        cropper = VideoCropper()
+        watermarker = Watermarker(watermark_config)
         file_mgr = FileManager()
 
         # Step 1: Download
@@ -183,9 +183,10 @@ async def _perform_video_processing(request: ProcessVideoRequest):
             temp_out = TEMP_DIR / f"processed_clip_{i+1}_{ts_ms}.mp4"
 
             if 'parts' in clip and len(clip['parts']) > 1:
-                clip_result = await run_in_executor(clipper.create_multipart_clip, video_path=str(video_path), parts=clip['parts'], output_path=str(temp_out))
+                clip_result = await run_in_executor(cutter.create_multipart_clip, video_path=str(video_path), parts=clip['parts'], output_path=str(temp_out))
             else:
-                clip_result = await run_in_executor(clipper.create_clip, video_path=str(video_path), start_time=clip['start'], end_time=clip['end'], output_path=str(temp_out))
+                # Use cutter.create_multipart_clip even for single parts as it handles them correctly
+                clip_result = await run_in_executor(cutter.create_multipart_clip, video_path=str(video_path), parts=[clip], output_path=str(temp_out))
 
             if not clip_result['success']: continue
             clip_path = str(clip_result['clip_path'])
@@ -241,21 +242,37 @@ async def _perform_video_processing(request: ProcessVideoRequest):
             if request.format in ["reels", "vertical_9x16", "stacked_photo", "stacked_video"]:
                 print(f"[DEBUG] Converting clip {i+1} to reels format: {request.format}")
                 reels_out = TEMP_DIR / f"clip_{i+1}_reels.mp4"
-                reels_result = await run_in_executor(reels_proc.convert_to_reels, str(clip_path), output_path=str(reels_out), output_format=request.format)
+                
+                if request.format in ["stacked_photo", "stacked_video"]:
+                    from backend.videoprocessor.media_stacker import MediaStacker
+                    stacker = MediaStacker()
+                    ai_content_type = "photo" if request.format == "stacked_photo" else "video"
+                    ai_content_path = getattr(request, 'ai_content_path', None)
+                    reels_result = await run_in_executor(
+                        stacker.convert_stacked_format,
+                        str(clip_path),
+                        str(reels_out),
+                        ai_content_type,
+                        ai_content_path,
+                        caption_text if 'caption_text' in dir() else None
+                    )
+                else:
+                    reels_result = await run_in_executor(cropper.convert_to_reels, str(clip_path), output_path=str(reels_out), output_format=request.format)
+                
                 if reels_result['success']:
                     clip_path = str(reels_result['output_path'])
                     temp_files.append(clip_path)
                     print(f"[DEBUG]   Reels conversion success: {clip_path}")
 
             print(f"[DEBUG] Adding watermark to clip {i+1}")
-            watermark_result = await run_in_executor(watermark_proc.add_watermark, str(clip_path))
+            watermark_result = await run_in_executor(watermarker.add_watermark, str(clip_path))
             if watermark_result['success'] and watermark_result.get('watermark_added'):
                 clip_path = str(watermark_result['output_path'])
                 temp_files.append(clip_path)
                 print(f"[DEBUG]   Watermark success: {clip_path}")
 
             # Captions
-            caption_text = caption_gen.generate_clip_caption(clip_words, clip_start, clip_end)
+            caption_text = subtitle_burner.generate_clip_caption(clip_words, clip_start, clip_end)
             print(f"[DEBUG] Generated caption for clip {i+1}: {caption_text[:50]}...")
 
             if request.burn_captions:
@@ -266,11 +283,11 @@ async def _perform_video_processing(request: ProcessVideoRequest):
                 cap.release()
                 
                 ass_path = TEMP_DIR / f"clip_{i+1}.ass"
-                caption_gen.create_ass_subtitles(clip_words, str(ass_path), video_width=c_width, video_height=c_height)
+                subtitle_burner.create_ass_subtitles(clip_words, str(ass_path), clip_start_time=clip_start, video_width=c_width, video_height=c_height)
                 temp_files.append(str(ass_path))
                 
                 captioned_path = TEMP_DIR / f"clip_{i+1}_captioned.mp4"
-                burn_result = await run_in_executor(caption_gen.burn_captions, video_path=clip_path, subtitle_path=str(ass_path), output_path=str(captioned_path))
+                burn_result = await run_in_executor(subtitle_burner.burn_captions, video_path=clip_path, subtitle_path=str(ass_path), output_path=str(captioned_path))
                 if burn_result['success']:
                     clip_path = str(burn_result['output_path'])
                     temp_files.append(clip_path)

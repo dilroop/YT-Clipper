@@ -20,7 +20,7 @@ async def analyze_video(request: AnalyzeVideoRequest):
         # Import processing modules
         from backend.downloader import VideoDownloader
         from backend.pytube_downloader import PytubeDownloader
-        from backend.transcriber import AudioTranscriber
+        from backend.videoprocessor.transcriber import AudioTranscriber
         from backend.ai_analyzer import AIAnalyzer
         from backend.analyzer import SectionAnalyzer
         from backend.logger import app_logger
