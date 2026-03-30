@@ -2621,3 +2621,72 @@ input[type="checkbox"]:checked + .toggle-slider::before {
   font-size: 0.85rem;
   margin-top: 6px;
 }
+
+/* AI Provider Pill Selector */
+.ai-provider-pills {
+  display: flex;
+  gap: 10px;
+}
+
+.ai-provider-pill {
+  flex: 1;
+  padding: 10px 16px;
+  background: var(--bg-dark);
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ai-provider-pill:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.ai-provider-pill.active {
+  font-weight: 700;
+}
+
+/* Segmented AI Provider Control (inside strategy header) */
+.ai-segmented-control {
+  display: flex;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.ai-segment {
+  padding: 5px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ai-segment + .ai-segment {
+  border-left: 1px solid var(--border-color);
+}
+
+.ai-segment:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.05);
+}
+
+.ai-segment.active[data-provider="openai"] {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.ai-segment.active[data-provider="deepseek"] {
+  background: rgba(129, 140, 248, 0.15);
+  color: #818cf8;
+}

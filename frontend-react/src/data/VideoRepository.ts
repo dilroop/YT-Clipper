@@ -30,10 +30,20 @@ export interface AIValidation {
   max_clip_duration: number;
 }
 
+export interface AIProviderSettings {
+  api_key?: string;
+  model?: string;
+  temperature?: number;
+}
+
 export interface AppConfig {
   caption_settings: CaptionSettings;
   ai_validation: AIValidation;
   downloader_backend?: string;
+  ai_settings?: {
+    openai?: AIProviderSettings;
+    deepseek?: AIProviderSettings;
+  };
 }
 
 export class VideoRepository {
@@ -54,7 +64,7 @@ export class VideoRepository {
     return response.json();
   }
 
-  static async analyzeVideo(url: string, strategy: string, extraContext: string | null = null, clientId: string): Promise<AnalyzeResult> {
+  static async analyzeVideo(url: string, strategy: string, extraContext: string | null = null, clientId: string, aiProvider: string = 'openai'): Promise<AnalyzeResult> {
     const response = await fetch(`${this.API_BASE}/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -63,6 +73,7 @@ export class VideoRepository {
         ai_strategy: strategy,
         extra_context: extraContext,
         client_id: clientId,
+        ai_provider: aiProvider,
       }),
     });
 
@@ -84,6 +95,7 @@ export class VideoRepository {
     selectedClips?: string[],
     preanalyzedClips?: Clip[],
     fullTranscriptWords?: TranscriptWord[],
+    aiProvider: string = 'openai',
   ): Promise<void> {
     const response = await fetch(`${this.API_BASE}/process`, {
       method: 'POST',
@@ -95,6 +107,7 @@ export class VideoRepository {
         ai_strategy: strategy,
         extra_context: extraContext,
         client_id: clientId,
+        ai_provider: aiProvider,
         ...(selectedClips ? { selected_clips: selectedClips } : {}),
         ...(preanalyzedClips ? { preanalyzed_clips: preanalyzedClips } : {}),
         ...(fullTranscriptWords ? { full_transcript_words: fullTranscriptWords } : {}),

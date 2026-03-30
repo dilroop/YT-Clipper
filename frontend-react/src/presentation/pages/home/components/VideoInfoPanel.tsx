@@ -30,6 +30,7 @@ export const VideoInfoPanel: React.FC<Props> = ({ state, intents }) => (
       <StrategySelector state={state} intents={intents} />
     </div>
 
+
     {state.error && <div className="error-msg">{state.error}</div>}
 
     {/* Workflow buttons */}
@@ -51,6 +52,7 @@ export const VideoInfoPanel: React.FC<Props> = ({ state, intents }) => (
     </div>
   </div>
 );
+
 
 export const FormatSelector: React.FC<Props> = ({ state, intents }) => (
   <>
@@ -92,8 +94,23 @@ export const StrategySelector: React.FC<Props> = ({ state, intents }) => {
     <div className="option-card option-card-full">
       <div className="strategy-header">
         <h3>AI Strategy:</h3>
+        {/* Segmented provider control — inline with label */}
+        <div className="ai-segmented-control">
+          {(['openai', 'deepseek'] as const).map(key => (
+            <button
+              key={key}
+              className={`ai-segment ${state.aiProvider === key ? 'active' : ''}`}
+              data-provider={key}
+              onClick={() => intents.updateAiProvider(key)}
+              title={`Use ${key === 'openai' ? 'OpenAI' : 'DeepSeek'}`}
+            >
+              {key === 'openai' ? '🧠' : '🔮'}{' '}
+              {key === 'openai' ? 'OpenAI' : 'DeepSeek'}
+            </button>
+          ))}
+        </div>
         <div className="extra-context-toggle" onClick={() => setShowAdvanced(v => !v)}>
-          <span className="toggle-icon">{showAdvanced ? '−' : '＋'}</span> Advanced Instructions
+          <span className="toggle-icon">{showAdvanced ? '−' : '＋'}</span> Advanced
         </div>
       </div>
       <select className="strategy-dropdown" value={state.aiStrategy} onChange={e => intents.updateStrategy(e.target.value)}>

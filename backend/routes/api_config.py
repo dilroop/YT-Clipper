@@ -28,6 +28,13 @@ async def update_config(config_update: ConfigUpdate):
         if config_update.ai_validation:
             config['ai_validation'] = {**config.get('ai_validation', {}), **config_update.ai_validation}
 
+        if config_update.ai_settings is not None:
+            # Deep-merge per-provider settings
+            existing = config.get('ai_settings', {})
+            for provider, settings in config_update.ai_settings.items():
+                existing[provider] = {**existing.get(provider, {}), **settings}
+            config['ai_settings'] = existing
+
         save_config(config)
 
         return {"success": True, "config": config}

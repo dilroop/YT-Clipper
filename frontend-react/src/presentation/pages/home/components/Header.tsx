@@ -244,6 +244,80 @@ export const Header: React.FC<Props> = ({ intents }) => {
                 </div>
               </div>
 
+              {/* ── AI Providers ─────────────────────────────────────────── */}
+              <div className="setting-section">
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem' }}>🤖 AI Providers</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px', fontStyle: 'italic' }}>
+                  API keys are stored locally on the server. Select your active provider on the video panel.
+                </p>
+
+                {/* OpenAI */}
+                <div style={{ background: '#111', borderRadius: '10px', padding: '14px', marginBottom: '14px', border: '1px solid #222' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '1.1rem' }}>🧠</span>
+                    <strong style={{ fontSize: '1rem' }}>OpenAI</strong>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>API Key:</label>
+                    <input type="password" placeholder="sk-..." value={configDraft.ai_settings?.openai?.api_key || ''}
+                      onChange={e => updateDraft('ai_settings' as any, 'openai', { ...(configDraft.ai_settings?.openai || {}), api_key: e.target.value })}
+                      style={{ width: '100%', padding: '10px 12px', background: '#1a1a2e', border: '1px solid #333', borderRadius: '8px', color: '#fff', fontSize: '0.9rem' }} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Model:</label>
+                    <select value={configDraft.ai_settings?.openai?.model || 'gpt-4o-mini'}
+                      onChange={e => updateDraft('ai_settings' as any, 'openai', { ...(configDraft.ai_settings?.openai || {}), model: e.target.value })}
+                      style={{ width: '100%', padding: '10px 12px', background: '#1a1a2e', border: '1px solid #333', borderRadius: '8px', color: '#fff', fontSize: '0.9rem' }}>
+                      <option value="gpt-4o">gpt-4o</option>
+                      <option value="gpt-4o-mini">gpt-4o-mini</option>
+                      <option value="gpt-4-turbo">gpt-4-turbo</option>
+                      <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                      Temperature: {(configDraft.ai_settings?.openai?.temperature ?? 0.7).toFixed(1)}
+                    </label>
+                    <input type="range" min="0" max="2" step="0.1"
+                      value={configDraft.ai_settings?.openai?.temperature ?? 0.7}
+                      onChange={e => updateDraft('ai_settings' as any, 'openai', { ...(configDraft.ai_settings?.openai || {}), temperature: parseFloat(e.target.value) })}
+                      style={{ width: '100%', accentColor: '#4ade80' }} />
+                  </div>
+                </div>
+
+                {/* DeepSeek */}
+                <div style={{ background: '#111', borderRadius: '10px', padding: '14px', border: '1px solid #222' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '1.1rem' }}>🔮</span>
+                    <strong style={{ fontSize: '1rem' }}>DeepSeek</strong>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>API Key:</label>
+                    <input type="password" placeholder="sk-..." value={configDraft.ai_settings?.deepseek?.api_key || ''}
+                      onChange={e => updateDraft('ai_settings' as any, 'deepseek', { ...(configDraft.ai_settings?.deepseek || {}), api_key: e.target.value })}
+                      style={{ width: '100%', padding: '10px 12px', background: '#1a1a2e', border: '1px solid #333', borderRadius: '8px', color: '#fff', fontSize: '0.9rem' }} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Model:</label>
+                    <select value={configDraft.ai_settings?.deepseek?.model || 'deepseek-chat'}
+                      onChange={e => updateDraft('ai_settings' as any, 'deepseek', { ...(configDraft.ai_settings?.deepseek || {}), model: e.target.value })}
+                      style={{ width: '100%', padding: '10px 12px', background: '#1a1a2e', border: '1px solid #333', borderRadius: '8px', color: '#fff', fontSize: '0.9rem' }}>
+                      <option value="deepseek-chat">deepseek-chat</option>
+                      <option value="deepseek-reasoner">deepseek-reasoner</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label style={{ display: 'block', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                      Temperature: {(configDraft.ai_settings?.deepseek?.temperature ?? 0.7).toFixed(1)}
+                    </label>
+                    <input type="range" min="0" max="2" step="0.1"
+                      value={configDraft.ai_settings?.deepseek?.temperature ?? 0.7}
+                      onChange={e => updateDraft('ai_settings' as any, 'deepseek', { ...(configDraft.ai_settings?.deepseek || {}), temperature: parseFloat(e.target.value) })}
+                      style={{ width: '100%', accentColor: '#818cf8' }} />
+                  </div>
+                </div>
+              </div>
+
             </div>
           ) : (
             <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px 20px' }}>Loading settings...</p>

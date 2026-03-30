@@ -4,7 +4,7 @@ import traceback
 from fastapi import APIRouter, HTTPException
 from backend.models.schemas import AnalyzeVideoRequest
 from backend.utils.video_helpers import extract_video_id
-from backend.core.config import load_config
+from backend.core.config import get_config_with_defaults
 from backend.core.executor import run_in_executor
 from backend.core.connection_manager import manager
 
@@ -23,11 +23,12 @@ async def analyze_video(request: AnalyzeVideoRequest):
         from backend.transcriber import AudioTranscriber
         from backend.ai_analyzer import AIAnalyzer
         from backend.analyzer import SectionAnalyzer
+        from backend.logger import app_logger
 
         video_id = extract_video_id(request.url)
 
-        # Load config to determine downloader backend
-        config = load_config()
+        # Load config with defaults
+        config = get_config_with_defaults()
         downloader_backend = config.get('downloader_backend', 'yt-dlp')
 
         # Initialize downloader based on config
@@ -47,16 +48,39 @@ async def analyze_video(request: AnalyzeVideoRequest):
         min_duration = ai_validation.get('min_clip_duration', 15)
         max_duration = ai_validation.get('max_clip_duration', 60)
 
-        if openai_api_key and openai_api_key.startswith('sk-'):
-            analyzer = AIAnalyzer(
-                api_key=openai_api_key,
-                model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
-                temperature=float(os.getenv('OPENAI_TEMPERATURE', '1.0')),
-                min_clip_duration=min_duration,
-                max_clip_duration=max_duration
-            )
+        # ── Determine which analyzer to use ──────────────────────────────────
+        ai_settings = config.get('ai_settings', {})
+        provider = (request.ai_provider or 'openai').lower()
+
+        if provider == 'deepseek':
+            ds_cfg = ai_settings.get('deepseek', {})
+            ds_key = ds_cfg.get('api_key', '')
+            if ds_key:
+                from backend.deepseek_analyzer import DeepSeekAnalyzer
+                analyzer = DeepSeekAnalyzer(
+                    api_key=ds_key,
+                    model=ds_cfg.get('model'),
+                    temperature=float(ds_cfg.get('temperature')),
+                    min_clip_duration=min_duration,
+                    max_clip_duration=max_duration,
+                )
+            else:
+                app_logger.analyze("⚠️ DeepSeek selected but no API key found — falling back to SectionAnalyzer")
+                analyzer = SectionAnalyzer(min_clip_duration=min_duration, max_clip_duration=max_duration)
         else:
-            analyzer = SectionAnalyzer()
+            # OpenAI (default)
+            oa_cfg = ai_settings.get('openai', {})
+            oa_key = oa_cfg.get('api_key', '')
+            if oa_key and oa_key.startswith('sk-'):
+                analyzer = AIAnalyzer(
+                    api_key=oa_key,
+                    model=oa_cfg.get('model'),
+                    temperature=float(oa_cfg.get('temperature')),
+                    min_clip_duration=min_duration,
+                    max_clip_duration=max_duration,
+                )
+            else:
+                analyzer = SectionAnalyzer(min_clip_duration=min_duration, max_clip_duration=max_duration)
 
         # Progress tracking with WebSocket broadcasting
         client_id = request.client_id

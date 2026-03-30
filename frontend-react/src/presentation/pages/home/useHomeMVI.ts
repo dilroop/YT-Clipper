@@ -60,6 +60,7 @@ export function useHomeMVI() {
   const toggleCaptions = useCallback((v: boolean) => dispatch({ type: 'TOGGLE_CAPTIONS', payload: v }), []);
   const updateStrategy = useCallback((s: string) => dispatch({ type: 'UPDATE_STRATEGY', payload: s }), []);
   const updateExtraContext = useCallback((s: string) => dispatch({ type: 'UPDATE_EXTRA_CONTEXT', payload: s }), []);
+  const updateAiProvider = useCallback((p: 'openai' | 'deepseek') => dispatch({ type: 'UPDATE_AI_PROVIDER', payload: p }), []);
 
   const resetToVideoInfo = useCallback(() => dispatch({ type: 'RESET_TO_VIDEO_INFO' }), []);
 
@@ -79,7 +80,7 @@ export function useHomeMVI() {
     if (!state.url || !state.clientId) return;
     dispatch({ type: 'START_ANALYSIS' });
     try {
-      const result = await VideoRepository.analyzeVideo(state.url, state.aiStrategy, state.extraContext || null, state.clientId);
+      const result = await VideoRepository.analyzeVideo(state.url, state.aiStrategy, state.extraContext || null, state.clientId, state.aiProvider);
       dispatch({ 
         type: 'ANALYSIS_SUCCESS', 
         payload: { 
@@ -107,8 +108,11 @@ export function useHomeMVI() {
     if (!state.url || !state.clientId || !state.clips) return;
     dispatch({ type: 'START_PROCESS', payload: 'manual' });
     
-    // Get the actual clip objects for the selected IDs
-    const selectedClipObjects = state.clips.filter(c => clipIds.includes(c.id));
+    // Get the actual clip objects for the selected IDs, handling fallback logic
+    const selectedClipObjects = state.clips.filter((c, idx) => {
+      const clipId = c.id || `clip-${idx}`;
+      return clipIds.includes(clipId);
+    });
     
     try {
       await VideoRepository.processVideo(
@@ -120,7 +124,8 @@ export function useHomeMVI() {
         state.clientId,
         clipIds,
         selectedClipObjects,
-        state.fullTranscriptWords || undefined
+        state.fullTranscriptWords || undefined,
+        state.aiProvider,
       );
       // No dispatch here - wait for WS 'complete' stage
     } catch (err: any) {
@@ -141,6 +146,7 @@ export function useHomeMVI() {
       toggleCaptions,
       updateStrategy,
       updateExtraContext,
+      updateAiProvider,
       fetchVideoInfo,
       analyzeVideo,
       processVideo,

@@ -4,11 +4,12 @@ Detects engaging clips from transcribed video
 """
 
 import re
+import uuid
 from typing import List, Dict
 
 
 class SectionAnalyzer:
-    def __init__(self, min_clip_duration: int = 15, max_clip_duration: int = 60):
+    def __init__(self, min_clip_duration: int, max_clip_duration: int):
         """
         Initialize analyzer
 
@@ -134,12 +135,14 @@ class SectionAnalyzer:
                 if duration < self.min_clip_duration:
                     # Try to expand by including adjacent segments
                     expanded = self._expand_clip(segment, segments)
+                    expanded['id'] = str(uuid.uuid4())
                     selected_clips.append(expanded)
                 else:
+                    segment['id'] = str(uuid.uuid4())
                     selected_clips.append(segment)
 
-                if len(selected_clips) >= num_clips:
-                    break
+            if len(selected_clips) >= num_clips:
+                break
 
         # Sort by timestamp
         selected_clips.sort(key=lambda x: x['start'])

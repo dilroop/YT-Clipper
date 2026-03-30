@@ -4,7 +4,7 @@ import traceback
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from backend.models.schemas import ProcessVideoRequest
 from backend.utils.video_helpers import extract_video_id
-from backend.core.config import load_config
+from backend.core.config import get_config_with_defaults
 from backend.core.executor import run_in_executor
 from backend.core.connection_manager import manager
 from backend.core.constants import TEMP_DIR
@@ -21,6 +21,7 @@ async def _perform_video_processing(request: ProcessVideoRequest):
     from backend.transcriber import AudioTranscriber
     from backend.analyzer import SectionAnalyzer
     from backend.ai_analyzer import AIAnalyzer
+    from backend.logger import app_logger
     from backend.clipper import VideoClipper
     from backend.caption_generator import CaptionGenerator
     from backend.reels_processor import ReelsProcessor
@@ -45,7 +46,7 @@ async def _perform_video_processing(request: ProcessVideoRequest):
 
     try:
         video_id = extract_video_id(request.url)
-        config = load_config()
+        config = get_config_with_defaults()
         caption_config = config.get('caption_settings', {})
         watermark_config = config.get('watermark_settings', {})
         downloader_backend = config.get('downloader_backend', 'yt-dlp')
@@ -61,16 +62,39 @@ async def _perform_video_processing(request: ProcessVideoRequest):
         max_duration = ai_validation.get('max_clip_duration', 60)
 
         openai_api_key = os.getenv('OPENAI_API_KEY')
-        if openai_api_key and openai_api_key.startswith('sk-'):
-            analyzer = AIAnalyzer(
-                api_key=openai_api_key,
-                model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
-                temperature=float(os.getenv('OPENAI_TEMPERATURE', '1.0')),
-                min_clip_duration=min_duration,
-                max_clip_duration=max_duration
-            )
+
+        # ── Determine which analyzer to use ──────────────────────────────────
+        ai_settings = config.get('ai_settings', {})
+        provider = (request.ai_provider or 'openai').lower()
+
+        if provider == 'deepseek':
+            ds_cfg = ai_settings.get('deepseek', {})
+            ds_key = ds_cfg.get('api_key', '')
+            if ds_key:
+                from backend.deepseek_analyzer import DeepSeekAnalyzer
+                analyzer = DeepSeekAnalyzer(
+                    api_key=ds_key,
+                    model=ds_cfg.get('model'),
+                    temperature=float(ds_cfg.get('temperature')),
+                    min_clip_duration=min_duration,
+                    max_clip_duration=max_duration,
+                )
+            else:
+                app_logger.analyze("⚠️ DeepSeek selected but no API key found — falling back to SectionAnalyzer")
+                analyzer = SectionAnalyzer(min_clip_duration=min_duration, max_clip_duration=max_duration)
         else:
-            analyzer = SectionAnalyzer()
+            oa_cfg = ai_settings.get('openai', {})
+            oa_key = oa_cfg.get('api_key', '')
+            if oa_key and oa_key.startswith('sk-'):
+                analyzer = AIAnalyzer(
+                    api_key=oa_key,
+                    model=oa_cfg.get('model'),
+                    temperature=float(oa_cfg.get('temperature')),
+                    min_clip_duration=min_duration,
+                    max_clip_duration=max_duration,
+                )
+            else:
+                analyzer = SectionAnalyzer(min_clip_duration=min_duration, max_clip_duration=max_duration)
 
         clipper = VideoClipper()
         caption_gen = CaptionGenerator(caption_config)
@@ -242,7 +266,7 @@ async def _perform_video_processing(request: ProcessVideoRequest):
                 cap.release()
                 
                 ass_path = TEMP_DIR / f"clip_{i+1}.ass"
-                caption_gen.create_ass_file(clip_words, str(ass_path), width=c_width, height=c_height)
+                caption_gen.create_ass_subtitles(clip_words, str(ass_path), video_width=c_width, video_height=c_height)
                 temp_files.append(str(ass_path))
                 
                 captioned_path = TEMP_DIR / f"clip_{i+1}_captioned.mp4"

@@ -6,35 +6,42 @@ Uses GPT to detect interesting sections from video transcripts
 import json
 import re
 import os
+import uuid
+import math
 from pathlib import Path
 from typing import List, Dict, Optional
 from openai import OpenAI
+from backend.logger import app_logger
 
 
 class AIAnalyzer:
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4o-mini",
-        temperature: float = 1.0,
-        min_clip_duration: int = 15,
-        max_clip_duration: int = 60
+        model: str,
+        temperature: float,
+        min_clip_duration: int,
+        max_clip_duration: int,
+        provider_name: str = "OpenAI"
     ):
         """
         Initialize AI-based analyzer
 
         Args:
-            api_key: OpenAI API key
-            model: GPT model to use (gpt-4o-mini, gpt-4, gpt-3.5-turbo)
+            api_key: AI API key
+            model: Model to use
             temperature: AI creativity (0.0-2.0)
             min_clip_duration: Minimum clip length in seconds
             max_clip_duration: Maximum clip length in seconds
+            provider_name: Name of the AI provider (OpenAI, DeepSeek, etc.)
         """
-        self.client = OpenAI(api_key=api_key)
+        # Initialize OpenAI client with timeout
+        self.client = OpenAI(api_key=api_key, timeout=60.0)
         self.model = model
         self.temperature = temperature
         self.min_clip_duration = min_clip_duration
         self.max_clip_duration = max_clip_duration
+        self.provider_name = provider_name
 
     def get_system_prompt(self, num_clips: int, video_info: Dict = None, strategy: str = "viral-moments", extra_context: str = None) -> str:
         """
@@ -126,41 +133,38 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
         Returns:
             List of clip metadata (start, end, text, score, title, reason)
         """
-        # Format transcript with timestamps
-        transcript_lines = []
-        for segment in segments:
-            start_time = self._format_timestamp(segment['start'])
-            end_time = self._format_timestamp(segment['end'])
-            text = segment['text'].strip()
-            transcript_lines.append(f"[{start_time} - {end_time}] {text}")
-
-        transcript = "\n".join(transcript_lines)
+        # Format transcript with timestamps (with compression to save tokens)
+        transcript = self._compress_transcript(segments)
+        
+        # Log transcript size
+        char_count = len(transcript)
+        est_tokens = int(char_count / 3.5) # Rough estimate for OpenAI tokens
+        app_logger.analyze(f"📊 Transcript compressed: ~{char_count} chars, est. {est_tokens} tokens")
 
         # Request extra clips to ensure we get enough valid ones
         request_clips = num_clips + 3
 
         # Generate prompt with selected strategy
         system_prompt = self.get_system_prompt(request_clips, video_info, strategy, extra_context)
-        print(f"\n🎯 Using AI Strategy: {strategy}")
+        app_logger.analyze(f"🎯 Using AI Strategy: {strategy} | Provider: {self.provider_name} | Model: {self.model}")
 
         # Format full prompt
         full_prompt = f"{system_prompt}\n\nTranscript:\n{transcript}"
 
         try:
             # Call GPT API
+            app_logger.analyze(f"🚀 Sending request to {self.provider_name}...")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": full_prompt}],
                 temperature=self.temperature,
             )
+            app_logger.analyze(f"✅ Received response from {self.provider_name}")
 
             result = response.choices[0].message.content.strip()
 
-            # Log the raw OpenAI response
-            print(f"\n📝 Raw OpenAI Response:")
-            print("="*80)
-            print(result)
-            print("="*80)
+            # Log the raw response using app_logger to avoid stdout issues
+            app_logger.analyze(f"📝 Raw {self.provider_name} Response (First 500 chars):\n{result[:500]}...")
 
             # Clean response if it has markdown code blocks
             if result.startswith("```"):
@@ -185,9 +189,14 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
                             result = result[start_idx:i+1]
                             break
 
+            # Clean up potentially invalid escapes before JSON parsing
+            # Replace single backslashes that are not followed by valid JSON escape chars
+            result = re.sub(r'\\(?![/"\\bfnrtu])', r'\\\\', result)
+
             # Parse JSON response
             try:
-                highlights = json.loads(result)
+                # strict=False allows unescaped control characters like raw newlines
+                highlights = json.loads(result, strict=False)
             except json.JSONDecodeError as e:
                 print(f"\n❌ JSON Parse Error: {e}")
                 print(f"\n📄 Raw Response (first 1000 chars):")
@@ -254,6 +263,8 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
                     # Convert to normalized format
                     try:
                         normalized_clip = self._convert_multipart_to_normalized_format(highlight, segments)
+                        # Assign unique ID
+                        normalized_clip['id'] = str(uuid.uuid4())
                         valid_clips.append(normalized_clip)
 
                         # Log success
@@ -292,6 +303,8 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
                     # Convert to normalized format (1-part multi-part)
                     try:
                         normalized_clip = self._convert_singlepart_to_normalized_format(highlight, segments)
+                        # Assign unique ID
+                        normalized_clip['id'] = str(uuid.uuid4())
                         valid_clips.append(normalized_clip)
 
                         # Log success
@@ -345,15 +358,138 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
                 'credit',
                 'exceeded your current quota'
             ]):
-                print(f"\n❌ OpenAI API Error: {e}")
+                print(f"\n❌ {self.provider_name} API Error: {e}")
                 # Raise a specific exception that can be caught by the server
-                raise Exception("OPENAI_QUOTA_ERROR: Insufficient OpenAI credits. Please add credits to your OpenAI account.")
+                raise Exception(f"{self.provider_name.upper()}_QUOTA_ERROR: Insufficient {self.provider_name} credits or rate limit hit. Please check your account.")
 
-            print(f"\n❌ Error calling GPT API: {e}")
+            print(f"\n❌ Error calling {self.provider_name} API: {e}")
             import traceback
             print(traceback.format_exc())
             # Fall back to empty list
             return []
+
+    def _compress_transcript(self, segments: List[Dict], max_chars: int = 50000) -> str:
+        """
+        Compress transcript by merging segments and simplifying timestamps 
+        to stay within token limits (e.g. OpenAI 30k TPM limit).
+        
+        Args:
+            segments: Original whisper segments
+            max_chars: Target character limit (roughly 14k tokens)
+            
+        Returns:
+            Compressed transcript string
+        """
+        if not segments:
+            return ""
+
+        # Strategy 1: Simplify timestamps and merge segments into ~30 word blocks
+        compressed_lines = []
+        current_block_text = []
+        current_block_start = None
+        word_count = 0
+        
+        # Identify if we need aggressive compression (very long video)
+        total_duration = segments[-1]['end'] if segments else 0
+        is_very_long = total_duration > 1800 # 30+ minutes
+        
+        target_words_per_block = 40 if is_very_long else 20
+
+        for seg in segments:
+            if current_block_start is None:
+                current_block_start = seg['start']
+            
+            text = seg['text'].strip()
+            current_block_text.append(text)
+            word_count += len(text.split())
+            
+            # Start a new block if we hit word limit
+            if word_count >= target_words_per_block:
+                timestamp = self._format_timestamp_short(current_block_start)
+                block_content = " ".join(current_block_text)
+                compressed_lines.append(f"[{timestamp}] {block_content}")
+                
+                # Reset
+                current_block_text = []
+                current_block_start = None
+                word_count = 0
+        
+        # Add remaining
+        if current_block_text:
+            timestamp = self._format_timestamp_short(current_block_start)
+            block_content = " ".join(current_block_text)
+            compressed_lines.append(f"[{timestamp}] {block_content}")
+            
+        result = "\n".join(compressed_lines)
+        
+        # If still too large, return even more compressed version (sampling)
+        if len(result) > max_chars:
+            app_logger.analyze(f"⚠️ Transcript still too large ({len(result)} chars), using adaptive sampling...")
+            return self._compress_transcript_aggressive(segments, target_chars=max_chars)
+            
+        return result
+
+    def _format_timestamp_short(self, seconds: float) -> str:
+        """Convert seconds to HH:MM:SS format (no ms to save space)"""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        if hours > 0:
+            return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+        return f"{minutes:02d}:{secs:02d}"
+
+    def _compress_transcript_aggressive(self, segments: List[Dict], target_chars: int = 50000) -> str:
+        """
+        Ultra-aggressive compression: samples contiguous blocks to fit target length.
+        Maintains local context but skips between blocks.
+        """
+        if not segments:
+            return ""
+            
+        total_chars = sum(len(s['text']) for s in segments)
+        if total_chars <= target_chars:
+            # Fallback to simple version
+            lines = []
+            last_ts = -60
+            for seg in segments:
+                if seg['start'] - last_ts >= 60:
+                    ts = self._format_timestamp_short(seg['start'])
+                    lines.append(f"\n[{ts}] {seg['text'].strip()}")
+                    last_ts = seg['start']
+                else:
+                    lines.append(seg['text'].strip())
+            return " ".join(lines)
+        
+        # We need to sample blocks. 
+        # Aim to keep contiguous chunks of ~1500 chars (approx 30-40 seconds of dialogue)
+        # and skip as much as needed in between.
+        chunk_size = 1500
+        num_chunks = int(target_chars / (chunk_size * 1.5)) # extra for timestamps
+        num_chunks = max(3, num_chunks)
+        
+        total_segments = len(segments)
+        segments_per_chunk = total_segments // num_chunks
+        
+        lines = []
+        for i in range(num_chunks):
+            start_seg_idx = i * segments_per_chunk
+            # Keep ~10 segments per chunk (roughly 30-45 seconds)
+            chunk_segments = segments[start_seg_idx : start_seg_idx + 10]
+            
+            if not chunk_segments:
+                continue
+                
+            ts = self._format_timestamp_short(chunk_segments[0]['start'])
+            chunk_text = " ".join([s['text'].strip() for s in chunk_segments])
+            lines.append(f"\n[{ts}] {chunk_text} ...")
+        
+        final_result = "\n".join(lines)
+        
+        # Final safety truncation
+        if len(final_result) > target_chars:
+            final_result = final_result[:target_chars] + "\n... [TRUNCATED]"
+            
+        return final_result
 
     def _format_timestamp(self, seconds: float) -> str:
         """Convert seconds to HH:MM:SS.mmm format"""

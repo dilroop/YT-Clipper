@@ -42,6 +42,9 @@ export interface HomeState {
   clips: Clip[] | null;
   fullTranscriptWords: any[] | null;
 
+  // AI provider selection
+  aiProvider: 'openai' | 'deepseek';
+
   error: string | null;
   clientId: string | null;
 }
@@ -59,6 +62,7 @@ export const initialHomeState: HomeState = {
   progress: null,
   clips: null,
   fullTranscriptWords: null,
+  aiProvider: 'openai',
   error: null,
   clientId: null,
 };
@@ -72,6 +76,7 @@ export type HomeIntent =
   | { type: 'TOGGLE_CAPTIONS'; payload: boolean }
   | { type: 'UPDATE_STRATEGY'; payload: string }
   | { type: 'UPDATE_EXTRA_CONTEXT'; payload: string }
+  | { type: 'UPDATE_AI_PROVIDER'; payload: 'openai' | 'deepseek' }
   // WebSocket
   | { type: 'WS_CONNECTED'; payload: string }
   | { type: 'WS_PROGRESS'; payload: ProgressState }
@@ -119,6 +124,7 @@ export function homeReducer(state: HomeState, intent: HomeIntent): HomeState {
     case 'TOGGLE_CAPTIONS':      return { ...state, burnCaptions: intent.payload };
     case 'UPDATE_STRATEGY':      return { ...state, aiStrategy: intent.payload };
     case 'UPDATE_EXTRA_CONTEXT': return { ...state, extraContext: intent.payload };
+    case 'UPDATE_AI_PROVIDER':   return { ...state, aiProvider: intent.payload };
 
     // WebSocket
     case 'WS_CONNECTED': return { ...state, clientId: intent.payload };
