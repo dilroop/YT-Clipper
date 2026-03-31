@@ -22,6 +22,8 @@ class ProcessVideoRequest(BaseModel):
     extra_context: Optional[str] = None
     client_id: Optional[str] = None
     ai_provider: Optional[str] = "openai"  # "openai" | "deepseek"
+    ai_content_position: Optional[str] = "top"  # "top" | "bottom"
+    ai_content_path: Optional[str] = None  # Path to user-uploaded AI content file
 
 class ConfigUpdate(BaseModel):
     downloader_backend: Optional[str] = None

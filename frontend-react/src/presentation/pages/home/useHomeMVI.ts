@@ -97,12 +97,25 @@ export function useHomeMVI() {
     if (!state.url || !state.clientId) return;
     dispatch({ type: 'START_PROCESS', payload: 'auto' });
     try {
-      await VideoRepository.processVideo(state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext || null, state.clientId, undefined, undefined, undefined, state.aiProvider);
+      await VideoRepository.processVideo(
+        state.url, 
+        state.selectedFormat, 
+        state.burnCaptions, 
+        state.aiStrategy, 
+        state.extraContext || null, 
+        state.clientId, 
+        undefined, 
+        undefined, 
+        undefined, 
+        state.aiProvider,
+        state.aiContentPosition,
+        state.aiContentFile
+      );
       // No dispatch here - wait for WS 'complete' stage
     } catch (err: any) {
       dispatch({ type: 'PROCESS_ERROR', payload: err.message });
     }
-  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId, state.aiProvider]);
+  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId, state.aiProvider, state.aiContentPosition, state.aiContentFile]);
 
   const processVideoSelection = useCallback(async (clipIds: string[]) => {
     if (!state.url || !state.clientId || !state.clips) return;
@@ -126,15 +139,25 @@ export function useHomeMVI() {
         selectedClipObjects,
         state.fullTranscriptWords || undefined,
         state.aiProvider,
+        state.aiContentPosition,
+        state.aiContentFile
       );
       // No dispatch here - wait for WS 'complete' stage
     } catch (err: any) {
       dispatch({ type: 'PROCESS_ERROR', payload: err.message });
     }
-  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId, state.clips, state.fullTranscriptWords]);
+  }, [state.url, state.selectedFormat, state.burnCaptions, state.aiStrategy, state.extraContext, state.clientId, state.clips, state.fullTranscriptWords, state.aiProvider, state.aiContentPosition, state.aiContentFile]);
 
   const updateClip = useCallback((index: number, clip: Clip) => {
     dispatch({ type: 'UPDATE_CLIP', payload: { index, clip } });
+  }, []);
+
+  const updatePosition = useCallback((pos: 'top' | 'bottom') => {
+    dispatch({ type: 'UPDATE_POSITION', payload: pos });
+  }, []);
+
+  const updateAiContentFile = useCallback((file: File | null) => {
+    dispatch({ type: 'UPDATE_AI_CONTENT_FILE', payload: file });
   }, []);
 
   return {
@@ -147,6 +170,8 @@ export function useHomeMVI() {
       updateStrategy,
       updateExtraContext,
       updateAiProvider,
+      updatePosition,
+      updateAiContentFile,
       fetchVideoInfo,
       analyzeVideo,
       processVideo,

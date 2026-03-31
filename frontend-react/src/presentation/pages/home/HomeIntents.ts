@@ -30,6 +30,8 @@ export interface HomeState {
   burnCaptions: boolean;
   aiStrategy: string;
   extraContext: string;
+  aiContentPosition: 'top' | 'bottom';
+  aiContentFile: File | null;
 
   // State machine
   screen: HomeScreen | null;
@@ -57,6 +59,8 @@ export const initialHomeState: HomeState = {
   burnCaptions: true,
   aiStrategy: 'viral-moments',
   extraContext: '',
+  aiContentPosition: 'top',
+  aiContentFile: null,
   screen: null,
   generationMode: null,
   progress: null,
@@ -77,6 +81,8 @@ export type HomeIntent =
   | { type: 'UPDATE_STRATEGY'; payload: string }
   | { type: 'UPDATE_EXTRA_CONTEXT'; payload: string }
   | { type: 'UPDATE_AI_PROVIDER'; payload: 'openai' | 'deepseek' }
+  | { type: 'UPDATE_POSITION'; payload: 'top' | 'bottom' }
+  | { type: 'UPDATE_AI_CONTENT_FILE'; payload: File | null }
   // WebSocket
   | { type: 'WS_CONNECTED'; payload: string }
   | { type: 'WS_PROGRESS'; payload: ProgressState }
@@ -125,6 +131,8 @@ export function homeReducer(state: HomeState, intent: HomeIntent): HomeState {
     case 'UPDATE_STRATEGY':      return { ...state, aiStrategy: intent.payload };
     case 'UPDATE_EXTRA_CONTEXT': return { ...state, extraContext: intent.payload };
     case 'UPDATE_AI_PROVIDER':   return { ...state, aiProvider: intent.payload };
+    case 'UPDATE_POSITION':      return { ...state, aiContentPosition: intent.payload };
+    case 'UPDATE_AI_CONTENT_FILE':return { ...state, aiContentFile: intent.payload };
 
     // WebSocket
     case 'WS_CONNECTED': return { ...state, clientId: intent.payload };

@@ -341,18 +341,126 @@ h1 {
     transform: translateY(-2px);
 }
 
-.format-btn-icon.active {
+.format-btn-container.active .format-btn-icon {
     background: var(--primary-color);
     border-color: var(--primary-color);
     color: var(--text-primary);
 }
 
-.format-btn-icon.active .format-icon svg {
+.format-btn-container.active .format-icon svg {
     color: white;
 }
 
 .format-btn-icon:active {
     transform: scale(0.98);
+}
+
+/* Container to hold the button and the overlay position toggles */
+.format-btn-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.format-btn-container > .format-btn-icon {
+    width: 100%;
+    height: 100%;
+}
+
+/* Position Toggle Overlay */
+.position-toggle-overlay {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 10;
+}
+
+.pos-arrow {
+    background: transparent;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.pos-arrow:hover {
+    border-color: var(--primary-color);
+    color: var(--text-primary);
+}
+
+/* When the parent format is active, the arrows inside light up */
+.format-btn-container.active .pos-arrow {
+    border-color: rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.7);
+}
+
+.format-btn-container.active .pos-arrow:hover {
+    border-color: white;
+    color: white;
+}
+
+/* The actively selected arrow */
+.format-btn-container.active .pos-arrow.active {
+    background: rgba(255,255,255,0.2);
+    border-color: white;
+    color: white;
+    box-shadow: 0 0 8px rgba(255,255,255,0.3);
+}
+
+/* Upload Toggle Overlay */
+.upload-toggle-overlay {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    z-index: 10;
+}
+
+.upload-btn {
+    background: transparent;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.upload-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--text-primary);
+}
+
+.format-btn-container.active .upload-btn {
+    border-color: rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.7);
+}
+
+.format-btn-container.active .upload-btn:hover {
+    border-color: white;
+    color: white;
+}
+
+.format-btn-container.active .upload-btn.has-file {
+    background: rgba(46, 204, 113, 0.2);
+    border-color: #2ecc71;
+    color: #2ecc71;
+    box-shadow: 0 0 8px rgba(46, 204, 113, 0.4);
 }
 
 .format-icon {

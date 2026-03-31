@@ -96,7 +96,31 @@ export class VideoRepository {
     preanalyzedClips?: Clip[],
     fullTranscriptWords?: TranscriptWord[],
     aiProvider: string = 'openai',
+    aiContentPosition: 'top' | 'bottom' = 'top',
+    aiContentFile: File | null = null,
   ): Promise<void> {
+
+    let aiContentPath: string | undefined = undefined;
+
+    // If an AI content file is provided, upload it first
+    if (aiContentFile && (format === 'stacked_photo' || format === 'stacked_video')) {
+      const formData = new FormData();
+      formData.append('file', aiContentFile);
+
+      const uploadRes = await fetch(`${this.API_BASE}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        const error = await uploadRes.json().catch(() => ({}));
+        throw new Error(error.detail || 'Failed to upload custom AI content file');
+      }
+
+      const uploadData = await uploadRes.json();
+      aiContentPath = uploadData.path;
+    }
+
     const response = await fetch(`${this.API_BASE}/process`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -108,6 +132,8 @@ export class VideoRepository {
         extra_context: extraContext,
         client_id: clientId,
         ai_provider: aiProvider,
+        ai_content_position: aiContentPosition,
+        ...(aiContentPath ? { ai_content_path: aiContentPath } : {}),
         ...(selectedClips ? { selected_clips: selectedClips } : {}),
         ...(preanalyzedClips ? { preanalyzed_clips: preanalyzedClips } : {}),
         ...(fullTranscriptWords ? { full_transcript_words: fullTranscriptWords } : {}),

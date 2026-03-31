@@ -14,3 +14,4 @@ mediapipe
 moviepy
 scipy
 requests
+python-multipart

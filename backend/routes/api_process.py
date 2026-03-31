@@ -254,7 +254,8 @@ async def _perform_video_processing(request: ProcessVideoRequest):
                         str(reels_out),
                         ai_content_type,
                         ai_content_path,
-                        caption_text if 'caption_text' in dir() else None
+                        caption_text if 'caption_text' in dir() else None,
+                        request.ai_content_position
                     )
                 else:
                     reels_result = await run_in_executor(cropper.convert_to_reels, str(clip_path), output_path=str(reels_out), output_format=request.format)

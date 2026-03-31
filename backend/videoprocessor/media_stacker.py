@@ -38,10 +38,11 @@ class MediaStacker:
         output_path: str,
         ai_content_type: str = "photo",
         ai_content_path: str = None,
-        caption_text: str = None
+        caption_text: str = None,
+        ai_content_position: str = "top"
     ) -> Dict:
         """
-        Convert video to stacked 9:8 format (AI content on top + face-tracked highlight on bottom).
+        Convert video to stacked 9:8 format (AI content + face-tracked highlight).
         Two 1080x960 boxes stacked = 1080x1920 final output.
 
         Input:
@@ -50,12 +51,13 @@ class MediaStacker:
             ai_content_type: "photo" or "video" for the top box
             ai_content_path: Optional path to user-provided AI content for top box
             caption_text: Unused (reserved for future caption overlay)
+            ai_content_position: "top" or "bottom" determining where AI content is placed
 
         Output:
             dict with 'success' and 'output_path'
         """
         try:
-            print(f"[DEBUG] Converting to stacked {ai_content_type} format")
+            print(f"[DEBUG] Converting to stacked {ai_content_type} format (AI position: {ai_content_position})")
 
             temp_dir = Path(tempfile.mkdtemp())
             v_path = Path(video_path)
@@ -77,9 +79,9 @@ class MediaStacker:
             box_width = 1080
             box_height = 960
 
-            # ── Step 1: Create bottom box (face-tracked 9:8 crop of source video) ──
-            print(f"[DEBUG] Creating bottom 9:8 box with face tracking...")
-            bottom_box_path = temp_dir / "bottom_box.mp4"
+            # ── Step 1: Create highlight box (face-tracked 9:8 crop of source video) ──
+            print(f"[DEBUG] Creating highlight 9:8 box with face tracking...")
+            highlight_box_path = temp_dir / "highlight_box.mp4"
 
             timeline = self._get_face_positions_timeline(str(v_path), FACE_CHECK_INTERVAL_FRAMES)
             positions = timeline['positions']
@@ -111,42 +113,47 @@ class MediaStacker:
                 '-vf', vf_filter,
                 '-c:v', 'libx264', '-c:a', 'aac',
                 '-preset', 'medium', '-crf', '23', '-y',
-                str(bottom_box_path)
+                str(highlight_box_path)
             ]
             subprocess.run(cmd, check=True, capture_output=True)
-            print(f"[DEBUG] Bottom box created: {box_width}x{box_height}")
+            print(f"[DEBUG] Highlight box created: {box_width}x{box_height}")
 
-            # ── Step 2: Create or load top box (AI content) ──
-            print(f"[DEBUG] Creating top 9:8 box with {ai_content_type}...")
-            top_box_path = temp_dir / f"top_box_{ai_content_type}.mp4"
+            # ── Step 2: Create or load AI content box ──
+            print(f"[DEBUG] Creating AI content 9:8 box with {ai_content_type}...")
+            ai_box_path = temp_dir / f"ai_box_{ai_content_type}.mp4"
 
             if ai_content_path and Path(ai_content_path).exists():
                 print(f"[DEBUG] Using AI content from: {ai_content_path}")
                 cmd = [
                     'ffmpeg', '-i', str(ai_content_path),
-                    '-vf', f'scale={box_width}:{box_height}:force_original_aspect_ratio=decrease,'
-                           f'pad={box_width}:{box_height}:(ow-iw)/2:(oh-ih)/2',
+                    '-vf', f'scale={box_width}:{box_height}:force_original_aspect_ratio=increase,'
+                           f'crop={box_width}:{box_height}',
                     '-t', str(duration),
                     '-c:v', 'libx264', '-an',
                     '-preset', 'medium', '-crf', '23', '-y',
-                    str(top_box_path)
+                    str(ai_box_path)
                 ]
                 subprocess.run(cmd, check=True, capture_output=True)
             else:
                 # Generate Pillow-based placeholder
-                self.generate_placeholder(box_width, box_height, duration, fps, str(top_box_path), ai_content_type)
+                self.generate_placeholder(box_width, box_height, duration, fps, str(ai_box_path), ai_content_type)
 
-            print(f"[DEBUG] Top box created/prepared: {box_width}x{box_height}")
+            print(f"[DEBUG] AI content box created/prepared: {box_width}x{box_height}")
 
-            # ── Step 3: Stack vertically ──
-            print(f"[DEBUG] Stacking boxes vertically...")
+            # ── Step 3: Stack vertically according to requested AI position ──
+            print(f"[DEBUG] Stacking boxes vertically (AI position: {ai_content_position})...")
             stacked_path = temp_dir / "stacked.mp4"
+
+            # 0:v is AI box, 1:v is Highlight box
+            # If AI is top:    [0:v][1:v]vstack
+            # If AI is bottom: [1:v][0:v]vstack
+            vstack_filter = '[0:v][1:v]vstack[stacked]' if ai_content_position == 'top' else '[1:v][0:v]vstack[stacked]'
 
             cmd = [
                 'ffmpeg',
-                '-i', str(top_box_path),
-                '-i', str(bottom_box_path),
-                '-filter_complex', '[0:v][1:v]vstack[stacked]',
+                '-i', str(ai_box_path),
+                '-i', str(highlight_box_path),
+                '-filter_complex', vstack_filter,
                 '-map', '[stacked]',
                 '-map', '1:a?',
                 '-c:v', 'libx264', '-c:a', 'aac',

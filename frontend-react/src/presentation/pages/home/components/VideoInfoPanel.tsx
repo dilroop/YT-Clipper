@@ -67,18 +67,74 @@ export const FormatSelector: React.FC<Props> = ({ state, intents }) => (
     <div className="format-buttons-multi">
       {[
         { key: 'vertical_9x16', label: 'Vertical', svg: <svg width="40" height="60" viewBox="0 0 40 60" fill="none"><rect x="2" y="2" width="36" height="56" stroke="currentColor" strokeWidth="3" rx="4"/><text x="20" y="35" textAnchor="middle" fill="currentColor" fontSize="10" fontWeight="bold">9:16</text></svg> },
-        { key: 'stacked_photo', label: 'Photo', svg: <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="4" y="4" width="40" height="40" stroke="currentColor" strokeWidth="2.5" rx="8"/><text x="24" y="30" textAnchor="middle" fill="currentColor" fontSize="16" fontWeight="bold">AI</text></svg> },
-        { key: 'stacked_video', label: 'Video', svg: <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="4" y="4" width="40" height="40" stroke="currentColor" strokeWidth="2.5" rx="8"/><path d="M19 16 L19 32 L33 24 Z" fill="currentColor"/></svg> },
+        { 
+          key: 'stacked_photo', 
+          label: 'Photo', 
+          svg: <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="4" y="4" width="40" height="40" stroke="currentColor" strokeWidth="2.5" rx="8"/><text x="24" y="30" textAnchor="middle" fill="currentColor" fontSize="16" fontWeight="bold">AI</text></svg>,
+          hasPosition: true 
+        },
+        { 
+          key: 'stacked_video', 
+          label: 'Video', 
+          svg: <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="4" y="4" width="40" height="40" stroke="currentColor" strokeWidth="2.5" rx="8"/><path d="M19 16 L19 32 L33 24 Z" fill="currentColor"/></svg>,
+          hasPosition: true
+        },
         { key: 'original', label: 'Original', svg: <svg width="60" height="40" viewBox="0 0 60 40" fill="none"><rect x="2" y="2" width="56" height="36" stroke="currentColor" strokeWidth="3" rx="4"/><text x="30" y="25" textAnchor="middle" fill="currentColor" fontSize="9" fontWeight="bold">16:9</text></svg> },
-      ].map(({ key, label, svg }) => (
-        <button
-          key={key}
-          className={`format-btn-icon ${state.selectedFormat === key ? 'active' : ''}`}
-          onClick={() => intents.updateFormat(key)}
-        >
-          <div className="format-icon">{svg}</div>
-          <span className="format-label">{label}</span>
-        </button>
+      ].map(({ key, label, svg, hasPosition }) => (
+        <div key={key} className={`format-btn-container ${state.selectedFormat === key ? 'active' : ''}`}>
+          <button
+            className="format-btn-icon"
+            onClick={() => intents.updateFormat(key)}
+          >
+            <div className="format-icon">{svg}</div>
+            <span className="format-label">{label}</span>
+          </button>
+          
+          {hasPosition && state.selectedFormat === key && (
+             <div className="position-toggle-overlay">
+               <button 
+                 className={`pos-arrow ${state.aiContentPosition === 'top' ? 'active' : ''}`}
+                 onClick={(e) => { e.stopPropagation(); intents.updatePosition('top'); }}
+                 title="AI content on top"
+               >
+                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 15l-6-6-6 6"/></svg>
+               </button>
+               <button 
+                 className={`pos-arrow ${state.aiContentPosition === 'bottom' ? 'active' : ''}`}
+                 onClick={(e) => { e.stopPropagation(); intents.updatePosition('bottom'); }}
+                 title="AI content on bottom"
+               >
+                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+               </button>
+             </div>
+          )}
+
+          {hasPosition && state.selectedFormat === key && (
+            <div className="upload-toggle-overlay" onClick={(e) => e.stopPropagation()}>
+              <label 
+                className={`upload-btn ${state.aiContentFile ? 'has-file' : ''}`} 
+                title={state.aiContentFile ? `Selected: ${state.aiContentFile.name}` : "Upload Custom AI Content"}
+              >
+                <input 
+                  type="file" 
+                  accept="video/*,image/*" 
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (intents.updateAiContentFile) {
+                      intents.updateAiContentFile(file);
+                    }
+                  }}
+                />
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  <line x1="12" y1="11" x2="12" y2="17"></line>
+                  <line x1="9" y1="14" x2="15" y2="14"></line>
+                </svg>
+              </label>
+            </div>
+          )}
+        </div>
       ))}
     </div>
   </div>
