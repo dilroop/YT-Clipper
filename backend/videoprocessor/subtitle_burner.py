@@ -233,10 +233,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 inputs.extend(['-i', str(overlay['path'])])
 
             filter_chains = []
-            last_v = "[0]"
+            last_v = "[0:v]"
             for i, overlay in enumerate(png_overlays):
                 next_v = f"[v{i+1}]"
-                filter_chains.append(f"{last_v}[{i+1}]overlay=enable='between(t,{overlay['start']},{overlay['end']})'{next_v}")
+                in_png = f"[{i+1}:v]"
+                filter_chains.append(f"{last_v}{in_png}overlay=enable='between(t,{overlay['start']},{overlay['end']})'{next_v}")
                 last_v = next_v
 
             cmd = [
@@ -253,13 +254,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ]
 
             print(f"[DEBUG] Running PNG overlay FFmpeg command...")
-            subprocess.run(cmd, check=True, capture_output=True)
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
 
             return {
                 'success': True,
-                'output_path': str(output_path)
+                'output_path': str(out_path)
             }
 
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr or e.stdout or str(e)
+            print(f"[ERROR] PNG-based captioning failed (FFmpeg): {error_msg}")
+            return {'success': False, 'error': error_msg}
         except Exception as e:
             print(f"[ERROR] PNG-based captioning failed: {str(e)}")
             return {'success': False, 'error': str(e)}
