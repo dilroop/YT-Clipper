@@ -15,3 +15,4 @@ moviepy
 scipy
 requests
 python-multipart
+Pillow
