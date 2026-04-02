@@ -29,30 +29,85 @@ export const TranscriptView: React.FC<Props> = ({
     }
   }, [selectedPartIndex]);
 
-  // Build highlighted HTML from current selected part
-  const buildHighlightedHtml = useCallback(() => {
-    if (selectedPartIndex === null || !parts[selectedPartIndex]) {
-      return [{ text: fullText, highlighted: false }];
+  // Build sentence-grouped segments with highlight and text effects.
+  // Uses mappedWords for accurate character positions — no string scanning.
+  const buildSegments = useCallback(() => {
+    // Group words into sentence buckets (ending on . ? !)
+    type Sentence = { words: MappedWord[]; isQuestion: boolean };
+    const sentences: Sentence[] = [];
+    let bucket: MappedWord[] = [];
+
+    for (const w of mappedWords) {
+      bucket.push(w);
+      if (w.word.endsWith('?') || w.word.endsWith('.') || w.word.endsWith('!')) {
+        sentences.push({ words: bucket, isQuestion: w.word.endsWith('?') });
+        bucket = [];
+      }
+    }
+    if (bucket.length > 0) sentences.push({ words: bucket, isQuestion: false });
+
+    // Determine highlight bounds from selected part
+    let hlStart = -1;
+    let hlEnd = -1;
+    if (selectedPartIndex !== null && parts[selectedPartIndex]) {
+      const part = parts[selectedPartIndex];
+      const sw = mappedWords[part.startWordIndex];
+      const ew = mappedWords[part.endWordIndex];
+      if (sw && ew) { hlStart = sw.charStart; hlEnd = ew.charEnd; }
     }
 
-    const part = parts[selectedPartIndex];
-    const startWord = mappedWords[part.startWordIndex];
-    const endWord = mappedWords[part.endWordIndex];
+    // Build React nodes: one <span> per sentence, split into hl/non-hl parts
+    return sentences.map((sent, si) => {
+      const sentStart = sent.words[0].charStart;
+      const nextSentStart = si < sentences.length - 1
+        ? sentences[si + 1].words[0].charStart
+        : fullText.length;
+      const sentText = fullText.substring(sentStart, nextSentStart);
 
-    if (!startWord || !endWord) return [{ text: fullText, highlighted: false }];
+      // Split sentence text into highlighted / plain parts
+      type Part = { text: string; hl: boolean };
+      const parts_: Part[] = [];
+      const noHighlight = hlStart < 0 || hlEnd <= sentStart || hlStart >= nextSentStart;
 
-    const before = fullText.slice(0, startWord.charStart);
-    const highlighted = fullText.slice(startWord.charStart, endWord.charEnd);
-    const after = fullText.slice(endWord.charEnd);
+      if (noHighlight) {
+        parts_.push({ text: sentText, hl: false });
+      } else if (hlStart <= sentStart && hlEnd >= nextSentStart) {
+        parts_.push({ text: sentText, hl: true });
+      } else {
+        const a = Math.max(sentStart, hlStart);
+        const b = Math.min(nextSentStart, hlEnd);
+        if (a > sentStart) parts_.push({ text: fullText.substring(sentStart, a), hl: false });
+        if (b > a)         parts_.push({ text: fullText.substring(a, b),         hl: true  });
+        if (b < nextSentStart) parts_.push({ text: fullText.substring(b, nextSentStart), hl: false });
+      }
 
-    return [
-      { text: before, highlighted: false },
-      { text: highlighted, highlighted: true },
-      { text: after, highlighted: false },
-    ];
+      const sentStyle: React.CSSProperties = sent.isQuestion ? {
+        textDecoration: 'underline dashed',
+        textDecorationColor: 'rgba(255, 200, 60, 0.85)',
+        textUnderlineOffset: '4px',
+      } : {};
+
+      return (
+        <span
+          key={si}
+          className={`transcript-sentence${sent.isQuestion ? ' question-sentence' : ''}`}
+          style={sentStyle}
+        >
+          {parts_.map((p, j) =>
+            p.hl ? (
+              <mark key={j} ref={j === 0 ? highlightRef : undefined} className="transcript-highlight">
+                {p.text}
+              </mark>
+            ) : (
+              <React.Fragment key={j}>{p.text}</React.Fragment>
+            )
+          )}
+        </span>
+      );
+    });
   }, [fullText, mappedWords, parts, selectedPartIndex]);
 
-  const segments = buildHighlightedHtml();
+  const sentenceNodes = buildSegments();
 
   // Handle text selection (mouseup)
   const handleMouseUp = useCallback(() => {
@@ -96,13 +151,7 @@ export const TranscriptView: React.FC<Props> = ({
       className={`editor-transcript-content ${isAddingNewPart ? 'editor-transcript--selecting' : ''}`}
       style={{ userSelect: 'text', cursor: isAddingNewPart ? 'text' : 'default' }}
     >
-      {segments.map((seg, i) =>
-        seg.highlighted ? (
-          <mark key={i} ref={highlightRef} className="transcript-highlight">{seg.text}</mark>
-        ) : (
-          <span key={i}>{seg.text}</span>
-        )
-      )}
+      {sentenceNodes}
     </div>
   );
 };
