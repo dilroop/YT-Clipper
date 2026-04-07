@@ -230,8 +230,8 @@ def parse_args():
                         help="Text shown in the middle seam between the two halves.")
     parser.add_argument("--main-position", choices=["top", "bottom"], default=None,
                         help="Place main video at 'top' or 'bottom'. If omitted, you will be asked.")
-    parser.add_argument("--output", default="output_stacked.mp4", metavar="FILE",
-                        help="Output file path (default: output_stacked.mp4).")
+    parser.add_argument("--output", default=None, metavar="FILE",
+                        help="Output file path (defaults to <main_video_dir>/<main_video_name>_stacked.mp4).")
     parser.add_argument("--font", default=None, metavar="TTF_PATH",
                         help="Path to a .ttf font file.")
     parser.add_argument("--font-size", type=int, default=70, metavar="N",
@@ -252,8 +252,54 @@ def parse_args():
 # ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
+import shlex
+
 def main():
-    args = parse_args()
+    if len(sys.argv) == 1:
+        print("--- Interactive Mode ---")
+        
+        def _clean_path(p):
+            p = p.strip()
+            if os.name == 'posix':
+                try:
+                    tokens = shlex.split(p)
+                    if len(tokens) == 1:
+                        return os.path.expanduser(tokens[0])
+                except ValueError:
+                    pass
+            # Fallback
+            if p.startswith('"') and p.endswith('"'): p = p[1:-1]
+            if p.startswith("'") and p.endswith("'"): p = p[1:-1]
+            return os.path.expanduser(p)
+
+        def _clean_text(t):
+            t = t.strip()
+            if t.startswith('"') and t.endswith('"'): t = t[1:-1]
+            elif t.startswith("'") and t.endswith("'"): t = t[1:-1]
+            return t
+
+        class Args: pass
+        args = Args()
+        args.main = _clean_path(input("Enter path to main content: "))
+        args.second = _clean_path(input("Enter path to secondary content: "))
+        while True:
+            pos = input("Main video position? [t/b]: ").strip().lower()
+            if pos in ["t", "b", "top", "bottom"]:
+                args.main_position = "top" if pos in ["t", "top"] else "bottom"
+                break
+            print("  Please type 't' for top or 'b' for bottom.")
+        args.text = _clean_text(input("Enter text for the middle seam: "))
+        args.circle = None
+        args.output = None
+        args.font = None
+        args.font_size = 70
+        args.outline_width = 6
+        args.circle_size = 280
+        args.circle_margin = 40
+        args.duration = None
+        args.fps = 30
+    else:
+        args = parse_args()
 
     # ── Validate inputs ───────────────────────────────────────────────────────
     if not os.path.exists(args.main):
@@ -269,15 +315,20 @@ def main():
         print(f"[ERROR] --circle file not found: {args.circle}")
         sys.exit(1)
 
+    # ── Set default output path if none provided ─────────────────────────────
+    if getattr(args, "output", None) is None:
+        main_path = Path(args.main)
+        args.output = str(main_path.parent / f"{main_path.stem}_stacked.mp4")
+
     # ── Ask where to place the main video ────────────────────────────────────
     main_position = args.main_position
     if not main_position:
         while True:
-            answer = input("\nWhere should the MAIN video go? [top / bottom]: ").strip().lower()
-            if answer in ("top", "bottom"):
-                main_position = answer
+            answer = input("\nWhere should the MAIN video go? [top / bottom / t / b]: ").strip().lower()
+            if answer in ("top", "bottom", "t", "b"):
+                main_position = "top" if answer in ("top", "t") else "bottom"
                 break
-            print("  Please type 'top' or 'bottom'.")
+            print("  Please type 't' or 'b'.")
 
     print(f"\n[INFO] Main video position: {main_position.upper()}")
 
