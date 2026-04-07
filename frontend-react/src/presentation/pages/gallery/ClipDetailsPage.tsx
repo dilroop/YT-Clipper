@@ -26,7 +26,7 @@ export const ClipDetailsPage: React.FC = () => {
 
   const handleDownload = () => {
     const a = document.createElement('a');
-    a.href = `/clips/${project}/${format}/${filename}`;
+    a.href = `/clips/${encodeURIComponent(project || '')}/${encodeURIComponent(format || '')}/${encodeURIComponent(filename || '')}`;
     a.download = filename || 'clip.mp4';
     document.body.appendChild(a);
     a.click();
@@ -63,7 +63,7 @@ export const ClipDetailsPage: React.FC = () => {
         <div style={{ flex: '1 1 300px', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <video 
-              src={`/clips/${project}/${format}/${filename}`} 
+              src={`/clips/${encodeURIComponent(project || '')}/${encodeURIComponent(format || '')}/${encodeURIComponent(filename || '')}`} 
               controls
               style={{ width: '100%', borderRadius: '8px', background: '#000', aspectRatio: format === 'reels' ? '9/16' : '16/9' }}
             />

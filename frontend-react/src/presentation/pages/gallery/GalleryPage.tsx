@@ -99,7 +99,7 @@ export const GalleryPage: React.FC = () => {
           {filteredClips.map((clip, i) => (
             <div 
               key={i}
-              onClick={() => navigate(`/gallery/${clip.project}/${clip.format}/${clip.filename}`)}
+              onClick={() => navigate(`/gallery/${encodeURIComponent(clip.project)}/${encodeURIComponent(clip.format)}/${encodeURIComponent(clip.filename)}`)}
               style={{
                 background: '#1e1e1e',
                 borderRadius: '12px',
@@ -114,7 +114,7 @@ export const GalleryPage: React.FC = () => {
             >
               {/* Fallback layout if no thumbnail: we just render the video element without controls to act as thumbnail */}
               <video 
-                src={`/clips/${clip.project}/${clip.format}/${clip.filename}`} 
+                src={`/clips/${encodeURIComponent(clip.project)}/${encodeURIComponent(clip.format)}/${encodeURIComponent(clip.filename)}`} 
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 preload="metadata"
                 muted
