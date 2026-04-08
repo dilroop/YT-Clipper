@@ -10,6 +10,9 @@ Usage:
                        [--font /path/to/font.ttf]
                        [--font-size 70]
                        [--circle-size 300]
+                       [--watermark-text "@MrSinghExperience"]
+                       [--watermark-size 45]
+                       [--watermark-alpha 0.6]
                        [--duration SECONDS]
 
 Requirements (install via requirements.txt):
@@ -111,6 +114,42 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6,
         fill=(255, 255, 255, 255),
         stroke_width=outline_width,
         stroke_fill=(0, 0, 0, 255),
+    )
+    return np.array(img)
+
+
+def render_watermark(text: str, font: ImageFont.FreeTypeFont, alpha_opacity: float = 0.6) -> np.ndarray:
+    """Render watermark text with outline based on opacity."""
+    outline_width = max(1, font.size // 15)
+    
+    dummy = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(dummy)
+    
+    if hasattr(draw, 'textbbox'):
+        bbox = draw.textbbox((0, 0), text, font=font, stroke_width=outline_width)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        offset_x = bbox[0]
+        offset_y = bbox[1]
+    else:
+        text_w, text_h = draw.textsize(text, font=font)
+        text_w += outline_width * 2
+        text_h += outline_width * 2
+        offset_x = 0
+        offset_y = 0
+
+    img = Image.new("RGBA", (int(text_w + 10), int(text_h + 10)), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    opacity_int = int(255 * max(0.0, min(1.0, alpha_opacity)))
+    
+    draw.text(
+        (5 - offset_x, 5 - offset_y),
+        text,
+        font=font,
+        fill=(255, 255, 255, opacity_int),
+        stroke_width=outline_width,
+        stroke_fill=(0, 0, 0, opacity_int),
     )
     return np.array(img)
 
@@ -242,6 +281,18 @@ def parse_args():
                         help="Diameter of the circular overlay in pixels (default: 280).")
     parser.add_argument("--circle-margin", type=int, default=40, metavar="PX",
                         help="Margin from the bottom-right edge for the circle (default: 40).")
+    parser.add_argument("--watermark-text", default="@MrSinghExperience",
+                        help="Watermark text (default: '@MrSinghExperience'). Empty string means no watermark.")
+    parser.add_argument("--watermark-font", default=None, metavar="TTF_PATH",
+                        help="Path to a .ttf font file for the watermark.")
+    parser.add_argument("--watermark-size", type=int, default=45, metavar="N",
+                        help="Font size for the watermark (default: 45).")
+    parser.add_argument("--watermark-alpha", type=float, default=0.6,
+                        help="Opacity of the watermark (0.0 to 1.0, default: 0.6).")
+    parser.add_argument("--watermark-top", type=int, default=100,
+                        help="Distance from the top edge in pixels (default: 100).")
+    parser.add_argument("--watermark-right", type=int, default=40,
+                        help="Distance from the right edge in pixels (default: 40).")
     parser.add_argument("--duration", type=float, default=None,
                         help="Override output duration in seconds.")
     parser.add_argument("--fps", type=int, default=30,
@@ -296,6 +347,12 @@ def main():
         args.outline_width = 6
         args.circle_size = 280
         args.circle_margin = 40
+        args.watermark_text = "@MrSinghExperience"
+        args.watermark_font = None
+        args.watermark_size = 45
+        args.watermark_alpha = 0.6
+        args.watermark_top = 100
+        args.watermark_right = 40
         args.duration = None
         args.fps = 30
     else:
@@ -388,6 +445,25 @@ def main():
 
         # ── Layers ───────────────────────────────────────────────────────────────
         layers = [base, text_clip]
+
+        # ── Watermark (optional) ─────────────────────────────────────────────────
+        if getattr(args, "watermark_text", None):
+            cleaned_text = args.watermark_text.strip()
+            if cleaned_text:
+                print(f"[INFO] Rendering watermark: '{cleaned_text}'")
+                w_font = get_font(args.watermark_font, args.watermark_size)
+                w_arr = render_watermark(cleaned_text, w_font, args.watermark_alpha)
+                
+                w_w = w_arr.shape[1]
+                w_x = OUTPUT_WIDTH - args.watermark_right - w_w
+                w_y = args.watermark_top
+                
+                watermark_clip = (
+                    ImageClip(w_arr)
+                    .with_duration(duration)
+                    .with_position((max(0, w_x), max(0, w_y)))
+                )
+                layers.append(watermark_clip)
 
         # ── Circle overlay (optional) ─────────────────────────────────────────────
         if args.circle:
