@@ -34,20 +34,30 @@ export const VideoInfoPanel: React.FC<Props> = ({ state, intents }) => (
     {state.error && <div className="error-msg">{state.error}</div>}
 
     {/* Workflow buttons */}
-    <div className="workflow-buttons">
+    <div className="workflow-buttons" style={{ display: 'flex', gap: '8px', width: '100%' }}>
       <button
         className="workflow-btn auto-btn"
+        style={{ flex: 1, padding: '12px 4px', fontSize: '14px', margin: 0 }}
         onClick={() => intents.processVideo()}
         disabled={!state.url}
       >
-        <span style={{ fontSize: '24px' }}>🤖</span> Auto Create
+        <span style={{ fontSize: '20px', display: 'block' }}>🤖</span> Auto Create
       </button>
       <button
         className="workflow-btn manual-btn"
-        onClick={() => intents.analyzeVideo()}
+        style={{ flex: 1, padding: '12px 4px', fontSize: '14px', margin: 0 }}
+        onClick={() => intents.analyzeVideo(false)}
         disabled={!state.url}
       >
-        <span style={{ fontSize: '24px' }}>🔨</span> Manually Choose
+        <span style={{ fontSize: '20px', display: 'block' }}>🔨</span> Manual (AI)
+      </button>
+      <button
+        className="workflow-btn skip-btn"
+        style={{ flex: 1, padding: '12px 4px', fontSize: '14px', margin: 0, background: '#6366f1', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+        onClick={() => intents.analyzeVideo(true)}
+        disabled={!state.url}
+      >
+        <span style={{ fontSize: '20px', display: 'block' }}>✂️</span> Custom
       </button>
     </div>
   </div>

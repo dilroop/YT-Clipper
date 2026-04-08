@@ -41,10 +41,35 @@ export const ClipSelectionSection: React.FC<Props> = ({ state, intents }) => {
     <>
     <div className="clip-selection-section">
       <div className="clip-selection-header">
-        <h3>Select Clips to Generate</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <h3 style={{ margin: 0 }}>Select Clips to Generate</h3>
+          <button style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }} onClick={() => {
+            const newClip: Clip = {
+              id: `custom-${Date.now()}`,
+              title: 'Custom Clip',
+              explanation: '',
+              start: 0,
+              end: 15,
+              duration: 15,
+              score: 100,
+              words: [],
+              parts: [],
+              validation_status: 'valid'
+            };
+            intents.addCustomClip(newClip);
+            setEditorClip({ clip: newClip, index: 0 });
+          }}>➕ Add New Clip</button>
+        </div>
         <button className="select-all-btn" onClick={toggleAll}>{allSelected ? 'Deselect All' : 'Select All'}</button>
       </div>
       <div className="clips-grid">
+        {state.clips.length === 0 && (
+          <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '48px 24px', color: '#555', borderRadius: '12px', border: '2px dashed #333', background: '#1a1a1a' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>✂️</div>
+            <p style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#888', fontWeight: 'bold' }}>No clips yet</p>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>Click <strong style={{ color: '#3b82f6' }}>➕ Add New Clip</strong> to start building your clips manually using the transcript.</p>
+          </div>
+        )}
         {state.clips.map((clip: Clip, idx: number) => {
           const clipId = clip.id || `clip-${idx}`;
           const isSelected = selectedIds.has(clipId);
@@ -113,8 +138,8 @@ export const ClipSelectionSection: React.FC<Props> = ({ state, intents }) => {
 
     {/* Sticky generate bar */}
     <div className="clip-generate-bar">
-      <span className="clip-generate-count">{selectedIds.size} of {state.clips.length} selected</span>
-      <button className="generate-btn" disabled={selectedIds.size === 0}
+      <span className="clip-generate-count">{selectedIds.size} of {state.clips.length} clip{state.clips.length !== 1 ? 's' : ''} selected</span>
+      <button className="generate-btn" disabled={selectedIds.size === 0 || state.clips.length === 0}
         onClick={() => intents.processVideoSelection(Array.from(selectedIds))}>
         Generate Selected Clips
       </button>

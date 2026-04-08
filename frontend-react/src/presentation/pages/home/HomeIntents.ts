@@ -100,6 +100,7 @@ export type HomeIntent =
   | { type: 'PROCESS_ERROR'; payload: string }
   // Clips
   | { type: 'UPDATE_CLIP'; payload: { index: number; clip: Clip } }
+  | { type: 'ADD_CUSTOM_CLIP'; payload: Clip }
   // Reset
   | { type: 'RESET_TO_VIDEO_INFO' };
 
@@ -173,6 +174,11 @@ export function homeReducer(state: HomeState, intent: HomeIntent): HomeState {
       if (!state.clips) return state;
       const clips = [...state.clips];
       clips[intent.payload.index] = intent.payload.clip;
+      return { ...state, clips };
+    }
+    case 'ADD_CUSTOM_CLIP': {
+      const clips = state.clips ? [...state.clips] : [];
+      clips.unshift(intent.payload);
       return { ...state, clips };
     }
 

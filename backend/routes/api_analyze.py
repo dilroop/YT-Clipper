@@ -134,19 +134,23 @@ async def analyze_video(request: AnalyzeVideoRequest):
         segments = transcript_result['segments']
 
         # Step 3: Find interesting clips using AI
-        provider_name = getattr(analyzer, 'provider_name', 'Basic AI')
-        await update_progress({'stage': 'analyzing', 'percent': 60, 'message': f'Finding clips with {provider_name}...'})
-        if isinstance(analyzer, AIAnalyzer):
-            interesting_clips = analyzer.find_interesting_clips(
-                segments,
-                num_clips=5,
-                video_info=video_info,
-                strategy=request.ai_strategy or "viral-moments",
-                extra_context=request.extra_context
-            )
+        if request.skip_ai:
+            await update_progress({'stage': 'analyzing', 'percent': 100, 'message': 'Skipping AI detection (Custom Workflow).'})
+            interesting_clips = []
         else:
-            interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
-            interesting_clips = [analyzer.adjust_clip_timing(clip) for clip in interesting_clips]
+            provider_name = getattr(analyzer, 'provider_name', 'Basic AI')
+            await update_progress({'stage': 'analyzing', 'percent': 60, 'message': f'Finding clips with {provider_name}...'})
+            if isinstance(analyzer, AIAnalyzer):
+                interesting_clips = analyzer.find_interesting_clips(
+                    segments,
+                    num_clips=5,
+                    video_info=video_info,
+                    strategy=request.ai_strategy or "viral-moments",
+                    extra_context=request.extra_context
+                )
+            else:
+                interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
+                interesting_clips = [analyzer.adjust_clip_timing(clip) for clip in interesting_clips]
 
         # Format clips for frontend
         formatted_clips = []

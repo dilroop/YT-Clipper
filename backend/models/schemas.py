@@ -10,6 +10,7 @@ class AnalyzeVideoRequest(BaseModel):
     extra_context: Optional[str] = None
     client_id: Optional[str] = None
     ai_provider: Optional[str] = "openai"  # "openai" | "deepseek"
+    skip_ai: Optional[bool] = False
 
 class ProcessVideoRequest(BaseModel):
     url: str

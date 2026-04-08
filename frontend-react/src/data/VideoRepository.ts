@@ -64,7 +64,7 @@ export class VideoRepository {
     return response.json();
   }
 
-  static async analyzeVideo(url: string, strategy: string, extraContext: string | null = null, clientId: string, aiProvider: string = 'openai'): Promise<AnalyzeResult> {
+  static async analyzeVideo(url: string, strategy: string, extraContext: string | null = null, clientId: string, aiProvider: string = 'openai', skipAi: boolean = false): Promise<AnalyzeResult> {
     const response = await fetch(`${this.API_BASE}/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -74,6 +74,7 @@ export class VideoRepository {
         extra_context: extraContext,
         client_id: clientId,
         ai_provider: aiProvider,
+        skip_ai: skipAi,
       }),
     });
 

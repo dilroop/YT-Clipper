@@ -76,11 +76,11 @@ export function useHomeMVI() {
     }
   }, []);
 
-  const analyzeVideo = useCallback(async () => {
+  const analyzeVideo = useCallback(async (skipAi: boolean = false) => {
     if (!state.url || !state.clientId) return;
     dispatch({ type: 'START_ANALYSIS' });
     try {
-      const result = await VideoRepository.analyzeVideo(state.url, state.aiStrategy, state.extraContext || null, state.clientId, state.aiProvider);
+      const result = await VideoRepository.analyzeVideo(state.url, state.aiStrategy, state.extraContext || null, state.clientId, state.aiProvider, skipAi);
       dispatch({ 
         type: 'ANALYSIS_SUCCESS', 
         payload: { 
@@ -152,6 +152,10 @@ export function useHomeMVI() {
     dispatch({ type: 'UPDATE_CLIP', payload: { index, clip } });
   }, []);
 
+  const addCustomClip = useCallback((clip: Clip) => {
+    dispatch({ type: 'ADD_CUSTOM_CLIP', payload: clip });
+  }, []);
+
   const updatePosition = useCallback((pos: 'top' | 'bottom') => {
     dispatch({ type: 'UPDATE_POSITION', payload: pos });
   }, []);
@@ -177,6 +181,7 @@ export function useHomeMVI() {
       processVideo,
       processVideoSelection,
       updateClip,
+      addCustomClip,
       resetToVideoInfo,
     }
   };
