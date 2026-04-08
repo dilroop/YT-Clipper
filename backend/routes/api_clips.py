@@ -111,3 +111,32 @@ async def get_clip_details(project: str, format: str, filename: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching clip details: {str(e)}")
+
+@router.delete("/api/clips/{project}/{format}/{filename}")
+async def delete_clip(project: str, format: str, filename: str):
+    """Delete a specific clip and its metadata"""
+    try:
+        upload_dir = BASE_DIR / "ToUpload"
+        video_path = upload_dir / project / format / filename
+
+        if not video_path.exists():
+            raise HTTPException(status_code=404, detail="Clip not found")
+
+        # Identify metadata files
+        info_json = video_path.parent / f"{video_path.stem}_info.json"
+        info_txt = video_path.parent / f"{video_path.stem}_info.txt"
+
+        # Delete files
+        video_path.unlink()
+        if info_json.exists():
+            info_json.unlink()
+        if info_txt.exists():
+            info_txt.unlink()
+
+        return {"success": True, "message": "Clip and metadata deleted successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting clip: {str(e)}")
+

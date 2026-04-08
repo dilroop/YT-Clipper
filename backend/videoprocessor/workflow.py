@@ -73,11 +73,18 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6,
     Render *text* on a transparent canvas with a thick black outline and a 
     rounded rectangle background. Returns an RGBA uint8 NumPy array.
     """
+    text = text.replace('\\n', '\n')
     dummy = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
     draw = ImageDraw.Draw(dummy)
     
     # Calculate exact text bounds
-    if hasattr(draw, 'textbbox'):
+    if hasattr(draw, 'multiline_textbbox'):
+        bbox = draw.multiline_textbbox((0, 0), text, font=font, stroke_width=outline_width, align="center")
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        offset_x = bbox[0]
+        offset_y = bbox[1]
+    elif hasattr(draw, 'textbbox'):
         bbox = draw.textbbox((0, 0), text, font=font, stroke_width=outline_width)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
@@ -107,14 +114,25 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6,
     text_pos_x = padding_x - offset_x
     text_pos_y = padding_y - offset_y
 
-    draw.text(
-        (text_pos_x, text_pos_y),
-        text,
-        font=font,
-        fill=(255, 255, 255, 255),
-        stroke_width=outline_width,
-        stroke_fill=(0, 0, 0, 255),
-    )
+    if hasattr(draw, 'multiline_text'):
+        draw.multiline_text(
+            (text_pos_x, text_pos_y),
+            text,
+            font=font,
+            fill=(255, 255, 255, 255),
+            stroke_width=outline_width,
+            stroke_fill=(0, 0, 0, 255),
+            align="center",
+        )
+    else:
+        draw.text(
+            (text_pos_x, text_pos_y),
+            text,
+            font=font,
+            fill=(255, 255, 255, 255),
+            stroke_width=outline_width,
+            stroke_fill=(0, 0, 0, 255),
+        )
     return np.array(img)
 
 

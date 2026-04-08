@@ -6,4 +6,6 @@ from . import api_config
 from . import api_history
 from . import api_logs
 from . import api_clips
+from . import api_upload
+from . import api_workflow
 from . import websocket

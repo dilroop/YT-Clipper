@@ -199,4 +199,55 @@ export class VideoRepository {
     const data = await response.json();
     return data.clip;
   }
+
+  static async runWorkflow(
+    project: string,
+    format: string,
+    filename: string,
+    clientId: string,
+    secondMedia: File,
+    mainPosition: string,
+    text: string,
+    watermarkText: string,
+    watermarkSize: number,
+    watermarkAlpha: number,
+    watermarkTop: number,
+    watermarkRight: number
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('client_id', clientId);
+    formData.append('second_media', secondMedia);
+    formData.append('main_position', mainPosition);
+    formData.append('text', text);
+    formData.append('watermark_text', watermarkText);
+    formData.append('watermark_size', watermarkSize.toString());
+    formData.append('watermark_alpha', watermarkAlpha.toString());
+    formData.append('watermark_top', watermarkTop.toString());
+    formData.append('watermark_right', watermarkRight.toString());
+
+    const url = `${this.API_BASE}/workflow/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to run workflow');
+    }
+
+    return response.json();
+  }
+
+  static async deleteClip(project: string, format: string, filename: string): Promise<{success: boolean, message: string}> {
+    const res = await fetch(`${this.API_BASE}/clips/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`, {
+      method: 'DELETE'
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Failed to delete clip');
+    }
+    return data;
+  }
 }

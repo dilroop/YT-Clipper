@@ -577,6 +577,25 @@ class VideoCropper:
             crop_height = height
             crop_width = int(crop_height * 9 / 8)
 
+            if crop_width > width:
+                print(f"[DEBUG] crop_to_9x8: Input is narrower than 9:8. Falling back to center crop.")
+                crop_width = width
+                crop_height = int(crop_width * 8 / 9)
+                crop_x = 0
+                crop_y = (height - crop_height) // 2
+                
+                vf = f"crop=w={crop_width}:h={crop_height}:x={crop_x}:y={crop_y},scale={box_width}:{box_height}"
+                cmd = [
+                    'ffmpeg', '-i', str(v_path),
+                    '-vf', vf,
+                    '-c:v', 'libx264', '-c:a', 'aac',
+                    '-preset', 'medium', '-crf', '23', '-y',
+                    str(o_path)
+                ]
+                subprocess.run(cmd, check=True, capture_output=True)
+                print(f"[DEBUG] crop_to_9x8 complete (fallback portrait): {box_width}x{box_height} → {o_path}")
+                return {'success': True, 'output_path': str(o_path)}
+
             # Build smooth face-position timeline
             timeline = self._get_face_positions_timeline(str(v_path), FACE_CHECK_INTERVAL_FRAMES)
             positions = timeline['positions']

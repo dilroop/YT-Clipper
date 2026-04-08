@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { VideoRepository } from '../../../data/VideoRepository';
 
@@ -7,6 +7,59 @@ export const ClipDetailsPage: React.FC = () => {
   const navigate = useNavigate();
   const [clip, setClip] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [clientId, setClientId] = useState('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [secondMedia, setSecondMedia] = useState<File | null>(null);
+  const [mainPosition, setMainPosition] = useState('top');
+  const [text, setText] = useState('');
+  const [watermarkText, setWatermarkText] = useState('@MrSinghExperience');
+  const [watermarkSize, setWatermarkSize] = useState(45);
+  const [watermarkAlpha, setWatermarkAlpha] = useState(0.6);
+  const [watermarkTop, setWatermarkTop] = useState(100);
+  const [watermarkRight, setWatermarkRight] = useState(40);
+  
+  const [workflowStatus, setWorkflowStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
+  const [logs, setLogs] = useState<string[]>([]);
+  const wsRef = useRef<WebSocket | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'connection' && data.client_id) {
+          setClientId(data.client_id);
+        } else if (data.type === 'log') {
+          setLogs(prev => [...prev, data.line]);
+        } else if (data.type === 'progress') {
+          if (data.stage === 'complete') {
+            setWorkflowStatus('complete');
+          } else if (data.stage === 'error') {
+            setWorkflowStatus('error');
+            setLogs(prev => [...prev, data.message]);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse WS message', e);
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, []);
 
   useEffect(() => {
     if (project && format && filename) {
@@ -31,6 +84,40 @@ export const ClipDetailsPage: React.FC = () => {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  const handleRunWorkflow = async () => {
+    if (!secondMedia) {
+      alert("Please upload a secondary media file.");
+      return;
+    }
+    if (!clientId) {
+      alert("Still connecting to server, please wait a moment.");
+      return;
+    }
+    try {
+      setWorkflowStatus('running');
+      setLogs([]);
+      await VideoRepository.runWorkflow(
+        project!, format!, filename!, clientId,
+        secondMedia, mainPosition, text, watermarkText,
+        watermarkSize, watermarkAlpha, watermarkTop, watermarkRight
+      );
+    } catch (e: any) {
+      setWorkflowStatus('error');
+      setLogs(prev => [...prev, `[ERROR] ${e.message}`]);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (window.confirm("Are you sure you want to delete this clip and its metadata? This action cannot be undone.")) {
+      try {
+        await VideoRepository.deleteClip(project!, format!, filename!);
+        navigate(-1);
+      } catch (e: any) {
+        alert(e.message);
+      }
+    }
   };
 
   if (isLoading) {
@@ -70,6 +157,14 @@ export const ClipDetailsPage: React.FC = () => {
             <button onClick={handleDownload} style={{ width: '100%', padding: '12px', background: '#252525', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Download Clip
+            </button>
+            <button onClick={() => setIsDialogOpen(true)} style={{ width: '100%', padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              Run Workflow
+            </button>
+            <button onClick={handleDelete} style={{ width: '100%', padding: '12px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.5)', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginTop: '16px' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              Delete Clip
             </button>
           </div>
         </div>
@@ -138,6 +233,91 @@ export const ClipDetailsPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Workflow Dialog */}
+      {isDialogOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', padding: '48px', display: 'flex', gap: '24px', zIndex: 1000 }}>
+          {/* Dialog Form */}
+          <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', flex: '0 0 500px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
+            <h2 style={{ margin: 0 }}>Workflow Settings</h2>
+            
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span>Secondary Media (Video/Photo):</span>
+              <input type="file" onChange={e => setSecondMedia(e.target.files?.[0] || null)} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span>Main Video Position:</span>
+              <select value={mainPosition} onChange={e => setMainPosition(e.target.value)} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
+                <option value="top">Top</option>
+                <option value="bottom">Bottom</option>
+              </select>
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span>Seam Text:</span>
+              <textarea value={text} onChange={e => setText(e.target.value)} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff', minHeight: '60px', fontFamily: 'inherit', resize: 'vertical' }} placeholder="Enter text (multiple lines allowed)" />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span>Watermark Text:</span>
+              <input type="text" value={watermarkText} onChange={e => setWatermarkText(e.target.value)} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+            </label>
+
+            <div style={{ display: 'flex', gap: '16px' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                <span>Watermark Size:</span>
+                <input type="number" value={watermarkSize} onChange={e => setWatermarkSize(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                <span>Watermark Alpha (0-1):</span>
+                <input type="number" step="0.1" max="1" min="0" value={watermarkAlpha} onChange={e => setWatermarkAlpha(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: '16px' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                <span>Watermark Top Margin:</span>
+                <input type="number" value={watermarkTop} onChange={e => setWatermarkTop(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                <span>Watermark Right Margin:</span>
+                <input type="number" value={watermarkRight} onChange={e => setWatermarkRight(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+              <button onClick={() => { setIsDialogOpen(false); setWorkflowStatus('idle'); setLogs([]); }} style={{ flex: 1, padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
+              <button 
+                onClick={handleRunWorkflow} 
+                disabled={workflowStatus === 'running' || !secondMedia} 
+                style={{ flex: 1, padding: '12px', background: workflowStatus === 'running' || !secondMedia ? '#555' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: workflowStatus === 'running' || !secondMedia ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+              >
+                {workflowStatus === 'running' ? 'Running...' : 'Start Execution'}
+              </button>
+            </div>
+            {workflowStatus === 'complete' && (
+              <div style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#4ade80', padding: '12px', borderRadius: '8px', textAlign: 'center', marginTop: '8px' }}>
+                Workflow complete! The new clip is now in the Gallery.
+              </div>
+            )}
+            {workflowStatus === 'error' && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', padding: '12px', borderRadius: '8px', textAlign: 'center', marginTop: '8px' }}>
+                Workflow failed. Check logs for details.
+              </div>
+            )}
+          </div>
+
+          {/* Logs View */}
+          <div style={{ flex: 1, background: '#121212', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', border: '1px solid #333' }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#bbb' }}>Execution Logs</h3>
+            <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              {logs.length === 0 ? <span style={{ color: '#555' }}>Logs will appear here during execution...</span> : logs.join('\n')}
+              <div ref={logsEndRef} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
