@@ -10,7 +10,7 @@ export const ClipDetailsPage: React.FC = () => {
 
   const [clientId, setClientId] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [secondMedia, setSecondMedia] = useState<File | null>(null);
+  const [secondMediaFiles, setSecondMediaFiles] = useState<File[]>([]);
   const [mainPosition, setMainPosition] = useState('top');
   const [text, setText] = useState('');
   const [watermarkText, setWatermarkText] = useState('@MrSinghExperience');
@@ -88,8 +88,8 @@ export const ClipDetailsPage: React.FC = () => {
   };
 
   const handleRunWorkflow = async () => {
-    if (!secondMedia) {
-      alert("Please upload a secondary media file.");
+    if (secondMediaFiles.length === 0) {
+      alert("Please upload at least one secondary media file.");
       return;
     }
     if (!clientId) {
@@ -101,7 +101,7 @@ export const ClipDetailsPage: React.FC = () => {
       setLogs([]);
       await VideoRepository.runWorkflow(
         project!, format!, filename!, clientId,
-        secondMedia, mainPosition, text, watermarkText,
+        secondMediaFiles, mainPosition, text, watermarkText,
         watermarkSize, watermarkAlpha, watermarkTop, watermarkRight
       );
     } catch (e: any) {
@@ -277,10 +277,46 @@ export const ClipDetailsPage: React.FC = () => {
           <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', flex: '0 0 500px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
             <h2 style={{ margin: 0 }}>Workflow Settings</h2>
             
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <span>Secondary Media (Video/Photo):</span>
-              <input type="file" onChange={e => setSecondMedia(e.target.files?.[0] || null)} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600 }}>Secondary Media:</span>
+                <span style={{ fontSize: '0.75rem', color: '#888' }}>Images cycle 2s each · Videos play in full</span>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: '#252525', border: '1px dashed #555', borderRadius: '8px', cursor: 'pointer', color: '#aaa', fontSize: '0.9rem' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Add images or videos…
+                <input
+                  type="file"
+                  multiple
+                  accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp,video/mp4,video/quicktime,video/x-matroska,video/webm,video/avi,.mp4,.mov,.mkv,.avi,.webm,.png,.jpg,.jpeg,.webp,.gif,.bmp"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const added = Array.from(e.target.files || []);
+                    setSecondMediaFiles(prev => [...prev, ...added]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {secondMediaFiles.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto' }}>
+                  {secondMediaFiles.map((f, i) => {
+                    const isVideo = f.type.startsWith('video/');
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1a1a1a', borderRadius: '6px', padding: '6px 10px', fontSize: '0.82rem' }}>
+                        <span style={{ fontSize: '16px' }}>{isVideo ? '🎬' : '🖼️'}</span>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ccc' }}>{f.name}</span>
+                        <span style={{ color: '#666', flexShrink: 0 }}>{isVideo ? 'video' : '2s'}</span>
+                        <button
+                          onClick={() => setSecondMediaFiles(prev => prev.filter((_, idx) => idx !== i))}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px 4px', lineHeight: 1, fontSize: '14px' }}
+                          title="Remove"
+                        >✕</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <span>Main Video Position:</span>
@@ -323,11 +359,11 @@ export const ClipDetailsPage: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-              <button onClick={() => { setIsDialogOpen(false); setWorkflowStatus('idle'); setLogs([]); }} style={{ flex: 1, padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
+              <button onClick={() => { setIsDialogOpen(false); setWorkflowStatus('idle'); setLogs([]); setSecondMediaFiles([]); }} style={{ flex: 1, padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
               <button 
                 onClick={handleRunWorkflow} 
-                disabled={workflowStatus === 'running' || !secondMedia} 
-                style={{ flex: 1, padding: '12px', background: workflowStatus === 'running' || !secondMedia ? '#555' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: workflowStatus === 'running' || !secondMedia ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                disabled={workflowStatus === 'running' || secondMediaFiles.length === 0} 
+                style={{ flex: 1, padding: '12px', background: workflowStatus === 'running' || secondMediaFiles.length === 0 ? '#555' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: workflowStatus === 'running' || secondMediaFiles.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
               >
                 {workflowStatus === 'running' ? 'Running...' : 'Start Execution'}
               </button>

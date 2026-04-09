@@ -206,7 +206,7 @@ export class VideoRepository {
     format: string,
     filename: string,
     clientId: string,
-    secondMedia: File,
+    secondMediaFiles: File[],
     mainPosition: string,
     text: string,
     watermarkText: string,
@@ -217,7 +217,9 @@ export class VideoRepository {
   ): Promise<any> {
     const formData = new FormData();
     formData.append('client_id', clientId);
-    formData.append('second_media', secondMedia);
+    for (const file of secondMediaFiles) {
+      formData.append('second_media_files', file);
+    }
     formData.append('main_position', mainPosition);
     formData.append('text', text);
     formData.append('watermark_text', watermarkText);
