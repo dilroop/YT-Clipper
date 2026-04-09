@@ -7,6 +7,7 @@ export const GalleryPage: React.FC = () => {
   const [clips, setClips] = useState<any[]>([]);
   const [filter, setFilter] = useState<'All' | 'Original' | 'Reels'>('All');
   const [isLoading, setIsLoading] = useState(true);
+  const [activePlayIndex, setActivePlayIndex] = useState<number | null>(null);
 
   const fetchClips = async () => {
     setIsLoading(true);
@@ -106,7 +107,7 @@ export const GalleryPage: React.FC = () => {
                 overflow: 'hidden',
                 cursor: 'pointer',
                 position: 'relative',
-                aspectRatio: clip.format === 'reels' ? '9/16' : '16/9',
+                aspectRatio: (clip.format === 'reels' || clip.filename.includes('_workflow')) ? '9/16' : '16/9',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
@@ -117,23 +118,61 @@ export const GalleryPage: React.FC = () => {
                 src={`/clips/${encodeURIComponent(clip.project)}/${encodeURIComponent(clip.format)}/${encodeURIComponent(clip.filename)}`} 
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 preload="metadata"
-                muted
-                onMouseOver={e => (e.target as HTMLVideoElement).play().catch(() => {})}
+                controls={activePlayIndex === i}
+                muted={activePlayIndex !== i}
+                onClick={e => {
+                  if (activePlayIndex === i) {
+                    e.stopPropagation();
+                  }
+                }}
+                onMouseOver={e => {
+                  if (activePlayIndex !== i) {
+                    (e.target as HTMLVideoElement).play().catch(() => {});
+                  }
+                }}
                 onMouseOut={e => {
-                  const v = e.target as HTMLVideoElement;
-                  v.pause();
-                  v.currentTime = 0;
+                  if (activePlayIndex !== i) {
+                    const v = e.target as HTMLVideoElement;
+                    v.pause();
+                    v.currentTime = 0;
+                  }
                 }}
               />
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent 50%)' }} />
+              <div style={{ position: 'absolute', inset: 0, background: activePlayIndex === i ? 'transparent' : 'linear-gradient(to top, rgba(0,0,0,0.8), transparent 50%)', pointerEvents: 'none', transition: 'background 0.3s' }} />
               
               {/* Play Button Overlay */}
-              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              </div>
+              {activePlayIndex !== i ? (
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActivePlayIndex(i);
+                    const v = e.currentTarget.parentElement?.querySelector('video');
+                    if (v) {
+                      v.currentTime = 0;
+                      v.muted = false;
+                      v.play().catch(() => {});
+                    }
+                  }}
+                  style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                </div>
+              ) : (
+                /* Details Button Overlay (shown only when playing) */
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/gallery/${encodeURIComponent(clip.project)}/${encodeURIComponent(clip.format)}/${encodeURIComponent(clip.filename)}`);
+                  }}
+                  style={{ position: 'absolute', top: '16px', right: '16px', background: 'rgba(0,0,0,0.8)', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', zIndex: 3, backdropFilter: 'blur(4px)', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  Details
+                </button>
+              )}
 
               {/* Title overlay */}
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px' }}>
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', pointerEvents: 'none', opacity: activePlayIndex === i ? 0 : 1, transition: 'opacity 0.3s' }}>
                 <div style={{ fontSize: '1rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
                   {clip.title || clip.filename}
                 </div>
