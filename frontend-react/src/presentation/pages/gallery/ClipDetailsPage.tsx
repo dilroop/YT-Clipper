@@ -23,6 +23,7 @@ export const ClipDetailsPage: React.FC = () => {
   const [logs, setLogs] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const [metaGenStatus, setMetaGenStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
 
   useEffect(() => {
     if (logsEndRef.current) {
@@ -117,6 +118,25 @@ export const ClipDetailsPage: React.FC = () => {
       } catch (e: any) {
         alert(e.message);
       }
+    }
+  };
+
+  const handleGenerateMetadata = async () => {
+    setMetaGenStatus('loading');
+    try {
+      const result = await VideoRepository.generateMetadata(project!, format!, filename!);
+      // Update clip in-place so UI reflects new values immediately
+      setClip((prev: any) => ({
+        ...prev,
+        info_data: {
+          ...(prev.info_data || {}),
+          clip: result.clip
+        }
+      }));
+      setMetaGenStatus('done');
+    } catch (e: any) {
+      setMetaGenStatus('error');
+      alert(`AI metadata generation failed: ${e.message}`);
     }
   };
 
@@ -226,7 +246,23 @@ export const ClipDetailsPage: React.FC = () => {
 
           {/* Far Right Column: Metadata */}
           <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 'bold' }}>Metadata</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold' }}>Metadata</h3>
+              <button
+                onClick={handleGenerateMetadata}
+                disabled={metaGenStatus === 'loading'}
+                title="Generate AI title, description and tags"
+                style={{ padding: '5px 10px', background: metaGenStatus === 'done' ? 'rgba(34,197,94,0.15)' : 'rgba(167,139,250,0.1)', color: metaGenStatus === 'done' ? '#4ade80' : '#a78bfa', border: `1px solid ${metaGenStatus === 'done' ? 'rgba(34,197,94,0.4)' : 'rgba(167,139,250,0.3)'}`, borderRadius: '6px', cursor: metaGenStatus === 'loading' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.8rem', fontWeight: 'bold', opacity: metaGenStatus === 'loading' ? 0.6 : 1, whiteSpace: 'nowrap' }}
+              >
+                {metaGenStatus === 'loading' ? (
+                  <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Generating...</>
+                ) : metaGenStatus === 'done' ? (
+                  <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg> Updated</>
+                ) : (
+                  <>✨ Generate AI Metadata</>
+                )}
+              </button>
+            </div>
             <div style={{ background: '#121212', borderRadius: '8px', padding: '16px', overflow: 'auto', flex: 1, maxHeight: '600px', fontSize: '0.85rem', color: '#bbb', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
               {clip.info_data ? JSON.stringify(clip.info_data, null, 2) : clip.info_text || "No metadata found."}
             </div>

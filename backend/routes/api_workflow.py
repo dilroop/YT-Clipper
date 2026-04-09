@@ -32,9 +32,11 @@ async def execute_workflow(
 
         workflow_script = BASE_DIR / "backend" / "videoprocessor" / "workflow.py"
         
-        # Determine output path for the subprocess
+        # Build a unique output filename based on stem + timestamp
+        import time
+        timestamp = int(time.time())
         stem = main_video_path.stem
-        final_filename = f"{stem}_workflow.mp4"
+        final_filename = f"{stem}_workflow_{timestamp}.mp4"
         final_output_path = video_dir / final_filename
         
         # Temp output for the script
@@ -116,15 +118,16 @@ async def execute_workflow(
 
         shutil.move(str(temp_output_path), str(final_output_path))
 
-        # Copy metadata
+        # Copy metadata — name matches the timestamped video
         info_json = video_dir / f"{stem}_info.json"
         info_txt = video_dir / f"{stem}_info.txt"
+        new_stem = final_filename.replace('.mp4', '')
         
         if info_json.exists():
-            new_info = video_dir / f"{stem}_workflow_info.json"
+            new_info = video_dir / f"{new_stem}_info.json"
             shutil.copy2(str(info_json), str(new_info))
         elif info_txt.exists():
-            new_info = video_dir / f"{stem}_workflow_info.txt"
+            new_info = video_dir / f"{new_stem}_info.txt"
             shutil.copy2(str(info_txt), str(new_info))
 
         # Cleanup second media

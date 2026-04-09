@@ -251,4 +251,15 @@ export class VideoRepository {
     }
     return data;
   }
+
+  static async generateMetadata(project: string, format: string, filename: string): Promise<{success: boolean, clip: {title: string, description: string, keywords: string[]}}> {
+    const res = await fetch(`${this.API_BASE}/clips/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}/generate-metadata`, {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Failed to generate metadata');
+    }
+    return data;
+  }
 }

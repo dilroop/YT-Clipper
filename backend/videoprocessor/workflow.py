@@ -73,6 +73,9 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6,
     Render *text* on a transparent canvas with a thick black outline and a 
     rounded rectangle background. Returns an RGBA uint8 NumPy array.
     """
+    # Normalize line endings: browsers send \r\n in textarea form data
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    # Also convert literal \n escape sequences typed by the user
     text = text.replace('\\n', '\n')
     dummy = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
     draw = ImageDraw.Draw(dummy)

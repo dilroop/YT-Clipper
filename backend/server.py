@@ -43,6 +43,7 @@ from backend.routes import (
     api_clips,
     api_upload,
     api_workflow,
+    api_generate_metadata,
     websocket
 )
 
@@ -82,6 +83,7 @@ app.include_router(api_logs.router)
 app.include_router(api_clips.router)
 app.include_router(api_upload.router)
 app.include_router(api_workflow.router)
+app.include_router(api_generate_metadata.router)
 app.include_router(websocket.router)
 
 @app.on_event("shutdown")
