@@ -207,6 +207,7 @@ export class VideoRepository {
     filename: string,
     clientId: string,
     secondMediaFiles: File[],
+    secondMediaDurations: number[],
     mainPosition: string,
     text: string,
     watermarkText: string,
@@ -220,6 +221,7 @@ export class VideoRepository {
     for (const file of secondMediaFiles) {
       formData.append('second_media_files', file);
     }
+    formData.append('second_media_durations', JSON.stringify(secondMediaDurations));
     formData.append('main_position', mainPosition);
     formData.append('text', text);
     formData.append('watermark_text', watermarkText);

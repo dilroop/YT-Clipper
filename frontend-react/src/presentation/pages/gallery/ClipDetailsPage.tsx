@@ -2,6 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { VideoRepository } from '../../../data/VideoRepository';
 
+type MediaItem = {
+  id: string;
+  file: File;
+  previewUrl: string | null;
+  isVideo: boolean;
+  duration: number;
+};
+
 export const ClipDetailsPage: React.FC = () => {
   const { project, format, filename } = useParams();
   const navigate = useNavigate();
@@ -10,7 +18,7 @@ export const ClipDetailsPage: React.FC = () => {
 
   const [clientId, setClientId] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [secondMediaFiles, setSecondMediaFiles] = useState<File[]>([]);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [mainPosition, setMainPosition] = useState('top');
   const [text, setText] = useState('');
   const [watermarkText, setWatermarkText] = useState('@MrSinghExperience');
@@ -88,7 +96,7 @@ export const ClipDetailsPage: React.FC = () => {
   };
 
   const handleRunWorkflow = async () => {
-    if (secondMediaFiles.length === 0) {
+    if (mediaItems.length === 0) {
       alert("Please upload at least one secondary media file.");
       return;
     }
@@ -101,7 +109,9 @@ export const ClipDetailsPage: React.FC = () => {
       setLogs([]);
       await VideoRepository.runWorkflow(
         project!, format!, filename!, clientId,
-        secondMediaFiles, mainPosition, text, watermarkText,
+        mediaItems.map(m => m.file), 
+        mediaItems.map(m => m.duration),
+        mainPosition, text, watermarkText,
         watermarkSize, watermarkAlpha, watermarkTop, watermarkRight
       );
     } catch (e: any) {
@@ -291,29 +301,54 @@ export const ClipDetailsPage: React.FC = () => {
                   accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp,video/mp4,video/quicktime,video/x-matroska,video/webm,video/avi,.mp4,.mov,.mkv,.avi,.webm,.png,.jpg,.jpeg,.webp,.gif,.bmp"
                   style={{ display: 'none' }}
                   onChange={e => {
-                    const added = Array.from(e.target.files || []);
-                    setSecondMediaFiles(prev => [...prev, ...added]);
+                    const addedFiles = Array.from(e.target.files || []);
+                    const newItems: MediaItem[] = addedFiles.map(file => {
+                      const isVideo = file.type.startsWith('video/');
+                      const pUrl = !isVideo ? URL.createObjectURL(file) : null;
+                      return {
+                        id: Math.random().toString(36).substring(2, 9),
+                        file: file,
+                        previewUrl: pUrl,
+                        isVideo: isVideo,
+                        duration: 2, // default 2s for images
+                      };
+                    });
+                    setMediaItems(prev => [...prev, ...newItems]);
                     e.target.value = '';
                   }}
                 />
               </label>
-              {secondMediaFiles.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto' }}>
-                  {secondMediaFiles.map((f, i) => {
-                    const isVideo = f.type.startsWith('video/');
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1a1a1a', borderRadius: '6px', padding: '6px 10px', fontSize: '0.82rem' }}>
-                        <span style={{ fontSize: '16px' }}>{isVideo ? '🎬' : '🖼️'}</span>
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ccc' }}>{f.name}</span>
-                        <span style={{ color: '#666', flexShrink: 0 }}>{isVideo ? 'video' : '2s'}</span>
-                        <button
-                          onClick={() => setSecondMediaFiles(prev => prev.filter((_, idx) => idx !== i))}
-                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px 4px', lineHeight: 1, fontSize: '14px' }}
-                          title="Remove"
-                        >✕</button>
+              {mediaItems.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                  {mediaItems.map((item, i) => (
+                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#1a1a1a', borderRadius: '6px', padding: '6px 10px', fontSize: '0.82rem' }}>
+                      <div style={{ width: '40px', height: '40px', background: '#000', borderRadius: '4px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {item.previewUrl ? <img src={item.previewUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '20px' }}>🎬</span>}
                       </div>
-                    );
-                  })}
+                      
+                      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ color: '#ccc', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>{item.file.name}</span>
+                        <span style={{ color: '#666', fontSize: '0.75rem' }}>{formatSize(item.file.size)}</span>
+                      </div>
+
+                      {!item.isVideo && (
+                        <div style={{ display: 'flex', alignItems: 'center', background: '#252525', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}>
+                          <button onClick={() => setMediaItems(prev => prev.map(m => m.id === item.id ? { ...m, duration: Math.max(1, m.duration - 1) } : m))} style={{ background: '#333', color: '#fff', border: 'none', padding: '4px 8px', cursor: 'pointer', fontWeight: 'bold' }}>-</button>
+                          <div style={{ padding: '0 8px', color: '#fff', fontSize: '0.85rem', width: '20px', textAlign: 'center' }}>{item.duration}s</div>
+                          <button onClick={() => setMediaItems(prev => prev.map(m => m.id === item.id ? { ...m, duration: m.duration + 1 } : m))} style={{ background: '#333', color: '#fff', border: 'none', padding: '4px 8px', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+                          setMediaItems(prev => prev.filter(m => m.id !== item.id));
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        title="Remove"
+                      >✕</button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -359,11 +394,17 @@ export const ClipDetailsPage: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-              <button onClick={() => { setIsDialogOpen(false); setWorkflowStatus('idle'); setLogs([]); setSecondMediaFiles([]); }} style={{ flex: 1, padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
+              <button onClick={() => { 
+                setIsDialogOpen(false); 
+                setWorkflowStatus('idle'); 
+                setLogs([]); 
+                mediaItems.forEach(item => { if (item.previewUrl) URL.revokeObjectURL(item.previewUrl) });
+                setMediaItems([]); 
+              }} style={{ flex: 1, padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
               <button 
                 onClick={handleRunWorkflow} 
-                disabled={workflowStatus === 'running' || secondMediaFiles.length === 0} 
-                style={{ flex: 1, padding: '12px', background: workflowStatus === 'running' || secondMediaFiles.length === 0 ? '#555' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: workflowStatus === 'running' || secondMediaFiles.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                disabled={workflowStatus === 'running' || mediaItems.length === 0} 
+                style={{ flex: 1, padding: '12px', background: workflowStatus === 'running' || mediaItems.length === 0 ? '#555' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: workflowStatus === 'running' || mediaItems.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
               >
                 {workflowStatus === 'running' ? 'Running...' : 'Start Execution'}
               </button>

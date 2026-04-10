@@ -31,6 +31,7 @@ async def _run_ffmpeg(*args, check=True):
 
 async def assemble_secondary_media(
     file_paths: list[str],
+    durations: list[int],
     client_id: str,
     tmp_dir: Path,
     broadcast_fn
@@ -62,12 +63,13 @@ async def assemble_secondary_media(
     for i, fpath in enumerate(file_paths):
         ext = Path(fpath).suffix.lower()
         seg_path = tmp_dir / f"secondary_seg_{i}_{client_id}.mp4"
+        duration = durations[i] if i < len(durations) else 2
 
         if ext in IMAGE_EXTS:
-            await broadcast_fn(f"[ASSEMBLY]  [{i+1}/{len(file_paths)}] Image → 2s clip")
+            await broadcast_fn(f"[ASSEMBLY]  [{i+1}/{len(file_paths)}] Image → {duration}s clip")
             await _run_ffmpeg(
                 '-y',
-                '-loop', '1', '-t', '2',
+                '-loop', '1', '-t', str(duration),
                 '-i', fpath,
                 '-vf', base_filter,
                 '-r', '30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
@@ -123,6 +125,7 @@ async def execute_workflow(
     filename: str,
     client_id: str,
     second_media_paths: list[str],   # now a list
+    second_media_durations: list[int], # corresponds to paths
     main_position: str,
     text: str,
     watermark_text: str,
@@ -156,7 +159,7 @@ async def execute_workflow(
 
         # ── Assemble secondary media if multiple files ───────────────────────
         assembled_second = await assemble_secondary_media(
-            second_media_paths, client_id, TEMP_DIR, broadcast_log
+            second_media_paths, second_media_durations, client_id, TEMP_DIR, broadcast_log
         )
         if assembled_second not in tmp_files_to_clean:
             tmp_files_to_clean.append(assembled_second)
@@ -259,6 +262,7 @@ async def run_workflow(
     background_tasks: BackgroundTasks,
     client_id: str = Form(...),
     second_media_files: List[UploadFile] = File(...),
+    second_media_durations: str = Form("[]"),
     main_position: str = Form(...),
     text: str = Form(""),
     watermark_text: str = Form("@MrSinghExperience"),
@@ -278,10 +282,17 @@ async def run_workflow(
                 shutil.copyfileobj(upload.file, buf)
             saved_paths.append(str(temp_path))
 
+        import json
+        durations_list = []
+        try:
+            durations_list = json.loads(second_media_durations)
+        except json.JSONDecodeError:
+            pass
+
         background_tasks.add_task(
             execute_workflow,
             project, format, filename, client_id,
-            saved_paths,
+            saved_paths, durations_list,
             main_position, text,
             watermark_text, watermark_size, watermark_alpha,
             watermark_top, watermark_right,

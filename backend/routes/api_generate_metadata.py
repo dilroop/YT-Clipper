@@ -18,7 +18,7 @@ def _build_prompt(info_data: dict, filename: str) -> str:
     if len(transcript) > 3000:
         transcript = transcript[:3000] + "..."
 
-    return f"""You are a social media content expert. Your job is to generate compelling metadata for a short video clip.
+    return f"""You are an expert Social Media Growth Strategist and Viral Copywriter with 10+ years of experience growing YouTube and Instagram channels. Your specialty is writing high-retention 'Curiosity Gap' titles and SEO-optimized descriptions that convert casual viewers into subscribers.
 
 VIDEO CONTEXT:
 - Source: "{video_title}" by {channel}
@@ -26,7 +26,8 @@ VIDEO CONTEXT:
 - Clip transcript: {transcript}
 - Clip filename: {filename}
 
-TASK: Based on the transcript and video context above, generate metadata for this specific clip segment.
+TASK: Based on the transcript and video context above, generate metadata for this specific clip segment. 
+IMPORTANT: DO NOT use generic terms like "speaker" or "the host" – aggressively extract and use the actual names of the people involved based on the Source Title and Description provided above.
 
 Return a valid JSON object with EXACTLY these keys (no extra keys, no markdown):
 {{
