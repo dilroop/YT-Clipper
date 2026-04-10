@@ -140,3 +140,22 @@ async def delete_clip(project: str, format: str, filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting clip: {str(e)}")
 
+
+@router.post("/api/clips/{project}/{format}/{filename}/show-in-folder")
+async def show_in_folder(project: str, format: str, filename: str):
+    """Reveal the video clip in the native OS desktop file explorer (Finder/Explorer)"""
+    try:
+        import subprocess
+        upload_dir = BASE_DIR / "ToUpload"
+        video_path = upload_dir / project / format / filename
+
+        if not video_path.exists():
+            raise HTTPException(status_code=404, detail="Clip not found")
+
+        # Open in Mac Finder revealing the file
+        subprocess.run(["open", "-R", str(video_path)], check=True)
+        return {"success": True}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not open folder: {str(e)}")
+
