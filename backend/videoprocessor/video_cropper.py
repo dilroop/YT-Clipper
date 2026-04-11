@@ -20,7 +20,7 @@ from mediapipe.tasks.python import vision
 
 
 # ==================== FACE TRACKING SETTINGS ====================
-FACE_CHECK_INTERVAL_FRAMES = 4
+FACE_CHECK_INTERVAL_FRAMES = 2
 USE_SMOOTH_INTERPOLATION = True
 SMOOTHING_STRENGTH = 0.5
 ENABLE_ZERO_FACE_PANNING = True
@@ -540,6 +540,105 @@ class VideoCropper:
         return merged
 
     # ──────────────────────────────────────────────────────────────────────────
+    # MULTI-FACE TRACKING HELPERS
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _get_multi_face_timeline(self, video_path: str, check_every_n_frames: int = 8) -> Dict:
+        """Get ALL faces throughout video as a timeline"""
+        base_options = python.BaseOptions(model_asset_buffer=self._get_face_detection_model())
+        video_options = vision.FaceDetectorOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.VIDEO,
+            min_detection_confidence=0.5,
+            min_suppression_threshold=0.3
+        )
+        video_detector = vision.FaceDetector.create_from_options(video_options)
+
+        cap = cv2.VideoCapture(str(video_path))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        timeline = []
+        min_face_size = int(height * 0.08)
+        edge_margin = int(width * 0.05)
+
+        for frame_idx in range(0, total_frames, check_every_n_frames):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret: break
+
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            ts_ms = int((frame_idx / fps) * 1000)
+            res = video_detector.detect_for_video(mp_image, ts_ms)
+            
+            t = frame_idx / fps
+            valid_faces = []
+            if res.detections:
+                for d in res.detections:
+                    bbox = d.bounding_box
+                    w, h = int(bbox.width), int(bbox.height)
+                    if w < min_face_size or h < min_face_size: continue
+                    fc = int(bbox.origin_x) + w//2
+                    if fc < edge_margin or fc > width - edge_margin: continue
+                    conf = d.categories[0].score if d.categories else 0
+                    if conf < 0.6: continue
+                    ratio = w/h if h>0 else 0
+                    if ratio < 0.6 or ratio > 1.4: continue
+                    valid_faces.append({'x': fc, 'w': w})
+            
+            if valid_faces:
+                # Find the maximum face width in this frame
+                max_w = max(f['w'] for f in valid_faces)
+                
+                # Filter out background noise faces (must be at least half the size of the main face)
+                filtered_faces = [f for f in valid_faces if f['w'] >= max_w * 0.5]
+                
+                # Sort horizontally
+                filtered_faces.sort(key=lambda f: f['x'])
+                
+                # Merge duplicate detections referring to the identical person (< 10% screen width apart)
+                merged_x = []
+                for f in filtered_faces:
+                    if not merged_x or (f['x'] - merged_x[-1] > width * 0.1):
+                        merged_x.append(f['x'])
+                
+                if merged_x:
+                    timeline.append((t, merged_x))
+
+        cap.release()
+        return {'timeline': timeline, 'fps': fps, 'width': width, 'total_frames': total_frames}
+
+    def _build_expr(self, smooth_pos, fps, width, crop_width):
+        sample_int = int(fps)
+        expr_parts = []
+        for i, idx in enumerate(range(0, len(smooth_pos), sample_int)):
+            t, f_x = smooth_pos[idx]
+            f_num = int(t * fps)
+            c_x = int(f_x - crop_width // 2)
+            c_x = max(0, min(c_x, width - crop_width))
+
+            if i == 0:
+                expr_parts.append(f"if(lt(n,{f_num}),{c_x}")
+            else:
+                next_idx = idx + sample_int
+                if next_idx < len(smooth_pos):
+                    n_t, n_f_x = smooth_pos[next_idx]
+                    n_f = int(n_t * fps)
+                    n_c_x = int(n_f_x - crop_width // 2)
+                    n_c_x = max(0, min(n_c_x, width - crop_width))
+                    if n_f > f_num:
+                        expr_parts.append(f",if(lt(n,{n_f}),{c_x}+(n-{f_num})*({n_c_x}-{c_x})/{n_f - f_num}")
+                else:
+                    expr_parts.append(f",{c_x}")
+        if expr_parts:
+            expr_parts.append(")" * (len(expr_parts) - 1))
+        
+        return "".join(expr_parts) or "0"
+
+    # ──────────────────────────────────────────────────────────────────────────
     # 9:8 CROPPING  — face-tracked crop to 9:8 (half of 9:16)
     # ──────────────────────────────────────────────────────────────────────────
 
@@ -596,57 +695,137 @@ class VideoCropper:
                 print(f"[DEBUG] crop_to_9x8 complete (fallback portrait): {box_width}x{box_height} → {o_path}")
                 return {'success': True, 'output_path': str(o_path)}
 
-            # Build smooth face-position timeline
-            timeline = self._get_face_positions_timeline(str(v_path), FACE_CHECK_INTERVAL_FRAMES)
-            positions = timeline['positions']
+            # Detect multi-face timeline
+            multi_data = self._get_multi_face_timeline(str(v_path), FACE_CHECK_INTERVAL_FRAMES)
+            timeline = multi_data['timeline']
+            
+            # Smooth face counts over time
+            raw_counts = [len(fx) for t, fx in timeline]
+            smoothed_counts = []
+            
+            # Rolling window to smooth out momentary flicker
+            for i in range(len(raw_counts)):
+                start = max(0, i - 5)
+                end = min(len(raw_counts), i + 6)
+                sub = raw_counts[start:end]
+                
+                # Get mode (most frequent value)
+                mode = max(set(sub), key=sub.count) if sub else 1
+                if mode == 0: mode = 1
+                smoothed_counts.append(mode)
+                
+            smoothed_counts = [max(1, min(3, c)) for c in smoothed_counts]
+            max_overall = max(smoothed_counts) if smoothed_counts else 1
+            print(f"[DEBUG] crop_to_9x8: Dynamically switching up to {max_overall} layouts.")
 
-            is_zero_face = (
-                len(positions) == 2 and
-                positions[0][1] == width // 2 and
-                positions[1][1] == width // 2
-            )
+            # Helper to generate FFmpeg enable expression for dynamic overlay switching
+            def get_enable_expr(target):
+                segments = []
+                start_t = None
+                for i, c in enumerate(smoothed_counts):
+                    t = timeline[i][0]
+                    if c == target and start_t is None: 
+                        start_t = t
+                    elif c != target and start_t is not None:
+                        segments.append((start_t, t))
+                        start_t = None
+                if start_t is not None:
+                    segments.append((start_t, duration))
+                if not segments: return "0"
+                return "+".join([f"between(t,{s:.3f},{e:.3f})" for s, e in segments])
 
-            if is_zero_face and ENABLE_ZERO_FACE_PANNING:
-                print(f"[DEBUG] crop_to_9x8: no faces detected — using smooth panning")
-                smooth_pos = self._generate_panning_positions(duration, fps, width, crop_width)
+            # Helper to generate smooth continuous tracks for a target layout
+            def get_tracks(n_faces):
+                trks = [[] for _ in range(n_faces)]
+                l_k = [width/(n_faces+1) * (i+1) for i in range(n_faces)]
+                if not timeline:
+                    for i in range(n_faces): trks[i] = [(0.0, l_k[i]), (duration, l_k[i])]
+                    return [self._bezier_interpolate(tr, total_frames, SMOOTHING_STRENGTH) for tr in trks]
+                
+                for i_t, (t, fx) in enumerate(timeline):
+                    if smoothed_counts[i_t] != n_faces:
+                        for i in range(n_faces): trks[i].append((t, l_k[i]))
+                        continue
+                    unassigned = list(fx)
+                    for i in range(n_faces):
+                        if not unassigned: trks[i].append((t, l_k[i]))
+                        else:
+                            bf = min(unassigned, key=lambda f: abs(f - l_k[i]))
+                            trks[i].append((t, bf))
+                            l_k[i] = bf
+                            unassigned.remove(bf)
+                
+                if trks[0][0][0] > 0:
+                    for i in range(n_faces): trks[i].insert(0, (0.0, trks[i][0][1]))
+                if trks[0][-1][0] < duration:
+                    for i in range(n_faces): trks[i].append((duration, trks[i][-1][1]))
+                return [self._bezier_interpolate(tr, total_frames, SMOOTHING_STRENGTH) for tr in trks]
+
+            vf_parts = []
+            
+            # --- BUILD FFMPEG GRAPH ---
+            if max_overall == 1:
+                # Video only ever contains 1 person
+                t1 = get_tracks(1)
+                e1 = self._build_expr(t1[0], fps, width, crop_width)
+                vf = f"crop=w={crop_width}:h={crop_height}:x='{e1}':y=0,scale={box_width}:{box_height}"
+                cmd = [
+                    'ffmpeg', '-i', str(v_path),
+                    '-vf', vf,
+                    '-c:v', 'libx264', '-c:a', 'aac',
+                    '-preset', 'medium', '-crf', '23', '-y',
+                    str(o_path)
+                ]
             else:
-                print(f"[DEBUG] crop_to_9x8: interpolating {len(positions)} face positions")
-                smooth_pos = self._bezier_interpolate(positions, total_frames, SMOOTHING_STRENGTH)
-
-            # Build FFmpeg crop x-expression (piecewise linear, sampled at 1s intervals)
-            sample_int = int(fps)
-            expr_parts = []
-            for i, idx in enumerate(range(0, len(smooth_pos), sample_int)):
-                t, f_x = smooth_pos[idx]
-                f_num = int(t * fps)
-                c_x = int(f_x) if is_zero_face else int(f_x - crop_width // 2)
-                c_x = max(0, min(c_x, width - crop_width))
-
-                if i == 0:
-                    expr_parts.append(f"if(lt(n,{f_num}),{c_x}")
-                else:
-                    next_idx = idx + sample_int
-                    if next_idx < len(smooth_pos):
-                        n_t, n_f_x = smooth_pos[next_idx]
-                        n_f = int(n_t * fps)
-                        n_c_x = int(n_f_x) if is_zero_face else int(n_f_x - crop_width // 2)
-                        n_c_x = max(0, min(n_c_x, width - crop_width))
-                        if n_f > f_num:
-                            expr_parts.append(f",if(lt(n,{n_f}),{c_x}+(n-{f_num})*({n_c_x}-{c_x})/{n_f - f_num}")
-                    else:
-                        expr_parts.append(f",{c_x}")
-
-            expr_parts.append(")" * (len(expr_parts) - 1))
-            crop_x_expr = "".join(expr_parts)
-
-            vf = f"crop=w={crop_width}:h={crop_height}:x='{crop_x_expr}':y=0,scale={box_width}:{box_height}"
-            cmd = [
-                'ffmpeg', '-i', str(v_path),
-                '-vf', vf,
-                '-c:v', 'libx264', '-c:a', 'aac',
-                '-preset', 'medium', '-crf', '23', '-y',
-                str(o_path)
-            ]
+                # Video switches dynamically between 1-3 people
+                out_splits = "".join([f"[v{i}]" for i in range(max_overall)])
+                vf_parts.append(f"[0:v]split={max_overall}{out_splits};")
+                
+                # Base Mode 1 (Always running in background)
+                t1 = get_tracks(1)
+                e1 = self._build_expr(t1[0], fps, width, crop_width)
+                vf_parts.append(f"[v0]crop=w={crop_width}:h={crop_height}:x='{e1}':y=0,scale={box_width}:{box_height}[out1];")
+                
+                # Optional Mode 2
+                if max_overall >= 2:
+                    t2 = get_tracks(2)
+                    s2 = crop_width // 2
+                    e2_0, e2_1 = self._build_expr(t2[0], fps, width, s2), self._build_expr(t2[1], fps, width, s2)
+                    vf_parts.append(f"[v1]split=2[v1a][v1b];")
+                    vf_parts.append(f"[v1a]crop=w={s2}:h={crop_height}:x='{e2_0}':y=0[p2_0];")
+                    vf_parts.append(f"[v1b]crop=w={s2}:h={crop_height}:x='{e2_1}':y=0[p2_1];")
+                    vf_parts.append(f"[p2_0][p2_1]hstack=inputs=2,scale={box_width}:{box_height}[out2];")
+                
+                # Optional Mode 3
+                if max_overall == 3:
+                    t3 = get_tracks(3)
+                    s3 = crop_width // 3
+                    e3_0, e3_1, e3_2 = self._build_expr(t3[0], fps, width, s3), self._build_expr(t3[1], fps, width, s3), self._build_expr(t3[2], fps, width, s3)
+                    vf_parts.append(f"[v2]split=3[v2a][v2b][v2c];")
+                    vf_parts.append(f"[v2a]crop=w={s3}:h={crop_height}:x='{e3_0}':y=0[p3_0];")
+                    vf_parts.append(f"[v2b]crop=w={s3}:h={crop_height}:x='{e3_1}':y=0[p3_1];")
+                    vf_parts.append(f"[v2c]crop=w={s3}:h={crop_height}:x='{e3_2}':y=0[p3_2];")
+                    vf_parts.append(f"[p3_0][p3_1][p3_2]hstack=inputs=3,scale={box_width}:{box_height}[out3];")
+                
+                # Seamless Overlays based on temporal expression
+                if max_overall == 2:
+                    en2 = get_enable_expr(2)
+                    vf_parts.append(f"[out1][out2]overlay=enable='{en2}'[final]")
+                elif max_overall == 3:
+                    en2 = get_enable_expr(2)
+                    en3 = get_enable_expr(3)
+                    vf_parts.append(f"[out1][out2]overlay=enable='{en2}'[temp];")
+                    vf_parts.append(f"[temp][out3]overlay=enable='{en3}'[final]")
+                
+                vf = "".join(vf_parts)
+                cmd = [
+                    'ffmpeg', '-i', str(v_path),
+                    '-filter_complex', vf,
+                    '-map', '[final]', '-map', '0:a?',
+                    '-c:v', 'libx264', '-c:a', 'aac',
+                    '-preset', 'medium', '-crf', '23', '-y',
+                    str(o_path)
+                ]
             subprocess.run(cmd, check=True, capture_output=True)
             print(f"[DEBUG] crop_to_9x8 complete: {box_width}x{box_height} → {o_path}")
             return {'success': True, 'output_path': str(o_path)}
