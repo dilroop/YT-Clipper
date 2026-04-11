@@ -133,6 +133,12 @@ async def execute_workflow(
     watermark_alpha: float,
     watermark_top: int,
     watermark_right: int,
+    font_family: str,
+    text_color: str,
+    text_bg_color: str,
+    text_size: int,
+    text_pos_x: float,
+    text_pos_y: float,
 ):
     tmp_files_to_clean = list(second_media_paths)
 
@@ -175,6 +181,12 @@ async def execute_workflow(
             "--watermark-alpha", str(watermark_alpha),
             "--watermark-top", str(watermark_top),
             "--watermark-right", str(watermark_right),
+            "--font", font_family,
+            "--font-color", text_color,
+            "--bg-color", text_bg_color,
+            "--font-size", str(text_size),
+            "--text-x", str(text_pos_x),
+            "--text-y", str(text_pos_y),
             "--output", str(temp_output_path)
         ]
 
@@ -270,6 +282,12 @@ async def run_workflow(
     watermark_alpha: float = Form(0.6),
     watermark_top: int = Form(100),
     watermark_right: int = Form(40),
+    font_family: str = Form("Arial"),
+    text_color: str = Form("#ffffff"),
+    text_bg_color: str = Form("#000000"),
+    text_size: int = Form(70),
+    text_pos_x: float = Form(50.0),
+    text_pos_y: float = Form(50.0),
 ):
     try:
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -296,6 +314,7 @@ async def run_workflow(
             main_position, text,
             watermark_text, watermark_size, watermark_alpha,
             watermark_top, watermark_right,
+            font_family, text_color, text_bg_color, text_size, text_pos_x, text_pos_y
         )
 
         return {"success": True, "message": f"Workflow started with {len(saved_paths)} secondary file(s)"}

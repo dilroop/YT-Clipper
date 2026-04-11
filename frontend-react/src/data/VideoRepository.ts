@@ -214,7 +214,13 @@ export class VideoRepository {
     watermarkSize: number,
     watermarkAlpha: number,
     watermarkTop: number,
-    watermarkRight: number
+    watermarkRight: number,
+    fontFamily: string,
+    textColor: string,
+    textBgColor: string,
+    textSize: number,
+    textPosX: number,
+    textPosY: number
   ): Promise<any> {
     const formData = new FormData();
     formData.append('client_id', clientId);
@@ -229,6 +235,12 @@ export class VideoRepository {
     formData.append('watermark_alpha', watermarkAlpha.toString());
     formData.append('watermark_top', watermarkTop.toString());
     formData.append('watermark_right', watermarkRight.toString());
+    formData.append('font_family', fontFamily);
+    formData.append('text_color', textColor);
+    formData.append('text_bg_color', textBgColor);
+    formData.append('text_size', textSize.toString());
+    formData.append('text_pos_x', textPosX.toString());
+    formData.append('text_pos_y', textPosY.toString());
 
     const url = `${this.API_BASE}/workflow/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
     

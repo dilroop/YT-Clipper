@@ -20,13 +20,40 @@ export const ClipDetailsPage: React.FC = () => {
   const [clientId, setClientId] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [mainPosition, setMainPosition] = useState('top');
+  const getStoredNumber = (key: string, def: number) => {
+    const val = localStorage.getItem(key);
+    return val !== null ? Number(val) : def;
+  };
+
+  const [mainPosition, setMainPosition] = useState(() => localStorage.getItem('ytc_main_position') || 'bottom');
   const [text, setText] = useState('');
-  const [watermarkText, setWatermarkText] = useState('@MrSinghExperience');
-  const [watermarkSize, setWatermarkSize] = useState(45);
-  const [watermarkAlpha, setWatermarkAlpha] = useState(0.6);
-  const [watermarkTop, setWatermarkTop] = useState(100);
-  const [watermarkRight, setWatermarkRight] = useState(40);
+  const [watermarkText, setWatermarkText] = useState(() => localStorage.getItem('ytc_watermark_text') || '@MrSinghExperience');
+  const [watermarkSize, setWatermarkSize] = useState(() => getStoredNumber('ytc_watermark_size', 45));
+  const [watermarkAlpha, setWatermarkAlpha] = useState(() => getStoredNumber('ytc_watermark_alpha', 0.6));
+  const [watermarkTop, setWatermarkTop] = useState(() => getStoredNumber('ytc_watermark_top', 100));
+  const [watermarkRight, setWatermarkRight] = useState(() => getStoredNumber('ytc_watermark_right', 40));
+
+  const [fontFamily, setFontFamily] = useState(() => localStorage.getItem('ytc_font_family') || 'Arial');
+  const [textColor, setTextColor] = useState(() => localStorage.getItem('ytc_text_color') || '#ffffff');
+  const [textBgColor, setTextBgColor] = useState(() => localStorage.getItem('ytc_text_bg_color') || '#000000');
+  const [textSize, setTextSize] = useState(() => getStoredNumber('ytc_text_size', 70));
+  const [textPosX, setTextPosX] = useState(() => getStoredNumber('ytc_text_pos_x', 50));
+  const [textPosY, setTextPosY] = useState(() => getStoredNumber('ytc_text_pos_y', 50));
+
+  useEffect(() => {
+    localStorage.setItem('ytc_main_position', mainPosition);
+    localStorage.setItem('ytc_watermark_text', watermarkText);
+    localStorage.setItem('ytc_watermark_size', watermarkSize.toString());
+    localStorage.setItem('ytc_watermark_alpha', watermarkAlpha.toString());
+    localStorage.setItem('ytc_watermark_top', watermarkTop.toString());
+    localStorage.setItem('ytc_watermark_right', watermarkRight.toString());
+    localStorage.setItem('ytc_font_family', fontFamily);
+    localStorage.setItem('ytc_text_color', textColor);
+    localStorage.setItem('ytc_text_bg_color', textBgColor);
+    localStorage.setItem('ytc_text_size', textSize.toString());
+    localStorage.setItem('ytc_text_pos_x', textPosX.toString());
+    localStorage.setItem('ytc_text_pos_y', textPosY.toString());
+  }, [mainPosition, watermarkText, watermarkSize, watermarkAlpha, watermarkTop, watermarkRight, fontFamily, textColor, textBgColor, textSize, textPosX, textPosY]);
   
   const [workflowStatus, setWorkflowStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [logs, setLogs] = useState<string[]>([]);
@@ -113,7 +140,8 @@ export const ClipDetailsPage: React.FC = () => {
         mediaItems.map(m => m.file), 
         mediaItems.map(m => m.duration),
         mainPosition, text, watermarkText,
-        watermarkSize, watermarkAlpha, watermarkTop, watermarkRight
+        watermarkSize, watermarkAlpha, watermarkTop, watermarkRight,
+        fontFamily, textColor, textBgColor, textSize, textPosX, textPosY
       );
     } catch (e: any) {
       setWorkflowStatus('error');
@@ -430,10 +458,59 @@ export const ClipDetailsPage: React.FC = () => {
               </select>
             </label>
 
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <span>Seam Text:</span>
-              <textarea value={text} onChange={e => setText(e.target.value)} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff', minHeight: '60px', fontFamily: 'inherit', resize: 'vertical' }} placeholder="Enter text (multiple lines allowed)" />
-            </label>
+            <div style={{ background: '#252525', padding: '16px', borderRadius: '8px', border: '1px solid #333' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc' }}>Text Overlay Settings</h3>
+              
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                <span>Overlay Text:</span>
+                <textarea value={text} onChange={e => setText(e.target.value)} style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff', minHeight: '60px', fontFamily: 'inherit', resize: 'vertical' }} placeholder="Enter text (multiple lines allowed)" />
+              </label>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem' }}>Font Family:</span>
+                  <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Impact">Impact</option>
+                    <option value="Courier New">Courier New</option>
+                  </select>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem' }}>Text Size:</span>
+                  <input type="number" value={textSize} onChange={e => setTextSize(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+                </label>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem' }}>Text Color:</span>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="color" value={textColor} onChange={e => setTextColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
+                    <span style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>{textColor}</span>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem' }}>Background Color:</span>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="color" value={textBgColor} onChange={e => setTextBgColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
+                    <span style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>{textBgColor}</span>
+                  </div>
+                </label>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem' }}>Position X (%):</span>
+                  <input type="number" min="0" max="100" value={textPosX} onChange={e => setTextPosX(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem' }}>Position Y (%):</span>
+                  <input type="number" min="0" max="100" value={textPosY} onChange={e => setTextPosY(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+                </label>
+              </div>
+            </div>
 
             <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <span>Watermark Text:</span>

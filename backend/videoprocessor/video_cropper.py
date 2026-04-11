@@ -458,26 +458,18 @@ class VideoCropper:
         else:
             smooth_pos = self._bezier_interpolate(pos, frames, SMOOTHING_STRENGTH)
 
-        sample_int = int(fps)
-        expr_parts = []
-        for i, idx in enumerate(range(0, len(smooth_pos), sample_int)):
-            t, f_x = smooth_pos[idx]
-            f_num = int(t * fps)
-            c_x = max(0, min(int(f_x - c_w // 2) if not is_zero else int(f_x), w - c_w))
-            if i == 0: expr_parts.append(f"if(lt(n,{f_num}),{c_x}")
-            else:
-                next_idx = idx + sample_int
-                if next_idx < len(smooth_pos):
-                    n_t, n_f_x = smooth_pos[next_idx]
-                    n_f, n_c_x = int(n_t * fps), max(0, min(int(n_f_x - c_w // 2) if not is_zero else int(n_f_x), w - c_w))
-                    if n_f > f_num: expr_parts.append(f",if(lt(n,{n_f}),{c_x}+(n-{f_num})*({n_c_x}-{c_x})/{n_f-f_num}")
-                else: expr_parts.append(f",{c_x}")
-        expr_parts.append(")" * (len(expr_parts) - 1))
-        vf = f"crop=w={c_w}:h={c_h}:x='{''.join(expr_parts)}':y=0,scale=1080:1920"
+        # Process the points into a balanced tree to bypass FFMPEG nesting depth limits
+        fixed_pos = []
+        for t, f_x in smooth_pos:
+            c_x = int(f_x - c_w // 2) if not is_zero else int(f_x)
+            fixed_pos.append((t, c_x + c_w//2))  # The helper builder subtracts c_w//2, so we add it back here
+
+        tree_expr = self._build_balanced_ffmpeg_expr(fixed_pos, fps, w, c_w)
+        vf = f"crop=w={c_w}:h={c_h}:x='{tree_expr}':y=0,scale=1080:1920"
+        
         cmd = ['ffmpeg', '-i', str(video_path), '-vf', vf, '-c:v', 'libx264', '-c:a', 'aac', '-preset', 'medium', '-crf', '23', '-y', str(output_path)]
         subprocess.run(cmd, check=True, capture_output=True)
         return {'success': True, 'output_path': str(output_path), 'mode': 'smooth'}
-
     def _convert_to_reels_dynamic(self, video_path: Path, output_path: Path) -> Dict:
         """Dynamic conversion by splitting into segments based on face count"""
         cap = cv2.VideoCapture(str(video_path))
@@ -611,32 +603,48 @@ class VideoCropper:
         cap.release()
         return {'timeline': timeline, 'fps': fps, 'width': width, 'total_frames': total_frames}
 
-    def _build_expr(self, smooth_pos, fps, width, crop_width):
+    def _build_balanced_ffmpeg_expr(self, smooth_pos, fps, width, crop_width) -> str:
+        """Builds a mathematically balanced log(N) O-depth FFmpeg tree to bypass parsing limits."""
         sample_int = int(fps)
-        expr_parts = []
+        segments = []
+        
         for i, idx in enumerate(range(0, len(smooth_pos), sample_int)):
             t, f_x = smooth_pos[idx]
             f_num = int(t * fps)
             c_x = int(f_x - crop_width // 2)
             c_x = max(0, min(c_x, width - crop_width))
 
-            if i == 0:
-                expr_parts.append(f"if(lt(n,{f_num}),{c_x}")
+            next_idx = idx + sample_int
+            if next_idx < len(smooth_pos):
+                n_t, n_f_x = smooth_pos[next_idx]
+                n_f = int(n_t * fps)
+                n_c_x = int(n_f_x - crop_width // 2)
+                n_c_x = max(0, min(n_c_x, width - crop_width))
+                if n_f > f_num:
+                    expr = f"{c_x}+(n-{f_num})*({n_c_x}-{c_x})/{n_f - f_num}"
+                    segments.append((f_num, n_f, expr))
             else:
-                next_idx = idx + sample_int
-                if next_idx < len(smooth_pos):
-                    n_t, n_f_x = smooth_pos[next_idx]
-                    n_f = int(n_t * fps)
-                    n_c_x = int(n_f_x - crop_width // 2)
-                    n_c_x = max(0, min(n_c_x, width - crop_width))
-                    if n_f > f_num:
-                        expr_parts.append(f",if(lt(n,{n_f}),{c_x}+(n-{f_num})*({n_c_x}-{c_x})/{n_f - f_num}")
-                else:
-                    expr_parts.append(f",{c_x}")
-        if expr_parts:
-            expr_parts.append(")" * (len(expr_parts) - 1))
+                segments.append((f_num, float('inf'), str(c_x)))
+                
+        if not segments:
+            return "0"
+
+        # Recursively construct balanced tree
+        def build_tree(segs):
+            if len(segs) == 1: return segs[0][2]
+            mid = len(segs) // 2
+            return f"if(lt(n,{segs[mid][0]}),{build_tree(segs[:mid])},{build_tree(segs[mid:])})"
+            
+        first_frame = segments[0][0]
+        first_val = segments[0][2].split('+')[0] if '+' in segments[0][2] else segments[0][2]
         
-        return "".join(expr_parts) or "0"
+        tree = build_tree(segments)
+        if first_frame > 0:
+            return f"if(lt(n,{first_frame}),{first_val},{tree})"
+        return tree
+
+    def _build_expr(self, smooth_pos, fps, width, crop_width):
+        return self._build_balanced_ffmpeg_expr(smooth_pos, fps, width, crop_width)
 
     # ──────────────────────────────────────────────────────────────────────────
     # 9:8 CROPPING  — face-tracked crop to 9:8 (half of 9:16)

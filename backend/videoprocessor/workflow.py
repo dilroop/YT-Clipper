@@ -44,12 +44,23 @@ VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
 # ──────────────────────────────────────────────────────────────────────────────
 def get_font(font_path: str | None, font_size: int) -> ImageFont.FreeTypeFont:
     """Return a Pillow font, trying the user-supplied path then common system paths."""
+    
+    # Map common web fonts to Mac OS safe equivalents
+    font_map = {
+        "Arial": "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "Helvetica": "/System/Library/Fonts/Helvetica.ttc",
+        "Times New Roman": "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+        "Impact": "/System/Library/Fonts/Supplemental/Impact.ttf",
+        "Courier New": "/System/Library/Fonts/Supplemental/Courier New.ttf"
+    }
+    
     candidates = [
         font_path,
+        font_map.get(font_path) if font_path else None,
         "/System/Library/Fonts/Supplemental/Arial.ttf",          # macOS
         "/System/Library/Fonts/Helvetica.ttc",                    # macOS (alt)
+        "/System/Library/Fonts/Supplemental/Impact.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",   # Linux
-        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",               # Arch Linux
         "C:\\Windows\\Fonts\\arialbd.ttf",                        # Windows Bold
         "C:\\Windows\\Fonts\\arial.ttf",                          # Windows
     ]
@@ -62,13 +73,22 @@ def get_font(font_path: str | None, font_size: int) -> ImageFont.FreeTypeFont:
     print("[WARNING] Could not load a TrueType font - falling back to default (small).")
     return ImageFont.load_default()
 
+def hex_to_rgba(hex_code: str, alpha: int = 255) -> tuple:
+    """Convert hex color (#RRGGBB) to RGBA tuple."""
+    hex_code = hex_code.lstrip('#')
+    if len(hex_code) == 6:
+        return tuple(int(hex_code[i:i+2], 16) for i in (0, 2, 4)) + (alpha,)
+    elif len(hex_code) == 8:
+        return tuple(int(hex_code[i:i+2], 16) for i in (0, 2, 4, 6))
+    return (255, 255, 255, alpha)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Text renderer  (Pillow → RGBA NumPy array)
 # ──────────────────────────────────────────────────────────────────────────────
 def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6, 
                 padding_x: int = 40, padding_y: int = 25, radius: int = 20, 
-                bg_color=(0, 0, 0, 180)) -> np.ndarray:
+                bg_color=(0, 0, 0, 180), text_color=(255, 255, 255, 255)) -> np.ndarray:
     """
     Render *text* on a transparent canvas with a thick black outline and a 
     rounded rectangle background. Returns an RGBA uint8 NumPy array.
@@ -122,7 +142,7 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6,
             (text_pos_x, text_pos_y),
             text,
             font=font,
-            fill=(255, 255, 255, 255),
+            fill=text_color,
             stroke_width=outline_width,
             stroke_fill=(0, 0, 0, 255),
             align="center",
@@ -132,7 +152,7 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6,
             (text_pos_x, text_pos_y),
             text,
             font=font,
-            fill=(255, 255, 255, 255),
+            fill=text_color,
             stroke_width=outline_width,
             stroke_fill=(0, 0, 0, 255),
         )
@@ -292,10 +312,18 @@ def parse_args():
                         help="Place main video at 'top' or 'bottom'. If omitted, you will be asked.")
     parser.add_argument("--output", default=None, metavar="FILE",
                         help="Output file path (defaults to <main_video_dir>/<main_video_name>_stacked.mp4).")
-    parser.add_argument("--font", default=None, metavar="TTF_PATH",
-                        help="Path to a .ttf font file.")
+    parser.add_argument("--font", default=None, metavar="TTF_PATH_OR_NAME",
+                        help="Path to a .ttf font file, or a known system font name (Arial, Impact, etc.).")
+    parser.add_argument("--font-color", default="#FFFFFF",
+                        help="Hex color code for the text (e.g. #FFFFFF).")
+    parser.add_argument("--bg-color", default="#000000",
+                        help="Hex color code for the text background (e.g. #000000).")
     parser.add_argument("--font-size", type=int, default=70, metavar="N",
                         help="Font size in pixels (default: 70).")
+    parser.add_argument("--text-x", type=float, default=50.0,
+                        help="X coordinate position as a percentage (default: 50.0).")
+    parser.add_argument("--text-y", type=float, default=50.0,
+                        help="Y coordinate position as a percentage (default: 50.0).")
     parser.add_argument("--outline-width", type=int, default=6, metavar="N",
                         help="Stroke/outline width for text (default: 6).")
     parser.add_argument("--circle-size", type=int, default=280, metavar="PX",
@@ -457,11 +485,29 @@ def main():
         # ── Text overlay ─────────────────────────────────────────────────────────
         print(f"[INFO] Rendering text: '{args.text}'")
         font = get_font(args.font, args.font_size)
-        text_arr = render_text(args.text, font, args.outline_width)
+        
+        # We always enforce slight transparency on the background color for aesthetics
+        bg_rgba = hex_to_rgba(args.bg_color, alpha=180) 
+        text_rgba = hex_to_rgba(args.font_color, alpha=255)
+        
+        text_arr = render_text(args.text, font, args.outline_width, bg_color=bg_rgba, text_color=text_rgba)
+        
+        # Calculate dynamic position based on percentages
+        import math
+        box_width = text_arr.shape[1]
+        box_height = text_arr.shape[0]
+        
+        x_px = (args.text_x / 100.0) * OUTPUT_WIDTH
+        y_px = (args.text_y / 100.0) * OUTPUT_HEIGHT
+        
+        # Offset by half the boundary box to ensure the coordinate marks the *center* of the text
+        top_left_x = math.floor(max(0, min(OUTPUT_WIDTH - box_width, x_px - (box_width / 2))))
+        top_left_y = math.floor(max(0, min(OUTPUT_HEIGHT - box_height, y_px - (box_height / 2))))
+
         text_clip = (
             ImageClip(text_arr)
             .with_duration(duration)
-            .with_position("center")   # horizontally & vertically centered on canvas
+            .with_position((top_left_x, top_left_y))
         )
 
         # ── Layers ───────────────────────────────────────────────────────────────
