@@ -122,7 +122,7 @@ async def _perform_video_processing(request: ProcessVideoRequest):
         if request.preanalyzed_clips:
             await update_progress({'stage': 'clipping', 'percent': 15, 'message': 'Preparing selected clips...'})
             for clip_data in request.preanalyzed_clips:
-                if 'parts' in clip_data and len(clip_data['parts']) > 1:
+                if 'parts' in clip_data and len(clip_data['parts']) > 0:
                     interesting_clips.append({
                         'title': clip_data.get('title', 'Multi-Part Clip'),
                         'reason': clip_data.get('reason', clip_data.get('explanation', '')),
@@ -182,7 +182,7 @@ async def _perform_video_processing(request: ProcessVideoRequest):
             ts_ms = int(asyncio.get_event_loop().time() * 1000)
             temp_out = TEMP_DIR / f"processed_clip_{i+1}_{ts_ms}.mp4"
 
-            if 'parts' in clip and len(clip['parts']) > 1:
+            if 'parts' in clip and len(clip['parts']) > 0:
                 clip_result = await run_in_executor(cutter.create_multipart_clip, video_path=str(video_path), parts=clip['parts'], output_path=str(temp_out))
             else:
                 # Use cutter.create_multipart_clip even for single parts as it handles them correctly
@@ -193,7 +193,7 @@ async def _perform_video_processing(request: ProcessVideoRequest):
             temp_files.append(clip_path)
 
             # Get timing and words
-            if 'parts' in clip and len(clip['parts']) > 1:
+            if 'parts' in clip and len(clip['parts']) > 0:
                 # MULTI-PART: Always re-map words to a synthetic contiguous timeline
                 all_mapped_words = []
                 current_output_time = 0
@@ -294,7 +294,7 @@ async def _perform_video_processing(request: ProcessVideoRequest):
                     temp_files.append(clip_path)
 
             # Handle multi-part text joining
-            if 'parts' in clip and len(clip['parts']) > 1:
+            if 'parts' in clip and len(clip['parts']) > 0:
                 clip_text = ' ... '.join([part.get('text', '') for part in clip['parts']])
             else:
                 clip_text = clip.get('text', clip.get('explanation', ''))

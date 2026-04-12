@@ -39,6 +39,15 @@ export function useHomeMVI() {
     return () => { ws.close(); wsRef.current = null; };
   }, []);
 
+  // ─── Persistence ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    localStorage.setItem('ytc_selected_format', state.selectedFormat);
+    localStorage.setItem('ytc_burn_captions', state.burnCaptions.toString());
+    localStorage.setItem('ytc_ai_strategy', state.aiStrategy);
+    localStorage.setItem('ytc_ai_provider', state.aiProvider);
+    localStorage.setItem('ytc_ai_content_position', state.aiContentPosition);
+  }, [state.selectedFormat, state.burnCaptions, state.aiStrategy, state.aiProvider, state.aiContentPosition]);
+
   // ─── URL Auto-Fetch ────────────────────────────────────────────────────────
   useEffect(() => {
     const isValidUrl = state.url && (

@@ -38,7 +38,7 @@ export const GalleryPage: React.FC = () => {
   const totalSize = filteredClips.reduce((acc, c) => acc + c.size, 0);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#121212', color: '#fff', padding: '24px 48px', fontFamily: '"Inter", sans-serif' }}>
+    <div className="page-container" style={{ minHeight: '100vh', background: '#121212', color: '#fff', fontFamily: '"Inter", sans-serif' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>

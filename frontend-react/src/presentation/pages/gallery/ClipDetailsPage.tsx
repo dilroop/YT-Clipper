@@ -192,7 +192,7 @@ export const ClipDetailsPage: React.FC = () => {
   const keywords = clip.info_data?.clip?.keywords?.join(', ') || 'None';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#121212', color: '#fff', padding: '24px 48px', fontFamily: '"Inter", sans-serif' }}>
+    <div className="page-container" style={{ minHeight: '100vh', background: '#121212', color: '#fff', fontFamily: '"Inter", sans-serif' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
         <button onClick={() => navigate(-1)} style={{ background: '#252525', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }}>
@@ -379,9 +379,9 @@ export const ClipDetailsPage: React.FC = () => {
 
       {/* Workflow Dialog */}
       {isDialogOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', padding: '48px', display: 'flex', gap: '24px', zIndex: 1000 }}>
+        <div className="responsive-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', gap: '24px', zIndex: 1000 }}>
           {/* Dialog Form */}
-          <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', flex: '0 0 500px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
+          <div className="responsive-dialog" style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
             <h2 style={{ margin: 0 }}>Workflow Settings</h2>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -568,7 +568,7 @@ export const ClipDetailsPage: React.FC = () => {
           </div>
 
           {/* Logs View */}
-          <div style={{ flex: 1, background: '#121212', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', border: '1px solid #333' }}>
+          <div className="logs-view" style={{ background: '#121212', borderRadius: '12px', padding: '24px', flexDirection: 'column', border: '1px solid #333' }}>
             <h3 style={{ margin: '0 0 16px 0', color: '#bbb' }}>Execution Logs</h3>
             <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
               {logs.length === 0 ? <span style={{ color: '#555' }}>Logs will appear here during execution...</span> : logs.join('\n')}
