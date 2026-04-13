@@ -107,7 +107,7 @@ export const GalleryPage: React.FC = () => {
                 overflow: 'hidden',
                 cursor: 'pointer',
                 position: 'relative',
-                aspectRatio: (clip.format === 'reels' || clip.filename.includes('_workflow')) ? '9/16' : '16/9',
+                aspectRatio: (clip.format === 'reels' || clip.filename.includes('_workflow') || clip.filename.includes('_story_')) ? '9/16' : '16/9',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
@@ -139,6 +139,84 @@ export const GalleryPage: React.FC = () => {
                 }}
               />
               <div style={{ position: 'absolute', inset: 0, background: activePlayIndex === i ? 'transparent' : 'linear-gradient(to top, rgba(0,0,0,0.8), transparent 50%)', pointerEvents: 'none', transition: 'background 0.3s' }} />
+
+              {/* Marker Color Dot / Pill */}
+              <div 
+                className="clip-marker-container"
+                style={{
+                  position: 'absolute',
+                  top: '16px',
+                  left: '16px',
+                  zIndex: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: 'rgba(30, 30, 30, 0)',
+                  borderRadius: '24px',
+                  transition: 'background 0.2s',
+                  padding: '2px', // space for expansion
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(30, 30, 30, 0.9)';
+                  const dots = e.currentTarget.querySelectorAll('.marker-option');
+                  dots.forEach((dot: any) => dot.style.display = 'block');
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(30, 30, 30, 0)';
+                  const dots = e.currentTarget.querySelectorAll('.marker-option:not(.marker-active)');
+                  dots.forEach((dot: any) => dot.style.display = 'none');
+                }}
+              >
+                {/* 
+                  Colors: red, yellow, green, blue, purple, none (white/transparent)
+                  Default active is yellow if null
+                */}
+                {[
+                  { id: '#ef4444', label: 'Red' },
+                  { id: '#eab308', label: 'Yellow' },
+                  { id: '#22c55e', label: 'Green' },
+                  { id: '#0ea5e9', label: 'Blue' },
+                  { id: '#a855f7', label: 'Purple' },
+                  { id: '#f97316', label: 'Orange' },
+                  { id: '#ffffff', label: 'White' }
+                ].map(opt => {
+                  const actualColor = clip.marker_color || '#eab308';
+                  const isActive = (actualColor === opt.id);
+                  return (
+                    <div
+                      key={opt.id}
+                      className={`marker-option ${isActive ? 'marker-active' : ''}`}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await VideoRepository.setClipMarker(clip.project, clip.format, clip.filename, opt.id);
+                          setClips(prev => {
+                            const newClips = [...prev];
+                            newClips[i].marker_color = opt.id;
+                            return newClips;
+                          });
+                        } catch (err) {
+                          console.error("Failed to update marker", err);
+                        }
+                      }}
+                      style={{
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '50%',
+                        background: opt.id,
+                        border: isActive ? '3px solid #fff' : '2px solid rgba(0,0,0,0.5)',
+                        cursor: 'pointer',
+                        boxShadow: isActive ? '0 0 0 1px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.5)' : '0 2px 4px rgba(0,0,0,0.5)',
+                        transition: 'transform 0.1s',
+                        display: isActive ? 'block' : 'none',
+                        margin: '0 4px',
+                      }}
+                      title={opt.label}
+                      onMouseOver={e => (e.target as HTMLDivElement).style.transform = 'scale(1.2)'}
+                      onMouseOut={e => (e.target as HTMLDivElement).style.transform = 'scale(1)'}
+                    />
+                  );
+                })}
+              </div>
               
               {/* Play Button Overlay */}
               {activePlayIndex !== i ? (

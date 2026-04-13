@@ -201,6 +201,17 @@ export class VideoRepository {
     return data.clip;
   }
 
+  static async setClipMarker(project: string, format: string, filename: string, markerColor: string | null): Promise<void> {
+    const response = await fetch(`${this.API_BASE}/clips/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}/marker`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ marker_color: markerColor })
+    });
+    if (!response.ok) throw new Error('Failed to set clip marker');
+  }
+
   static async runWorkflow(
     project: string,
     format: string,

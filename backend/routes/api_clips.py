@@ -42,7 +42,8 @@ async def get_all_clips():
                         "size": video_file.stat().st_size,
                         "created": datetime.fromtimestamp(video_file.stat().st_mtime).isoformat(),
                         "has_info": info_file is not None and info_file.exists(),
-                        "title": None
+                        "title": None,
+                        "marker_color": None,
                     }
 
                     # Read info file if it exists
@@ -59,6 +60,11 @@ async def get_all_clips():
                                 title_match = re.search(r'CLIP TITLE:\s*(.+?)(?:\n|$)', info_text)
                                 if title_match:
                                     clip_info["title"] = title_match.group(1).strip()
+
+                    # Read .marker sidecar (color tag)
+                    marker_file = video_file.parent / f"{video_file.stem}.marker"
+                    if marker_file.exists():
+                        clip_info["marker_color"] = marker_file.read_text(encoding="utf-8").strip() or None
 
                     clips.append(clip_info)
 
@@ -159,3 +165,33 @@ async def show_in_folder(project: str, format: str, filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not open folder: {str(e)}")
 
+
+# ── Color marker ──────────────────────────────────────────────────────────────
+
+@router.get("/api/clips/{project}/{format}/{filename}/marker")
+async def get_marker(project: str, format: str, filename: str):
+    """Return the color marker for a clip (or null if unset)."""
+    try:
+        upload_dir = BASE_DIR / "ToUpload"
+        stem = filename.rsplit(".", 1)[0]
+        marker_file = upload_dir / project / format / f"{stem}.marker"
+        color = marker_file.read_text(encoding="utf-8").strip() if marker_file.exists() else None
+        return {"success": True, "marker_color": color}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/api/clips/{project}/{format}/{filename}/marker")
+async def set_marker(project: str, format: str, filename: str, body: dict):
+    """Set or clear the color marker for a clip."""
+    try:
+        upload_dir = BASE_DIR / "ToUpload"
+        stem = filename.rsplit(".", 1)[0]
+        marker_file = upload_dir / project / format / f"{stem}.marker"
+        color = (body.get("marker_color") or "").strip()
+        if color:
+            marker_file.write_text(color, encoding="utf-8")
+        elif marker_file.exists():
+            marker_file.unlink()
+        return {"success": True, "marker_color": color or None}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
