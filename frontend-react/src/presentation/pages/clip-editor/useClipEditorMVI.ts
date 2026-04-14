@@ -33,6 +33,7 @@ export type EditorIntent =
   | { type: 'COMMIT_SELECTION'; payload: { start: number; end: number; startWordIdx: number; endWordIdx: number } }
   | { type: 'CONFIRM_PART_CHANGE'; payload: number }
   | { type: 'DELETE_PART'; payload: number }
+  | { type: 'REORDER_PARTS'; payload: { fromIndex: number; toIndex: number } }
   | { type: 'CANCEL_ADD' };
 
 // ─── Word Mapping ─────────────────────────────────────────────────────────────
@@ -128,6 +129,29 @@ export function editorReducer(state: EditorState, intent: EditorIntent): EditorS
           ? state.selectedPartIndex - 1
           : state.selectedPartIndex;
       return { ...state, parts, selectedPartIndex, isDirty: true };
+    }
+
+    case 'REORDER_PARTS': {
+      const { fromIndex, toIndex } = intent.payload;
+      if (fromIndex === toIndex) return state;
+
+      const newParts = [...state.parts];
+      const [movedPart] = newParts.splice(fromIndex, 1);
+      newParts.splice(toIndex, 0, movedPart);
+
+      // Maintain selectedPartIndex to point to the same part ID
+      let newSelectedIndex = state.selectedPartIndex;
+      if (state.selectedPartIndex !== null) {
+        const selectedPartId = state.parts[state.selectedPartIndex].id;
+        newSelectedIndex = newParts.findIndex(p => p.id === selectedPartId);
+      }
+
+      return {
+        ...state,
+        parts: newParts,
+        selectedPartIndex: newSelectedIndex,
+        isDirty: true
+      };
     }
 
     default:

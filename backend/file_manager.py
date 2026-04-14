@@ -115,7 +115,10 @@ class FileManager:
                 "start_time": start_time,
                 "end_time": end_time,
                 "duration_seconds": duration,
-                "format": format_type
+                "format": format_type,
+                "parts": clip_info.get("parts", []),
+                "words": clip_info.get("words", []),
+                "full_transcript_words": clip_info.get("full_transcript_words", [])
             },
             "video": {
                 "title": video_info['title'],
@@ -198,7 +201,10 @@ class FileManager:
                     'clip_number': clip_number,
                     'title': clip.get('title', 'Interesting Clip'),
                     'reason': clip.get('reason', ''),
-                    'keywords': clip.get('keywords', [])
+                    'keywords': clip.get('keywords', []),
+                    'parts': clip.get('parts', []),
+                    'words': clip.get('words', []),
+                    'full_transcript_words': clip.get('full_transcript_words', [])
                 },
                 caption_text=clip.get('caption_text', clip.get('text', ''))
             )

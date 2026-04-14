@@ -46,39 +46,57 @@ export const TranscriptView: React.FC<Props> = ({
     }
     if (bucket.length > 0) sentences.push({ words: bucket, isQuestion: false });
 
-    // Determine highlight bounds from selected part
-    let hlStart = -1;
-    let hlEnd = -1;
-    if (selectedPartIndex !== null && parts[selectedPartIndex]) {
-      const part = parts[selectedPartIndex];
-      const sw = mappedWords[part.startWordIndex];
-      const ew = mappedWords[part.endWordIndex];
-      if (sw && ew) { hlStart = sw.charStart; hlEnd = ew.charEnd; }
-    }
+    // Build a list of all highlighted ranges: { start, end, type: 'selected' | 'other' }
+    type HlRange = { start: number; end: number; type: 'selected' | 'other' };
+    const hlRanges: HlRange[] = parts
+      .map((part, idx) => {
+        const sw = mappedWords[part.startWordIndex];
+        const ew = mappedWords[part.endWordIndex];
+        if (!sw || !ew) return null;
+        return {
+          start: sw.charStart,
+          end: ew.charEnd,
+          type: idx === selectedPartIndex ? 'selected' : 'other',
+        } as HlRange;
+      })
+      .filter(Boolean) as HlRange[];
 
-    // Build React nodes: one <span> per sentence, split into hl/non-hl parts
+    // For a given character position, find if it falls within any range
+    const getRangeAt = (pos: number): HlRange | null => {
+      // Prefer 'selected' over 'other' if overlapping
+      return (
+        hlRanges.find(r => r.type === 'selected' && pos >= r.start && pos < r.end) ||
+        hlRanges.find(r => r.type === 'other'    && pos >= r.start && pos < r.end) ||
+        null
+      );
+    };
+
+    // Build React nodes: one <span> per sentence, split by highlight boundaries
+    let firstSelectedFound = false;
+
     return sentences.map((sent, si) => {
       const sentStart = sent.words[0].charStart;
       const nextSentStart = si < sentences.length - 1
         ? sentences[si + 1].words[0].charStart
         : fullText.length;
-      const sentText = fullText.substring(sentStart, nextSentStart);
 
-      // Split sentence text into highlighted / plain parts
-      type Part = { text: string; hl: boolean };
-      const parts_: Part[] = [];
-      const noHighlight = hlStart < 0 || hlEnd <= sentStart || hlStart >= nextSentStart;
-
-      if (noHighlight) {
-        parts_.push({ text: sentText, hl: false });
-      } else if (hlStart <= sentStart && hlEnd >= nextSentStart) {
-        parts_.push({ text: sentText, hl: true });
-      } else {
-        const a = Math.max(sentStart, hlStart);
-        const b = Math.min(nextSentStart, hlEnd);
-        if (a > sentStart) parts_.push({ text: fullText.substring(sentStart, a), hl: false });
-        if (b > a)         parts_.push({ text: fullText.substring(a, b),         hl: true  });
-        if (b < nextSentStart) parts_.push({ text: fullText.substring(b, nextSentStart), hl: false });
+      // Walk through every character in the sentence and group consecutive same-type spans
+      type SpanChunk = { text: string; type: 'selected' | 'other' | 'plain' };
+      const chunks: SpanChunk[] = [];
+      let i = sentStart;
+      while (i < nextSentStart) {
+        const range = getRangeAt(i);
+        const chunkType = range ? range.type : 'plain';
+        // Advance to the next boundary
+        let j = i + 1;
+        while (j < nextSentStart) {
+          const nextRange = getRangeAt(j);
+          const nextType = nextRange ? nextRange.type : 'plain';
+          if (nextType !== chunkType) break;
+          j++;
+        }
+        chunks.push({ text: fullText.substring(i, j), type: chunkType });
+        i = j;
       }
 
       const sentStyle: React.CSSProperties = sent.isQuestion ? {
@@ -93,15 +111,29 @@ export const TranscriptView: React.FC<Props> = ({
           className={`transcript-sentence${sent.isQuestion ? ' question-sentence' : ''}`}
           style={sentStyle}
         >
-          {parts_.map((p, j) =>
-            p.hl ? (
-              <mark key={j} ref={j === 0 ? highlightRef : undefined} className="transcript-highlight">
-                {p.text}
-              </mark>
-            ) : (
-              <React.Fragment key={j}>{p.text}</React.Fragment>
-            )
-          )}
+          {chunks.map((chunk, j) => {
+            if (chunk.type === 'selected') {
+              const shouldAssignRef = !firstSelectedFound;
+              if (shouldAssignRef) firstSelectedFound = true;
+              return (
+                <mark
+                  key={j}
+                  ref={shouldAssignRef ? (el) => { highlightRef.current = el; } : undefined}
+                  className="transcript-highlight"
+                >
+                  {chunk.text}
+                </mark>
+              );
+            }
+            if (chunk.type === 'other') {
+              return (
+                <mark key={j} className="transcript-highlight-other">
+                  {chunk.text}
+                </mark>
+              );
+            }
+            return <React.Fragment key={j}>{chunk.text}</React.Fragment>;
+          })}
         </span>
       );
     });

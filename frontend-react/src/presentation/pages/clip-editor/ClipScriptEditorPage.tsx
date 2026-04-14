@@ -65,12 +65,33 @@ export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, on
                 <div
                   key={part.id}
                   className={`cse-part-card ${isSelected ? 'cse-part-card--selected' : ''}`}
+                  draggable
+                  onDragStart={e => {
+                    e.dataTransfer.setData('text/plain', idx.toString());
+                    e.currentTarget.classList.add('cse-part-card--dragging');
+                  }}
+                  onDragEnd={e => {
+                    e.currentTarget.classList.remove('cse-part-card--dragging');
+                  }}
+                  onDragOver={e => {
+                    e.preventDefault();
+                    e.currentTarget.classList.add('cse-part-card--drag-over');
+                  }}
+                  onDragLeave={e => {
+                    e.currentTarget.classList.remove('cse-part-card--drag-over');
+                  }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove('cse-part-card--drag-over');
+                    const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                    dispatch({ type: 'REORDER_PARTS', payload: { fromIndex: fromIdx, toIndex: idx } });
+                  }}
                   onClick={() => dispatch({ type: 'SELECT_PART', payload: idx })}
                 >
                   <div className="cse-part-card-header">
                     {/* Drag handle */}
-                    <span className="cse-part-drag">≡</span>
-                    {/* Delete (✗) */}
+                    <span className="cse-part-drag" style={{ cursor: 'grab' }}>≡</span>
+                    {/* Delete (✕) */}
                     <button
                       className="cse-part-delete"
                       title="Delete part"

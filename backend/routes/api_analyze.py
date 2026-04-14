@@ -216,3 +216,33 @@ async def analyze_video(request: AnalyzeVideoRequest):
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error analyzing video: {str(e)}")
+
+
+@router.get("/api/transcript/{video_id}")
+async def get_transcript(video_id: str):
+    """
+    Retrieve full transcript from cache for a downloaded video
+    Used for refining clips bounds in the front-end editor
+    """
+    import json
+    from pathlib import Path
+    
+    # Path is based on downloader out templating in ./Downloads
+    transcript_path = Path("./Downloads") / f"{video_id}_transcript.json"
+    
+    if not transcript_path.exists():
+        raise HTTPException(status_code=404, detail="Transcript cache not found")
+        
+    try:
+        with open(transcript_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        return {
+            "success": True,
+            "video_id": video_id,
+            "full_transcript_words": data.get("words", [])
+        }
+    except Exception as e:
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error reading transcript: {str(e)}")
+

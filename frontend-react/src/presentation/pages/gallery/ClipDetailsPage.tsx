@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { VideoRepository } from '../../../data/VideoRepository';
+import { ClipScriptEditorPage } from '../clip-editor/ClipScriptEditorPage';
+import type { Clip } from '../../../domain/types';
 
 type MediaItem = {
   id: string;
@@ -60,6 +62,15 @@ export const ClipDetailsPage: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [metaGenStatus, setMetaGenStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+
+  // ── Refine workflow state ──────────────────────────────────────────────────
+  const [isRefineEditorOpen, setIsRefineEditorOpen] = useState(false);
+  const [refineFullTranscript, setRefineFullTranscript] = useState<any[]>([]);
+  const [refineLoading, setRefineLoading] = useState(false);
+  const [reconstructedClip, setReconstructedClip] = useState<Clip | null>(null);
+  const [refineProcessStatus, setRefineProcessStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
+  const [refineLogs, setRefineLogs] = useState<string[]>([]);
+  const [refineProgress, setRefineProgress] = useState<{ percent: number; message: string; stage: string } | null>(null);
 
   // ── Workflow 2 state ──────────────────────────────────────────────────────
   const [isDialog2Open, setIsDialog2Open] = useState(false);
@@ -137,15 +148,24 @@ export const ClipDetailsPage: React.FC = () => {
         } else if (data.type === 'log') {
           setLogs(prev => [...prev, data.line]);
           setWf2Logs(prev => [...prev, data.line]);
+          setRefineLogs(prev => [...prev, data.line]);
         } else if (data.type === 'progress') {
+          // Update refine progress details
+          if (data.stage !== 'complete' && data.stage !== 'error') {
+            setRefineProgress({ percent: data.percent || 0, message: data.message || '', stage: data.stage || '' });
+          }
           if (data.stage === 'complete') {
             setWorkflowStatus('complete');
             setWf2Status('complete');
+            setRefineProcessStatus('complete');
+            setRefineProgress(null);
           } else if (data.stage === 'error') {
             setWorkflowStatus('error');
             setWf2Status('error');
+            setRefineProcessStatus('error');
             setLogs(prev => [...prev, data.message]);
             setWf2Logs(prev => [...prev, data.message]);
+            setRefineLogs(prev => [...prev, data.message]);
           }
         }
       } catch (e) {
@@ -181,6 +201,56 @@ export const ClipDetailsPage: React.FC = () => {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  const handleRefine = async () => {
+    if (!clip || !clip.info_data) {
+      alert("This clip does not have saved metadata to refine.");
+      return;
+    }
+    const clipData = clip.info_data.clip;
+    if (!clipData.parts || clipData.parts.length === 0) {
+      alert("This clip was generated before parts were saved, or parts are missing. Only newly generated clips can be refined in this version.");
+      return;
+    }
+
+    try {
+      setRefineLoading(true);
+      const url = clip.info_data.video.url;
+      let videoId = "";
+      if (url.includes("v=")) {
+        videoId = url.split("v=")[1].split("&")[0];
+      } else if (url.includes("youtu.be/")) {
+        videoId = url.split("youtu.be/")[1].split("?")[0];
+      } else {
+        videoId = url.split("/").pop() || "";
+      }
+
+      let transcript = clipData.full_transcript_words || [];
+      if (!transcript || transcript.length === 0) {
+          transcript = await VideoRepository.getTranscript(videoId);
+      }
+      setRefineFullTranscript(transcript);
+
+      const parts = clipData.parts;
+      const reconstructed: Clip = {
+          id: clipData.title || `refine-${Date.now()}`,
+          start: parts[0].start,
+          end: parts[parts.length - 1].end,
+          duration: clipData.duration_seconds,
+          title: clipData.title || "",
+          explanation: clipData.description || "",
+          score: 1,
+          parts: parts,
+          words: clipData.words || [],
+      };
+      setReconstructedClip(reconstructed);
+      setIsRefineEditorOpen(true);
+    } catch (e: any) {
+        alert("Could not load refine data: " + e.message);
+    } finally {
+        setRefineLoading(false);
+    }
   };
 
   const handleRunWorkflow = async () => {
@@ -377,6 +447,12 @@ export const ClipDetailsPage: React.FC = () => {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
               Run Workflow 2
             </button>
+            {clip.info_data?.clip?.parts?.length > 0 && (
+              <button onClick={handleRefine} disabled={refineLoading} style={{ width: '100%', padding: '12px', background: 'rgba(251, 191, 36, 0.2)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.5)', borderRadius: '8px', cursor: refineLoading ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginTop: '16px' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                {refineLoading ? 'Loading...' : 'Refine Clip'}
+              </button>
+            )}
             <button onClick={handleDelete} style={{ width: '100%', padding: '12px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.5)', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginTop: '16px' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               Delete Clip
@@ -823,6 +899,129 @@ export const ClipDetailsPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Refine Editor Overlay */}
+      {isRefineEditorOpen && reconstructedClip && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#121212', zIndex: 1100, overflow: 'auto' }}>
+          <ClipScriptEditorPage
+            clip={reconstructedClip}
+            fullTranscript={refineFullTranscript}
+            onClose={() => setIsRefineEditorOpen(false)}
+            onSave={async (updatedClip: Clip) => {
+              try {
+                setIsRefineEditorOpen(false);
+                setRefineProcessStatus('running');
+                setRefineLogs([]);
+                setRefineProgress(null);
+                setWorkflowStatus('running');
+                setLogs([]);
+                
+                const url = clip.info_data.video.url;
+                const format = clip.info_data.clip.format.toLowerCase().includes('reel') ? 'reels' : 'original';
+                
+                updatedClip.id = 'refine-target';
+                
+                await VideoRepository.processVideo(
+                  url,
+                  format,
+                  true, // burnCaptions
+                  'viral-moments', // strategy
+                  null, // extraContext
+                  clientId,
+                  ['refine-target'], // selectedClips
+                  [updatedClip], // preanalyzedClips
+                  refineFullTranscript, // fullTranscriptWords
+                  'openai', // aiProvider
+                  'bottom' // aiContentPosition
+                );
+              } catch (e: any) {
+                setRefineProcessStatus('error');
+                setRefineLogs(prev => [...prev, `[ERROR] Refine failed: ${e.message}`]);
+                setWorkflowStatus('error');
+                setLogs(prev => [...prev, `[ERROR] Refine failed: ${e.message}`]);
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {/* Refine Progress Overlay */}
+      {refineProcessStatus !== 'idle' && !isRefineEditorOpen && (() => {
+        const STAGES = [
+          { id: 'downloading', icon: '📥', label: 'Downloading' },
+          { id: 'transcribing', icon: '🎤', label: 'Transcribing' },
+          { id: 'analyzing', icon: '🤖', label: 'AI Analysis' },
+          { id: 'clipping', icon: '✂️', label: 'Clipping' },
+          { id: 'organizing', icon: '📁', label: 'Organizing' },
+        ];
+        const currentStage = refineProgress?.stage || (refineProcessStatus === 'complete' ? 'done' : '');
+        const activeIdx = currentStage === 'done' ? STAGES.length : STAGES.findIndex(s => s.id === currentStage);
+        const pct  = refineProgress?.percent ?? (refineProcessStatus === 'complete' ? 100 : 0);
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 1200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', gap: '24px' }}>
+            {/* Title */}
+            <h2 style={{ margin: 0, fontSize: '1.5rem', color: refineProcessStatus === 'error' ? '#ef4444' : refineProcessStatus === 'complete' ? '#4ade80' : '#fbbf24' }}>
+              {refineProcessStatus === 'complete' ? '✅ Refinement Complete!' : refineProcessStatus === 'error' ? '❌ Refinement Failed' : '✍️ Refining Clip…'}
+            </h2>
+
+            {/* Progress Bar */}
+            {refineProcessStatus === 'running' && (
+              <div style={{ width: '100%', maxWidth: '560px' }}>
+                <div style={{ background: '#333', borderRadius: '99px', height: '10px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #fbbf24, #f59e0b)', borderRadius: '99px', transition: 'width 0.4s ease' }} />
+                </div>
+                <p style={{ margin: '8px 0 0', color: '#aaa', fontSize: '0.85rem', textAlign: 'center' }}>{refineProgress?.message || 'Initialising…'} ({Math.round(pct)}%)</p>
+              </div>
+            )}
+
+            {/* Stage pills */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {STAGES.map((s, i) => {
+                const done = activeIdx > i || refineProcessStatus === 'complete';
+                const active = !done && currentStage === s.id;
+                return (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', borderRadius: '99px', background: done ? 'rgba(74,222,128,0.15)' : active ? 'rgba(251,191,36,0.15)' : '#1e1e1e', border: `1px solid ${done ? '#4ade80' : active ? '#fbbf24' : '#333'}`, color: done ? '#4ade80' : active ? '#fbbf24' : '#666', fontSize: '0.82rem', transition: 'all 0.3s' }}>
+                    <span>{done ? '✓' : s.icon}</span>
+                    <span>{s.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Logs */}
+            <div style={{ width: '100%', maxWidth: '720px', background: '#0a0a0a', borderRadius: '10px', border: '1px solid #222', padding: '12px 16px', maxHeight: '200px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.78rem', color: '#888', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              {refineLogs.length === 0 ? <span style={{ color: '#444' }}>Waiting for logs…</span> : refineLogs.join('\n')}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '12px' }}>
+              {refineProcessStatus === 'complete' && (
+                <button
+                  onClick={() => navigate('/gallery')}
+                  style={{ padding: '12px 28px', background: '#4ade80', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}
+                >
+                  Go to Gallery →
+                </button>
+              )}
+              {(refineProcessStatus === 'complete' || refineProcessStatus === 'error') && (
+                <button
+                  onClick={() => { setRefineProcessStatus('idle'); setRefineLogs([]); setRefineProgress(null); }}
+                  style={{ padding: '12px 28px', background: '#333', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}
+                >
+                  Dismiss
+                </button>
+              )}
+              {refineProcessStatus === 'running' && (
+                <button
+                  onClick={() => { setRefineProcessStatus('idle'); setRefineLogs([]); }}
+                  style={{ padding: '12px 24px', background: 'transparent', color: '#888', border: '1px solid #444', borderRadius: '8px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

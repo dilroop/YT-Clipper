@@ -2087,6 +2087,20 @@ input[type="checkbox"]:checked + .toggle-slider::before {
     background: rgba(139, 92, 246, 0.6);
 }
 
+/* Non-selected clip parts: dark green tint so you can read adjacent parts in context */
+.transcript-highlight-other {
+    background: rgba(34, 197, 94, 0.18);
+    color: #bbf7d0;
+    border-radius: 3px;
+    padding: 1px 3px;
+    border-bottom: 1.5px solid rgba(34, 197, 94, 0.45);
+    transition: background 0.2s;
+}
+
+.transcript-highlight-other:hover {
+    background: rgba(34, 197, 94, 0.28);
+}
+
 /* iOS/Android-style selection handles */
 .selection-handle {
     position: absolute;
@@ -2569,6 +2583,17 @@ input[type="checkbox"]:checked + .toggle-slider::before {
 .cse-part-card--selected {
   border-color: #7c4dff !important;
   background: rgba(124, 77, 255, 0.08);
+}
+
+.cse-part-card--dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.cse-part-card--drag-over {
+  border-color: #7c4dff;
+  border-style: dashed;
+  transform: translateY(2px);
 }
 
 .cse-part-card-header {

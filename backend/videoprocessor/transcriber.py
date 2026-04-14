@@ -208,3 +208,127 @@ class AudioTranscriber:
                     words.append(word_info['word'])
 
         return ' '.join(words).strip()
+
+
+if __name__ == "__main__":
+    import sys
+    import datetime
+    import cv2
+    from pathlib import Path
+
+    # Ensure local import works when run directly
+    try:
+        from subtitle_burner import SubtitleBurner
+    except ImportError:
+        sys.path.append(str(Path(__file__).parent.parent))
+        from videoprocessor.subtitle_burner import SubtitleBurner
+
+    print("\n" + "="*50)
+    print("YT-Clipper Standalone Subtitle Generator (CLI)")
+    print("="*50 + "\n")
+
+    video_input = input("Enter the path to the original video: ").strip()
+    if not video_input:
+        print("[!] No video path provided. Exiting.")
+        sys.exit(1)
+
+    video_path_obj = Path(video_input)
+    if not video_path_obj.exists():
+        print(f"[!] File not found: {video_input}")
+        sys.exit(1)
+
+    font_family = input("\nEnter font family [e.g. Arial, Impact] (Default: Arial): ").strip() or "Arial"
+    
+    font_size_str = input("Enter font size (Default: 80): ").strip()
+    font_size = int(font_size_str) if font_size_str.isdigit() else 80
+    
+    text_color = input("Enter text hex color (Default: #22DD66): ").strip() or "#22DD66"
+    
+    words_count_str = input("Enter number of words per caption [1-5] (Default: 3): ").strip()
+    words_count = int(words_count_str) if words_count_str.isdigit() else 3
+    
+    y_pos_str = input("Enter Y position percentage from top [e.g. 50=middle, 80=bottom] (Default: 80): ").strip()
+    y_pos = int(y_pos_str) if y_pos_str.isdigit() else 80
+
+    print("\n[+] Configuration complete. Initializing...\n")
+    
+    transcriber = AudioTranscriber()
+    
+    def log_progress(data):
+        print(f"[{data.get('stage', 'Info').upper()}] {data.get('percent', 0)}% - {data.get('message', '')}")
+        
+    print(f"\n---> STEP 1: Transcribing {video_path_obj.name}...")
+    transcript_result = transcriber.transcribe(str(video_path_obj), progress_callback=log_progress)
+    
+    if not transcript_result.get('success', False):
+        print(f"[!] Transcription failed: {transcript_result.get('error')}")
+        sys.exit(1)
+        
+    words = []
+    for segment in transcript_result.get('segments', []):
+        for word in segment.get('words', []):
+            words.append(word)
+            
+    if not words:
+        print("[!] No speech detected in the audio track.")
+        sys.exit(1)
+        
+    print(f"[+] Detected {len(words)} total words.")
+    
+    print("\n---> STEP 2: Rendering Subtitles...")
+    
+    # Grab native dimensions
+    cap = cv2.VideoCapture(str(video_path_obj))
+    if cap.isOpened():
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"[+] Detected resolution: {width}x{height}")
+        cap.release()
+    else:
+        width, height = 1920, 1080
+        print("[!] Could not fetch dimensions. Defaulting to 1920x1080")
+
+    timestamp_suffix = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = video_path_obj.parent / f"{video_path_obj.stem}_transcribed_{timestamp_suffix}.mp4"
+    
+    config = {
+        'words_per_caption': words_count,
+        'font_family': font_family,
+        'font_size': font_size,
+        'vertical_position': y_pos,
+        'text_color': text_color
+    }
+    
+    burner = SubtitleBurner(config=config)
+    temp_ass_path = video_path_obj.parent / f"temp_ass_{timestamp_suffix}.ass"
+    
+    try:
+        ass_file = burner.create_ass_subtitles(
+            words=words,
+            output_path=str(temp_ass_path),
+            clip_start_time=0,
+            video_width=width,
+            video_height=height
+        )
+        print(f"[+] Built ASS Subtitles at {ass_file}")
+        print("[+] FFMPEG rendering video (this might take a while)...")
+        
+        result = burner.burn_captions(
+            video_path=str(video_path_obj),
+            subtitle_path=str(temp_ass_path),
+            output_path=str(output_path)
+        )
+        
+        if result.get('success'):
+            print("\n" + "="*50)
+            print(f"SUCCESS! Output saved directly next to the original:\n{output_path}")
+            print("="*50 + "\n")
+        else:
+            print(f"\n[!] Subtitle rendering failed: {result.get('error', 'Unknown Error')}")
+            
+    except Exception as e:
+        print(f"[!] Fatal error during rendering pipeline: {e}")
+    finally:
+        # Cleanup
+        if temp_ass_path.exists():
+            temp_ass_path.unlink()

@@ -25,11 +25,20 @@ class SubtitleBurner:
         """
         self.config = config or {
             'words_per_caption': 2,
-            'font_family': 'Impact',
-            'font_size': 48,
-            'vertical_position': 80  # Percentage from top
+            'font_family': 'Arial',
+            'font_size': 80,
+            'vertical_position': 80,  # Percentage from top
+            'text_color': '#FFFFFF'
         }
         print(f"[DEBUG] SubtitleBurner Initialized (Version 2.1 - PNG Fallback Enabled)")
+
+    def _hex_to_ass_color(self, hex_color: str, alpha="00") -> str:
+        """Convert #RRGGBB to ASS &HAABBGGRR"""
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) == 6:
+            r, g, b = hex_color[0:2], hex_color[2:4], hex_color[4:6]
+            return f"&H{alpha}{b}{g}{r}"
+        return "&H00FFFFFF"
 
     def create_ass_subtitles(
         self,
@@ -69,7 +78,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{self.config.get('font_family', 'Impact')},{self.config.get('font_size', 48)},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,10,10,{margin_v},1
+Style: Default,{self.config.get('font_family', 'Arial')},{self.config.get('font_size', 80)},{self._hex_to_ass_color(self.config.get('text_color', '#FFFFFF'))},&H000000FF,&H00000000,&H33000000,-1,0,0,0,100,100,0,0,3,0,0,2,10,10,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -145,7 +154,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # Need to escape special characters for ffmpeg filter syntax
         escaped_subtitle_path = str(sub_path.absolute()).replace('\\', '\\\\').replace(':', '\\:')
 
-        # Build ffmpeg command to burn subtitles using subtitles filter with filename parameter
         cmd = [
             'ffmpeg',
             '-i', str(v_path),
@@ -161,16 +169,35 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         print(f"[DEBUG] [V2.1] Burning captions with command: {' '.join(cmd)}")
 
         try:
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            print(f"[DEBUG] Captions burned successfully to: {out_path}")
+            # Use Popen so we can stream ffmpeg output line-by-line.
+            # Passing sys.stdout/stderr directly fails inside FastAPI because
+            # TeeOutput (the server logger wrapper) has no fileno() method.
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # merge stderr into stdout
+                text=True,
+                bufsize=1
+            )
+            output_lines = []
+            for line in process.stdout:
+                line = line.rstrip()
+                if line:
+                    print(line)  # visible in CLI mode
+                    output_lines.append(line)
+            process.wait()
 
+            if process.returncode != 0:
+                raise subprocess.CalledProcessError(process.returncode, cmd, '\n'.join(output_lines))
+
+            print(f"[DEBUG] Captions burned successfully to: {out_path}")
             return {
                 'success': True,
                 'output_path': str(out_path)
             }
 
         except subprocess.CalledProcessError as e:
-            error_msg = e.stderr or e.stdout or "Unknown ffmpeg error"
+            error_msg = str(e.output) if e.output else "Unknown ffmpeg error"
             print(f"[ERROR] FFmpeg caption burning (subtitles filter) failed: {error_msg}")
 
             # FALLBACK: Try burning with PNG overlays if subtitles filter fails
