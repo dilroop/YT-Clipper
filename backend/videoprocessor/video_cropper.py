@@ -20,7 +20,7 @@ from mediapipe.tasks.python import vision
 
 
 # ==================== FACE TRACKING SETTINGS ====================
-FACE_CHECK_INTERVAL_FRAMES = 2
+FACE_CHECK_INTERVAL_FRAMES = 4
 USE_SMOOTH_INTERPOLATION = True
 SMOOTHING_STRENGTH = 0.5
 ENABLE_ZERO_FACE_PANNING = True

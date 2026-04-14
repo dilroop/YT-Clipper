@@ -111,6 +111,18 @@ export const ClipDetailsPage: React.FC = () => {
     localStorage.setItem('ytc_wf2_suffix2_color', wf2Suffix2Color);
   }, [wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color]);
 
+  // Preload default header image
+  useEffect(() => {
+    fetch('/header.png')
+      .then(res => res.blob())
+      .then(blob => {
+        const file = new File([blob], 'header.png', { type: blob.type || 'image/png' });
+        setWf2HeaderImage(file);
+        setWf2HeaderPreview(URL.createObjectURL(blob));
+      })
+      .catch(err => console.error('Failed to preload default header image:', err));
+  }, []);
+
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
