@@ -327,7 +327,7 @@ async def _perform_video_processing(request: ProcessVideoRequest):
                 'keywords': clip.get('keywords', []),
                 'parts': clip.get('parts', []),
                 'words': clip.get('words', []),
-                'full_transcript_words': request.full_transcript_words or []
+                'full_transcript_words': []
             })
 
         if not processed_clips: raise Exception("All clipping operations failed.")

@@ -242,10 +242,21 @@ async def get_transcript(video_id: str):
         with open(transcript_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             
+        full_transcript_words = []
+        for seg in data.get("segments", []):
+            for w in seg.get("words", []):
+                word_text = (w.get("word") or w.get("text") or "").strip()
+                if word_text:
+                    full_transcript_words.append({
+                        "word": word_text,
+                        "start": w["start"],
+                        "end": w["end"]
+                    })
+            
         return {
             "success": True,
             "video_id": video_id,
-            "full_transcript_words": data.get("words", [])
+            "full_transcript_words": full_transcript_words
         }
     except Exception as e:
         print(traceback.format_exc())
