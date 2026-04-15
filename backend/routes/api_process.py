@@ -142,16 +142,31 @@ async def _perform_video_processing(request: ProcessVideoRequest):
             audio_path = None
         else:
             await update_progress({'stage': 'transcribing', 'percent': 15, 'message': 'Transcribing audio...'})
-            transcript_result = transcriber.transcribe(video_path, update_progress_sync)
+            transcript_result = await run_in_executor(
+                transcriber.transcribe,
+                video_path,
+                update_progress_sync
+            )
             if not transcript_result['success']: raise Exception(transcript_result['error'])
             segments = transcript_result['segments']
             audio_path = transcript_result.get('audio_path')
             provider_name = getattr(analyzer, 'provider_name', 'Basic AI')
             await update_progress({'stage': 'analyzing', 'percent': 35, 'message': f'Finding clips with {provider_name}...'})
             if isinstance(analyzer, AIAnalyzer):
-                interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5, video_info=video_info, strategy=request.ai_strategy or "viral-moments")
+                interesting_clips = await run_in_executor(
+                    analyzer.find_interesting_clips,
+                    segments=segments,
+                    num_clips=5,
+                    video_info=video_info,
+                    strategy=request.ai_strategy or "viral-moments",
+                    extra_context=request.extra_context
+                )
             else:
-                interesting_clips = analyzer.find_interesting_clips(segments, num_clips=5)
+                interesting_clips = await run_in_executor(
+                    analyzer.find_interesting_clips,
+                    segments=segments,
+                    num_clips=5
+                )
                 interesting_clips = [analyzer.adjust_clip_timing(clip) for clip in interesting_clips]
 
             if request.selected_clips is not None:
