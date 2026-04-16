@@ -55,6 +55,7 @@ class SectionCutter:
                 'ffmpeg', '-ss', str(part['start']), '-t', str(duration),
                 '-i', str(video_path_obj),
                 '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS',
+                '-af', 'asetpts=PTS-STARTPTS',
                 '-r', '30', '-c:v', 'libx264', '-c:a', 'aac', '-preset', 'medium', '-crf', '23', '-y', str(output_path)
             ]
             subprocess.run(cmd, check=True, capture_output=True)
@@ -72,6 +73,7 @@ class SectionCutter:
                     'ffmpeg', '-ss', str(start), '-t', str(duration),
                     '-i', str(video_path_obj),
                     '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS',
+                    '-af', 'asetpts=PTS-STARTPTS',
                     '-r', '30', '-c:v', 'libx264', '-c:a', 'aac', '-preset', 'ultrafast', '-y', str(part_file)
                 ]
                 subprocess.run(cmd, check=True, capture_output=True)

@@ -253,28 +253,34 @@ class VideoCropper:
         proc_files: List[Path] = []
 
         try:
-            # -- Extract audio once --
-            a_path = t_dir / "audio.aac"
-            subprocess.run(
-                ["ffmpeg", "-i", str(v_path), "-vn", "-acodec", "copy", "-y", str(a_path)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            # Check for audio presence
+            a_check = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "a:0", 
+                 "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(v_path)],
+                capture_output=True, text=True
             )
-            has_audio = a_path.exists() and a_path.stat().st_size > 0
+            has_audio = len(a_check.stdout.strip()) > 0
 
             # -- Process each face segment --
             for i, seg in enumerate(segments):
                 raw_seg = t_dir / f"seg_{i}_raw.mp4"
                 proc_seg = t_dir / f"seg_{i}_proc.mp4"
 
-                subprocess.run(
-                    [
-                        "ffmpeg", "-i", str(v_path),
-                        "-ss", str(seg["start_time"]), "-to", str(seg["end_time"]),
-                        "-c:v", "libx264", "-an", "-preset", "ultrafast", "-crf", "18", "-y", str(raw_seg),
-                    ],
-                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
+                # 1) Extract segment with sync preserved (both video and audio)
+                raw_cmd = [
+                    "ffmpeg", "-i", str(v_path),
+                    "-ss", str(seg["start_time"]), "-to", str(seg["end_time"]),
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18"
+                ]
+                if has_audio:
+                    raw_cmd.extend(["-c:a", "aac"])
+                else:
+                    raw_cmd.append("-an")
+                raw_cmd.extend(["-y", str(raw_seg)])
 
+                subprocess.run(raw_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                # 2) Build filter and crop
                 vf = self._build_filter(
                     seg, ratio=ratio,
                     src_w=src_w, src_h=src_h,
@@ -282,33 +288,29 @@ class VideoCropper:
                     out_w=out_w, out_h=out_h,
                 )
 
-                subprocess.run(
-                    ["ffmpeg", "-i", str(raw_seg), "-vf", vf,
-                     "-c:v", "libx264", "-an", "-preset", "medium", "-crf", "20", "-y", str(proc_seg)],
-                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
+                proc_cmd = [
+                    "ffmpeg", "-i", str(raw_seg), "-vf", vf,
+                    "-c:v", "libx264", "-preset", "medium", "-crf", "20"
+                ]
+                if has_audio:
+                    proc_cmd.extend(["-c:a", "copy"])
+                else:
+                    proc_cmd.append("-an")
+                proc_cmd.extend(["-y", str(proc_seg)])
+
+                subprocess.run(proc_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 proc_files.append(proc_seg)
 
             # -- Concatenate processed segments --
+            # Both Audio and Video will be perfectly concatenated in sync
             concat_list = t_dir / "list.txt"
             concat_list.write_text("\n".join(f"file '{p}'" for p in proc_files))
 
-            v_only = t_dir / "v_only.mp4"
             subprocess.run(
                 ["ffmpeg", "-f", "concat", "-safe", "0", "-i", str(concat_list),
-                 "-c", "copy", "-y", str(v_only)],
+                 "-c", "copy", "-y", str(o_path)],
                 check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
-
-            # -- Mux audio --
-            if has_audio:
-                subprocess.run(
-                    ["ffmpeg", "-i", str(v_only), "-i", str(a_path),
-                     "-c:v", "copy", "-c:a", "aac", "-shortest", "-y", str(o_path)],
-                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
-            else:
-                shutil.copy2(str(v_only), str(o_path))
 
             print(f"[CROPPER] Done → {o_path}")
             return {"success": True, "output_path": str(o_path)}
