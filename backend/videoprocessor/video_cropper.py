@@ -2,529 +2,208 @@
 Video Cropper Module
 Intelligent video cropping (9:16 or 9:8) with face tracking using MediaPipe.
 
-Input: Video path, output path, and tracking settings.
-Output: Cropped video in 9:16 (Standard Reels) or 9:8 (Stacked part) format.
+Rules for 9:16 (Reels):
+  - 0 faces  → smooth left-right pan across full frame (3s cycles)
+  - 1 face   → center a 9:16 crop window on the face (no stretch/skew)
+  - 2 faces  → two stacked 9:8 blocks, each centered on their face
+  - >2 faces → vertical centre-split, each half scaled to 9:8, then vstacked
+
+Rules for 9:8 (Workflow main block):
+  - 0 faces  → smooth left-right pan (3s cycles)
+  - 1 face   → center a 9:8 crop window on the face
+  - 2 faces  → each face gets a 4.5:8 crop; hstacked to fill 9:8
+  - >2 faces → smooth left-right pan (same as 0 faces)
 """
 
 import cv2
 import subprocess
-import numpy as np
 import mediapipe as mp
-import math
-import os
 import urllib.request
+import shutil
+import tempfile
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
+
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 
-# ==================== FACE TRACKING SETTINGS ====================
-FACE_CHECK_INTERVAL_FRAMES = 4
-USE_SMOOTH_INTERPOLATION = True
-SMOOTHING_STRENGTH = 0.5
-ENABLE_ZERO_FACE_PANNING = True
-PAN_LEFT_BOUNDARY = 0.15
-PAN_RIGHT_BOUNDARY = 0.85
-PAN_CYCLE_DURATION = 8.0
-# ================================================================
+# ──────────────────────────────────────────────────────────────────────────────
+# Module-level constants
+# ──────────────────────────────────────────────────────────────────────────────
 
-# Output formats supported by this module
-FORMAT_VERTICAL_9_16 = "vertical_9x16"
-# (Stacked formats are handled by MediaStacker, but Cropper provides 9:8 crops if needed)
+FACE_CHECK_INTERVAL_FRAMES = 12   # Sample every N frames for performance
+MIN_SEGMENT_DURATION_S     = 1.5  # Shorter segments are merged to avoid flicker
+PAN_CYCLE_SECONDS          = 6.0  # Full cycle: left→right (3s) then right→left (3s)
 
 
 class VideoCropper:
+    """
+    Crop a video to 9:16 (for Reels) or 9:8 (for Workflow stacked block)
+    using MediaPipe face detection to drive the crop window.
+    """
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Initialisation & model helpers
+    # ──────────────────────────────────────────────────────────────────────────
+
     def __init__(self):
-        """Initialize video cropper"""
         pass
 
-    def _get_face_detection_model(self):
-        """Download and cache MediaPipe face detection model"""
-        model_path = Path.home() / '.cache' / 'mediapipe' / 'blaze_face_short_range.tflite'
+    def _get_face_detection_model(self) -> bytes:
+        """Download (once) and return the MediaPipe face-detection model bytes."""
+        model_path = Path.home() / ".cache" / "mediapipe" / "blaze_face_short_range.tflite"
         model_path.parent.mkdir(parents=True, exist_ok=True)
-
         if not model_path.exists():
-            print("[INFO] Downloading MediaPipe face detection model...")
-            url = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite"
+            print("[CROPPER] Downloading MediaPipe face detection model…")
+            url = (
+                "https://storage.googleapis.com/mediapipe-models/"
+                "face_detector/blaze_face_short_range/float16/1/"
+                "blaze_face_short_range.tflite"
+            )
             urllib.request.urlretrieve(url, model_path)
-            print("[INFO] Model downloaded successfully")
-
-        with open(model_path, 'rb') as f:
+            print("[CROPPER] Model downloaded.")
+        with open(model_path, "rb") as f:
             return f.read()
 
-    def _bezier_interpolate(self, points: List[Tuple[float, float]], num_samples: int, smoothness: float = 0.5) -> List[Tuple[float, float]]:
-        """Interpolate between points using Catmull-Rom to Bezier conversion for smooth curves"""
-        if len(points) < 2:
-            return points
+    # ──────────────────────────────────────────────────────────────────────────
+    # Face detection
+    # ──────────────────────────────────────────────────────────────────────────
 
-        times = np.array([p[0] for p in points])
-        values = np.array([p[1] for p in points])
-
-        t_min, t_max = times[0], times[-1]
-        interp_times = np.linspace(t_min, t_max, num_samples)
-
-        from scipy import interpolate
-        cs = interpolate.CubicSpline(times, values, bc_type='natural')
-        interp_values = cs(interp_times)
-
-        if smoothness > 0.3:
-            from scipy.ndimage import gaussian_filter1d
-            sigma = smoothness * 2
-            interp_values = gaussian_filter1d(interp_values, sigma=sigma)
-
-        return list(zip(interp_times, interp_values))
-
-    def _generate_panning_positions(self, duration: float, fps: float, width: int, crop_width: int) -> List[Tuple[float, float]]:
-        """Generate smooth panning positions for zero-face segments"""
-        left_boundary_px = int(width * PAN_LEFT_BOUNDARY)
-        right_boundary_px = int(width * PAN_RIGHT_BOUNDARY) - crop_width
-        right_boundary_px = max(left_boundary_px, min(right_boundary_px, width - crop_width))
-
-        center_x = (left_boundary_px + right_boundary_px) / 2
-        amplitude = (right_boundary_px - left_boundary_px) / 2
-
-        num_frames = int(duration * fps)
-        positions = []
-
-        for frame in range(num_frames):
-            time = frame / fps
-            angle = (2 * math.pi * time) / PAN_CYCLE_DURATION
-            x_position = center_x + amplitude * math.sin(angle - math.pi / 2)
-            x_position = max(left_boundary_px, min(x_position, right_boundary_px))
-            positions.append((time, x_position))
-
-        return positions
-
-    def _get_face_positions_timeline(self, video_path: str, check_every_n_frames: int = 8) -> Dict:
-        """Get face positions throughout video as a timeline"""
-        base_options = python.BaseOptions(model_asset_buffer=self._get_face_detection_model())
-        video_options = vision.FaceDetectorOptions(
-            base_options=base_options,
-            running_mode=vision.RunningMode.VIDEO,
-            min_detection_confidence=0.5,
-            min_suppression_threshold=0.3
-        )
-        video_detector = vision.FaceDetector.create_from_options(video_options)
-
-        cap = cv2.VideoCapture(str(video_path))
-        if not cap.isOpened():
-            raise Exception(f"Cannot open video: {video_path}")
-
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        positions = []
+    def _detect_valid_faces(self, detections, width: int, height: int) -> List[Dict]:
+        """
+        Filter raw MediaPipe detections to valid, prominent faces.
+        Returns a list of dicts with 'center_x', 'center_y', 'width', 'height'.
+        Sorted left-to-right by center_x.
+        """
         min_face_size = int(height * 0.08)
-        edge_margin = int(width * 0.05)
+        edge_margin   = int(width  * 0.05)
+        faces = []
 
-        frame_idx = 0
-        while frame_idx < total_frames:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-            if not ret:
-                break
+        for det in (detections or []):
+            bbox = det.bounding_box
+            x, y, fw, fh = int(bbox.origin_x), int(bbox.origin_y), int(bbox.width), int(bbox.height)
+            cx = x + fw // 2
 
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-            timestamp_ms = int((frame_idx / fps) * 1000)
-            detection_result = video_detector.detect_for_video(mp_image, timestamp_ms)
-
-            timestamp = frame_idx / fps
-            best_face_x = None
-            if detection_result.detections:
-                for detection in detection_result.detections:
-                    bbox = detection.bounding_box
-                    x_min = int(bbox.origin_x)
-                    w = int(bbox.width)
-                    h = int(bbox.height)
-
-                    if w < min_face_size or h < min_face_size:
-                        continue
-                    face_center_x = x_min + w // 2
-                    if face_center_x < edge_margin or face_center_x > width - edge_margin:
-                        continue
-
-                    confidence = detection.categories[0].score if detection.categories else 0.0
-                    if confidence < 0.6:
-                        continue
-
-                    aspect_ratio = w / h if h > 0 else 0
-                    if aspect_ratio < 0.6 or aspect_ratio > 1.4:
-                        continue
-
-                    best_face_x = face_center_x
-                    break
-
-            if best_face_x is not None:
-                positions.append((timestamp, best_face_x))
-
-            frame_idx += check_every_n_frames
-
-        cap.release()
-        if not positions:
-            positions = [(0.0, width // 2), (total_frames / fps, width // 2)]
-
-        return {
-            'positions': positions,
-            'fps': fps,
-            'width': width,
-            'height': height,
-            'total_frames': total_frames
-        }
-
-    def detect_face_segments(self, video_path: str, check_every_n_frames: int = 8) -> List[Dict]:
-        """Detect faces throughout video and create segments with different face counts"""
-        base_options = python.BaseOptions(model_asset_buffer=self._get_face_detection_model())
-        video_options = vision.FaceDetectorOptions(
-            base_options=base_options,
-            running_mode=vision.RunningMode.VIDEO,
-            min_detection_confidence=0.5,
-            min_suppression_threshold=0.3
-        )
-        video_detector = vision.FaceDetector.create_from_options(video_options)
-
-        cap = cv2.VideoCapture(str(video_path))
-        if not cap.isOpened():
-            raise Exception(f"Cannot open video: {video_path}")
-
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        segments = []
-        current_segment = None
-
-        frame_idx = 0
-        while frame_idx < total_frames:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-            timestamp_ms = int((frame_idx / fps) * 1000)
-            detection_result = video_detector.detect_for_video(mp_image, timestamp_ms)
-
-            timestamp = frame_idx / fps
-            face_positions = []
-            min_face_size = int(height * 0.08)
-            edge_margin = int(width * 0.05)
-
-            if detection_result.detections:
-                for detection in detection_result.detections:
-                    bbox = detection.bounding_box
-                    x_min = int(bbox.origin_x)
-                    y_min = int(bbox.origin_y)
-                    w = int(bbox.width)
-                    h = int(bbox.height)
-
-                    if w < min_face_size or h < min_face_size:
-                        continue
-
-                    face_center_x = x_min + w // 2
-                    if face_center_x < edge_margin or face_center_x > width - edge_margin:
-                        continue
-
-                    confidence = detection.categories[0].score if detection.categories else 0.0
-                    if confidence < 0.6:
-                        continue
-
-                    aspect_ratio = w / h if h > 0 else 0
-                    if aspect_ratio < 0.6 or aspect_ratio > 1.4:
-                        continue
-
-                    face_positions.append({
-                        'topLeft': {'x': x_min, 'y': y_min},
-                        'rightBottom': {'x': x_min + w, 'y': y_min + h},
-                        'width': w,
-                        'height': h,
-                        'confidence': confidence
-                    })
-
-            face_count = len(face_positions)
-            if face_count == 2:
-                w1, w2 = face_positions[0]['width'], face_positions[1]['width']
-                if min(w1, w2) / max(w1, w2) < 0.5:
-                    face_count = 1
-
-            if current_segment is None or current_segment['face_count'] != face_count:
-                if current_segment is not None:
-                    current_segment['end_time'] = timestamp
-                    current_segment['end_frame'] = frame_idx
-                    segments.append(current_segment)
-                current_segment = {
-                    'face_count': face_count,
-                    'start_time': timestamp,
-                    'start_frame': frame_idx,
-                    'faces': [face_positions] if face_positions else []
-                }
-            else:
-                if face_positions:
-                    current_segment['faces'].append(face_positions)
-
-            frame_idx += check_every_n_frames
-
-        if current_segment is not None:
-            current_segment['end_time'] = total_frames / fps
-            current_segment['end_frame'] = total_frames
-            segments.append(current_segment)
-
-        cap.release()
-        return segments
-
-    def detect_speaker_position(self, video_path: str, sample_frames: int = 10) -> Dict:
-        """Detect speaker position in video by sampling frames"""
-        base_options = python.BaseOptions(model_asset_buffer=self._get_face_detection_model())
-        image_options = vision.FaceDetectorOptions(
-            base_options=base_options,
-            running_mode=vision.RunningMode.IMAGE,
-            min_detection_confidence=0.5,
-            min_suppression_threshold=0.3
-        )
-        image_detector = vision.FaceDetector.create_from_options(image_options)
-
-        cap = cv2.VideoCapture(str(video_path))
-        if not cap.isOpened():
-            raise Exception(f"Cannot open video: {video_path}")
-
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        frame_indices = [int(total_frames * i / sample_frames) for i in range(sample_frames)]
-        face_positions = []
-        frames_with_two_faces = 0
-
-        for frame_idx in frame_indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-            if not ret:
+            if fw < min_face_size or fh < min_face_size:
+                continue
+            if cx < edge_margin or cx > width - edge_margin:
+                continue
+            conf = det.categories[0].score if det.categories else 0.0
+            if conf < 0.6:
+                continue
+            ratio = fw / fh if fh > 0 else 0
+            if ratio < 0.6 or ratio > 1.4:
                 continue
 
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-            detection_result = image_detector.detect(mp_image)
+            faces.append({"center_x": cx, "center_y": y + fh // 2, "width": fw, "height": fh})
 
-            frame_faces = []
-            min_face_size = int(height * 0.08)
-            edge_margin = int(width * 0.05)
+        faces.sort(key=lambda f: f["center_x"])
 
-            if detection_result.detections:
-                for detection in detection_result.detections:
-                    bbox = detection.bounding_box
-                    x_min, y_min, w, h = int(bbox.origin_x), int(bbox.origin_y), int(bbox.width), int(bbox.height)
+        # Merge faces that are too close together (same person detected twice)
+        merged: List[Dict] = []
+        for f in faces:
+            if not merged or (f["center_x"] - merged[-1]["center_x"] > width * 0.10):
+                merged.append(f)
 
-                    if w < min_face_size or h < min_face_size:
-                        continue
-                    if (x_min + w // 2) < edge_margin or (x_min + w // 2) > width - edge_margin:
-                        continue
-                    if (detection.categories[0].score if detection.categories else 0.0) < 0.6:
-                        continue
-                    if (w/h if h > 0 else 0) < 0.6 or (w/h if h > 0 else 0) > 1.4:
-                        continue
+        # Downgrade 2-face to 1 when one face is tiny (likely background)
+        if len(merged) == 2:
+            w1, w2 = merged[0]["width"], merged[1]["width"]
+            if min(w1, w2) / max(w1, w2) < 0.30:
+                merged = [max(merged, key=lambda f: f["width"])]
 
-                    frame_faces.append({
-                        'topLeft': {'x': x_min, 'y': y_min},
-                        'rightBottom': {'x': x_min + w, 'y': y_min + h},
-                        'width': w,
-                        'height': h
-                    })
+        return merged
 
-            if len(frame_faces) == 2:
-                if min(frame_faces[0]['width'], frame_faces[1]['width']) / max(frame_faces[0]['width'], frame_faces[1]['width']) >= 0.5:
-                    frames_with_two_faces += 1
-            if frame_faces:
-                face_positions.append(frame_faces)
+    def detect_face_segments(self, video_path: str) -> List[Dict]:
+        """
+        Scan the video, sample every FACE_CHECK_INTERVAL_FRAMES frames,
+        and return a merged list of segments keyed by face_count with
+        representative face positions.
+        """
+        model_bytes = self._get_face_detection_model()
+        base_options = python.BaseOptions(model_asset_buffer=model_bytes)
+        vid_options  = vision.FaceDetectorOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.VIDEO,
+            min_detection_confidence=0.5,
+            min_suppression_threshold=0.3,
+        )
+        detector = vision.FaceDetector.create_from_options(vid_options)
 
-        cap.release()
-
-        if frames_with_two_faces >= sample_frames * 0.9:
-            return self._process_dual_face_crop(face_positions, width, height)
-
-        all_faces = [face for frame_faces in face_positions for face in frame_faces]
-        if all_faces:
-            face_centers = sorted([(f['topLeft']['x'] + f['rightBottom']['x']) / 2 for f in all_faces])
-            median_center_x = face_centers[len(face_centers)//2]
-            crop_width = int(height * 9 / 16)
-            crop_x = max(0, min(int(median_center_x - crop_width // 2), width - crop_width))
-            return {'x': crop_x, 'y': 0, 'width': crop_width, 'height': height, 'face_detected': True, 'mode': 'single'}
-
-        return self._get_default_crop_position(width, height)
-
-    def _process_dual_face_crop(self, face_positions: List[List[Dict]], width: int, height: int) -> Dict:
-        """Process dual-face detection for split-screen effect"""
-        dual_face_frames = [f for f in face_positions if len(f) == 2]
-        if not dual_face_frames:
-            return self._get_default_crop_position(width, height)
-
-        def calculate_face_crop(faces):
-            tl_x = sum(f['topLeft']['x'] for f in faces) / len(faces)
-            tl_y = sum(f['topLeft']['y'] for f in faces) / len(faces)
-            rb_x = sum(f['rightBottom']['x'] for f in faces) / len(faces)
-            rb_y = sum(f['rightBottom']['y'] for f in faces) / len(faces)
-            w = sum(f['width'] for f in faces) / len(faces)
-            h = sum(f['height'] for f in faces) / len(faces)
-            box_lt_x = int(tl_x - w)
-            box_lt_y = int(tl_y - h/2)
-            box_rb_x = int(rb_x + w)
-            box_rb_y = int(rb_y + h*0.75)
-            return {'center_x': (tl_x + rb_x) / 2, 'box_lt_y': box_lt_y, 'box_width': box_rb_x - box_lt_x, 'box_height': box_rb_y - box_lt_y}
-
-        left_faces, right_faces = [], []
-        for frame in dual_face_frames:
-            sorted_faces = sorted(frame, key=lambda f: f['topLeft']['x'])
-            left_faces.append(sorted_faces[0])
-            right_faces.append(sorted_faces[1])
-
-        l_crop, r_crop = calculate_face_crop(left_faces), calculate_face_crop(right_faces)
-        final_w = (l_crop['box_width'] + r_crop['box_width']) // 2
-        final_h = int(final_w * 8 / 9)
-        final_w = min(width, final_w)
-        final_h = min(height, final_h)
-
-        l_x = max(0, min(int(l_crop['center_x'] - final_w // 2), width - final_w))
-        l_y = max(0, min(l_crop['box_lt_y'], height - final_h))
-        r_x = max(0, min(int(r_crop['center_x'] - final_w // 2), width - final_w))
-        r_y = max(0, min(r_crop['box_lt_y'], height - final_h))
-
-        return {
-            'mode': 'dual', 'face_detected': True,
-            'left_face': {'x': l_x, 'y': l_y, 'width': final_w, 'height': final_h},
-            'right_face': {'x': r_x, 'y': r_y, 'width': final_w, 'height': final_h},
-            'scale_width': 1080, 'scale_height': 960, 'output_width': 1080, 'output_height': 1920
-        }
-
-    def _get_default_crop_position(self, width: int, height: int, position: str = "left") -> Dict:
-        """Get default crop position (e.g. center)"""
-        crop_height = height
-        crop_width = int(crop_height * 9 / 16)
-        if position == "left":
-            crop_x = width // 4 - crop_width // 2
-        elif position == "right":
-            crop_x = (width * 3 // 4) - crop_width // 2
-        else:
-            crop_x = (width - crop_width) // 2
-        crop_x = max(0, min(crop_x, width - crop_width))
-        return {'x': crop_x, 'y': 0, 'width': crop_width, 'height': crop_height, 'face_detected': False, 'position': position, 'mode': 'single'}
-
-    def convert_to_reels(self, video_path: str, output_path: str = None, auto_detect: bool = True, dynamic_mode: bool = True, output_format: str = None, **kwargs) -> Dict:
-        """Main entry point for converting video to reels format"""
-        v_path = Path(video_path)
-        o_path = Path(output_path) if output_path else v_path.parent / f"{v_path.stem}_reels.mp4"
-        
-        # Format stacked is ignored here as it's handled by MediaStacker
-        if dynamic_mode and auto_detect:
-            segments = self.detect_face_segments(str(v_path), FACE_CHECK_INTERVAL_FRAMES)
-            if any(s['face_count'] == 2 for s in segments):
-                return self._convert_to_reels_dynamic(v_path, o_path)
-            elif USE_SMOOTH_INTERPOLATION:
-                return self._convert_to_reels_smooth(v_path, o_path)
-            else:
-                return self._convert_to_reels_dynamic(v_path, o_path)
-
-        crop_params = self.detect_speaker_position(str(v_path)) if auto_detect else self._get_default_crop_position(*cv2.VideoCapture(str(v_path)).read()[1].shape[1::-1])
-        return self._convert_dual_face_reels(v_path, o_path, crop_params) if crop_params.get('mode') == 'dual' else self._convert_single_face_reels(v_path, o_path, crop_params)
-
-    def _convert_single_face_reels(self, video_path: Path, output_path: Path, crop_params: Dict) -> Dict:
-        vf = f"crop={crop_params['width']}:{crop_params['height']}:{crop_params['x']}:{crop_params['y']},scale=1080:1920"
-        cmd = ['ffmpeg', '-i', str(video_path), '-vf', vf, '-c:v', 'libx264', '-c:a', 'aac', '-preset', 'medium', '-crf', '23', '-y', str(output_path)]
-        subprocess.run(cmd, check=True, capture_output=True)
-        return {'success': True, 'output_path': str(output_path), 'crop_params': crop_params, 'mode': 'single'}
-
-    def _convert_dual_face_reels(self, video_path: Path, output_path: Path, crop_params: Dict) -> Dict:
-        l, r = crop_params['left_face'], crop_params['right_face']
-        sw, sh = crop_params['scale_width'], crop_params['scale_height']
-        vf = (f"[0:v]split=2[left][right];"
-              f"[left]crop={l['width']}:{l['height']}:{l['x']}:{l['y']},scale={sw}:{sh}[ls];"
-              f"[right]crop={r['width']}:{r['height']}:{r['x']}:{r['y']},scale={sw}:{sh}[rs];"
-              f"[ls][rs]vstack")
-        cmd = ['ffmpeg', '-i', str(video_path), '-filter_complex', vf, '-c:v', 'libx264', '-c:a', 'aac', '-preset', 'medium', '-crf', '23', '-y', str(output_path)]
-        subprocess.run(cmd, check=True, capture_output=True)
-        return {'success': True, 'output_path': str(output_path), 'crop_params': crop_params, 'mode': 'dual'}
-
-    def _convert_to_reels_smooth(self, video_path: Path, output_path: Path) -> Dict:
-        timeline = self._get_face_positions_timeline(str(video_path), FACE_CHECK_INTERVAL_FRAMES)
-        pos, fps, w, h, frames = timeline['positions'], timeline['fps'], timeline['width'], timeline['height'], timeline['total_frames']
-        c_h, c_w = h, int(h * 9 / 16)
-        is_zero = len(pos) == 2 and pos[0][1] == w // 2 and pos[1][1] == w // 2
-        
-        if is_zero and ENABLE_ZERO_FACE_PANNING:
-            smooth_pos = self._generate_panning_positions(frames/fps, fps, w, c_w)
-        else:
-            smooth_pos = self._bezier_interpolate(pos, frames, SMOOTHING_STRENGTH)
-
-        # Process the points into a balanced tree to bypass FFMPEG nesting depth limits
-        fixed_pos = []
-        for t, f_x in smooth_pos:
-            c_x = int(f_x - c_w // 2) if not is_zero else int(f_x)
-            fixed_pos.append((t, c_x + c_w//2))  # The helper builder subtracts c_w//2, so we add it back here
-
-        tree_expr = self._build_balanced_ffmpeg_expr(fixed_pos, fps, w, c_w)
-        vf = f"crop=w={c_w}:h={c_h}:x='{tree_expr}':y=0,scale=1080:1920"
-        
-        cmd = ['ffmpeg', '-i', str(video_path), '-vf', vf, '-c:v', 'libx264', '-c:a', 'aac', '-preset', 'medium', '-crf', '23', '-y', str(output_path)]
-        subprocess.run(cmd, check=True, capture_output=True)
-        return {'success': True, 'output_path': str(output_path), 'mode': 'smooth'}
-    def _convert_to_reels_dynamic(self, video_path: Path, output_path: Path) -> Dict:
-        """Dynamic conversion by splitting into segments based on face count"""
         cap = cv2.VideoCapture(str(video_path))
-        w, h, fps = int(cap.get(3)), int(cap.get(4)), cap.get(5)
+        if not cap.isOpened():
+            raise RuntimeError(f"Cannot open video: {video_path}")
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps          = cap.get(cv2.CAP_PROP_FPS)
+        width        = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height       = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        raw_segments: List[Dict] = []
+        current: Dict | None     = None
+
+        for frame_idx in range(0, total_frames, FACE_CHECK_INTERVAL_FRAMES):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            rgb  = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            img  = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            ts_ms = int((frame_idx / fps) * 1000)
+            res  = detector.detect_for_video(img, ts_ms)
+
+            faces     = self._detect_valid_faces(res.detections, width, height)
+            fc        = len(faces)
+            timestamp = frame_idx / fps
+
+            if current is None or current["face_count"] != fc:
+                if current is not None:
+                    current["end_time"]  = timestamp
+                    current["end_frame"] = frame_idx
+                    raw_segments.append(current)
+                current = {
+                    "face_count":  fc,
+                    "start_time":  timestamp,
+                    "start_frame": frame_idx,
+                    "faces":       [faces] if faces else [],
+                }
+            else:
+                if faces:
+                    current["faces"].append(faces)
+
+        if current is not None:
+            current["end_time"]  = total_frames / fps
+            current["end_frame"] = total_frames
+            raw_segments.append(current)
+
         cap.release()
-        segments = self._merge_segments(self.detect_face_segments(str(video_path), FACE_CHECK_INTERVAL_FRAMES))
-        
-        if not segments:
-            return self._convert_single_face_reels(video_path, output_path, self._get_default_crop_position(w, h, "center"))
-        
-        import tempfile, shutil
-        t_dir = Path(tempfile.mkdtemp())
-        s_files = []
-        try:
-            a_path = t_dir / "audio.aac"
-            subprocess.run(['ffmpeg', '-i', str(video_path), '-vn', '-acodec', 'copy', '-y', str(a_path)], check=True, capture_output=True)
-            for i, seg in enumerate(segments):
-                s_raw = t_dir / f"seg_{i}_raw.mp4"
-                subprocess.run(['ffmpeg', '-i', str(video_path), '-ss', str(seg['start_time']), '-to', str(seg['end_time']), '-c:v', 'libx264', '-an', '-preset', 'ultrafast', '-y', str(s_raw)], check=True, capture_output=True)
-                s_proc = t_dir / f"seg_{i}_proc.mp4"
-                if seg['face_count'] == 2 and len(seg['faces']) > 0:
-                    cp = self._process_dual_face_crop(seg['faces'], w, h)
-                    l, r, sw, sh = cp['left_face'], cp['right_face'], cp['scale_width'], cp['scale_height']
-                    vf = f"[0:v]split=2[l][r];[l]crop={l['width']}:{l['height']}:{l['x']}:{l['y']},scale={sw}:{sh}[ls];[r]crop={r['width']}:{r['height']}:{r['x']}:{r['y']},scale={sw}:{sh}[rs];[ls][rs]vstack"
-                else:
-                    cp = self._get_default_crop_position(w, h, "center")
-                    vf = f"crop={cp['width']}:{cp['height']}:{cp['x']}:0,scale=1080:1920"
-                subprocess.run(['ffmpeg', '-i', str(s_raw), '-vf', vf, '-c:v', 'libx264', '-an', '-preset', 'medium', '-crf', '23', '-y', str(s_proc)], check=True, capture_output=True)
-                s_files.append(s_proc)
-            
-            c_list = t_dir / "list.txt"
-            with open(c_list, 'w') as f:
-                for sf in s_files: f.write(f"file '{sf}'\n")
-            v_only = t_dir / "v_only.mp4"
-            subprocess.run(['ffmpeg', '-f', 'concat', '-safe', '0', '-i', str(c_list), '-c', 'copy', '-y', str(v_only)], check=True, capture_output=True)
-            subprocess.run(['ffmpeg', '-i', str(v_only), '-i', str(a_path), '-c:v', 'copy', '-c:a', 'aac', '-shortest', '-y', str(output_path)], check=True, capture_output=True)
-            return {'success': True, 'output_path': str(output_path), 'mode': 'dynamic'}
-        finally: shutil.rmtree(t_dir, ignore_errors=True)
+        return self._merge_segments(raw_segments)
 
     def _merge_segments(self, segments: List[Dict]) -> List[Dict]:
-        if not segments: return []
-        filtered = []
+        """Merge short segments (< MIN_SEGMENT_DURATION_S) into their neighbor."""
+        if not segments:
+            return []
+
+        # Pass 1: absorb tiny segments into previous
+        filtered: List[Dict] = []
         for i, seg in enumerate(segments):
-            if seg['end_time'] - seg['start_time'] >= 1.0 or i == len(segments) - 1:
+            dur = seg["end_time"] - seg["start_time"]
+            if dur >= MIN_SEGMENT_DURATION_S or i == len(segments) - 1:
                 filtered.append(seg)
             elif filtered:
-                filtered[-1]['end_time'] = seg['end_time']
-                if 'faces' in seg: filtered[-1]['faces'].extend(seg['faces'])
-        if not filtered: return []
-        merged = []
+                filtered[-1]["end_time"] = seg["end_time"]
+                filtered[-1]["faces"].extend(seg.get("faces", []))
+        if not filtered:
+            return []
+
+        # Pass 2: merge adjacent segments with same face_count
+        merged: List[Dict] = []
         curr = filtered[0].copy()
         for seg in filtered[1:]:
-            if seg['face_count'] == curr['face_count']:
-                curr['end_time'] = seg['end_time']
-                if 'faces' in seg: curr['faces'].extend(seg['faces'])
+            if seg["face_count"] == curr["face_count"]:
+                curr["end_time"] = seg["end_time"]
+                curr["faces"].extend(seg.get("faces", []))
             else:
                 merged.append(curr)
                 curr = seg.copy()
@@ -532,358 +211,243 @@ class VideoCropper:
         return merged
 
     # ──────────────────────────────────────────────────────────────────────────
-    # MULTI-FACE TRACKING HELPERS
+    # Public entry points
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _get_multi_face_timeline(self, video_path: str, check_every_n_frames: int = 8) -> Dict:
-        """Get ALL faces throughout video as a timeline"""
-        base_options = python.BaseOptions(model_asset_buffer=self._get_face_detection_model())
-        video_options = vision.FaceDetectorOptions(
-            base_options=base_options,
-            running_mode=vision.RunningMode.VIDEO,
-            min_detection_confidence=0.5,
-            min_suppression_threshold=0.3
-        )
-        video_detector = vision.FaceDetector.create_from_options(video_options)
-
-        cap = cv2.VideoCapture(str(video_path))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        
-        timeline = []
-        min_face_size = int(height * 0.08)
-        edge_margin = int(width * 0.05)
-
-        for frame_idx in range(0, total_frames, check_every_n_frames):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-            if not ret: break
-
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-            ts_ms = int((frame_idx / fps) * 1000)
-            res = video_detector.detect_for_video(mp_image, ts_ms)
-            
-            t = frame_idx / fps
-            valid_faces = []
-            if res.detections:
-                for d in res.detections:
-                    bbox = d.bounding_box
-                    w, h = int(bbox.width), int(bbox.height)
-                    if w < min_face_size or h < min_face_size: continue
-                    fc = int(bbox.origin_x) + w//2
-                    if fc < edge_margin or fc > width - edge_margin: continue
-                    conf = d.categories[0].score if d.categories else 0
-                    if conf < 0.6: continue
-                    ratio = w/h if h>0 else 0
-                    if ratio < 0.6 or ratio > 1.4: continue
-                    valid_faces.append({'x': fc, 'w': w})
-            
-            if valid_faces:
-                # Find the maximum face width in this frame
-                max_w = max(f['w'] for f in valid_faces)
-                
-                # Filter out background noise faces (must be at least half the size of the main face)
-                filtered_faces = [f for f in valid_faces if f['w'] >= max_w * 0.5]
-                
-                # Sort horizontally
-                filtered_faces.sort(key=lambda f: f['x'])
-                
-                # Merge duplicate detections referring to the identical person (< 10% screen width apart)
-                merged_x = []
-                for f in filtered_faces:
-                    if not merged_x or (f['x'] - merged_x[-1] > width * 0.1):
-                        merged_x.append(f['x'])
-                
-                if merged_x:
-                    timeline.append((t, merged_x))
-
-        cap.release()
-        return {'timeline': timeline, 'fps': fps, 'width': width, 'total_frames': total_frames}
-
-    def _build_balanced_ffmpeg_expr(self, smooth_pos, fps, width, crop_width) -> str:
-        """Builds a mathematically balanced log(N) O-depth FFmpeg tree to bypass parsing limits."""
-        sample_int = int(fps)
-        segments = []
-        
-        for i, idx in enumerate(range(0, len(smooth_pos), sample_int)):
-            t, f_x = smooth_pos[idx]
-            f_num = int(t * fps)
-            c_x = int(f_x - crop_width // 2)
-            c_x = max(0, min(c_x, width - crop_width))
-
-            next_idx = idx + sample_int
-            if next_idx < len(smooth_pos):
-                n_t, n_f_x = smooth_pos[next_idx]
-                n_f = int(n_t * fps)
-                n_c_x = int(n_f_x - crop_width // 2)
-                n_c_x = max(0, min(n_c_x, width - crop_width))
-                if n_f > f_num:
-                    expr = f"{c_x}+(n-{f_num})*({n_c_x}-{c_x})/{n_f - f_num}"
-                    segments.append((f_num, n_f, expr))
-            else:
-                segments.append((f_num, float('inf'), str(c_x)))
-                
-        if not segments:
-            return "0"
-
-        # Recursively construct balanced tree
-        def build_tree(segs):
-            if len(segs) == 1: return segs[0][2]
-            mid = len(segs) // 2
-            return f"if(lt(n,{segs[mid][0]}),{build_tree(segs[:mid])},{build_tree(segs[mid:])})"
-            
-        first_frame = segments[0][0]
-        first_val = segments[0][2].split('+')[0] if '+' in segments[0][2] else segments[0][2]
-        
-        tree = build_tree(segments)
-        if first_frame > 0:
-            return f"if(lt(n,{first_frame}),{first_val},{tree})"
-        return tree
-
-    def _build_expr(self, smooth_pos, fps, width, crop_width):
-        return self._build_balanced_ffmpeg_expr(smooth_pos, fps, width, crop_width)
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 9:8 CROPPING  — face-tracked crop to 9:8 (half of 9:16)
-    # ──────────────────────────────────────────────────────────────────────────
+    def convert_to_reels(self, video_path: str, output_path: str = None, **kwargs) -> Dict:
+        """Convert video to 9:16 (1080×1920) using face-count rules."""
+        return self._process(video_path, output_path, ratio="9:16", out_w=1080, out_h=1920)
 
     def crop_to_9x8(self, video_path: str, output_path: str = None) -> Dict:
-        """
-        Crop video to 9:8 aspect ratio with smooth face tracking.
-        Used as the building block for the stacked photo/video reel formats.
+        """Convert video to 9:8 (1080×960) using face-count rules."""
+        return self._process(video_path, output_path, ratio="9:8",  out_w=1080, out_h=960)
 
-        Input:
-            video_path: Source video (any aspect ratio)
-            output_path: Destination for the 9:8 crop (default: <stem>_9x8.mp4)
+    # ──────────────────────────────────────────────────────────────────────────
+    # Core processor
+    # ──────────────────────────────────────────────────────────────────────────
 
-        Output:
-            dict with 'success' and 'output_path'
-            The output video is scaled to 1080x960 (one half of a 9:16 reel).
-        """
+    def _process(self, video_path: str, output_path: str | None, ratio: str, out_w: int, out_h: int) -> Dict:
         v_path = Path(video_path)
-        o_path = Path(output_path) if output_path else v_path.parent / f"{v_path.stem}_9x8.mp4"
+        o_path = Path(output_path) if output_path else v_path.parent / f"{v_path.stem}_{ratio.replace(':','x')}.mp4"
+
+        print(f"[CROPPER] {v_path.name}  →  {ratio} ({out_w}×{out_h})")
+
+        cap = cv2.VideoCapture(str(v_path))
+        src_w  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        src_h  = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+
+        # Native crop window size matching target aspect
+        crop_w = int(src_h * out_w / out_h)
+        crop_h = src_h
+        # Clamp if video is narrower than the target aspect
+        if crop_w > src_w:
+            crop_w = src_w
+            crop_h = int(src_w * out_h / out_w)
+
+        segments = self.detect_face_segments(str(v_path))
+        if not segments:
+            segments = [{"face_count": 0, "start_time": 0.0, "end_time": 1e9, "faces": []}]
+
+        t_dir   = Path(tempfile.mkdtemp())
+        proc_files: List[Path] = []
 
         try:
-            # Get video properties
-            cap = cv2.VideoCapture(str(v_path))
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            duration = total_frames / fps
-            cap.release()
+            # -- Extract audio once --
+            a_path = t_dir / "audio.aac"
+            subprocess.run(
+                ["ffmpeg", "-i", str(v_path), "-vn", "-acodec", "copy", "-y", str(a_path)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            has_audio = a_path.exists() and a_path.stat().st_size > 0
 
-            # Target box: 1080x960 (9:8 half of a 9:16 reel)
-            box_width = 1080
-            box_height = 960
+            # -- Process each face segment --
+            for i, seg in enumerate(segments):
+                raw_seg = t_dir / f"seg_{i}_raw.mp4"
+                proc_seg = t_dir / f"seg_{i}_proc.mp4"
 
-            # Source crop dimensions in 9:8 ratio
-            crop_height = height
-            crop_width = int(crop_height * 9 / 8)
+                subprocess.run(
+                    [
+                        "ffmpeg", "-i", str(v_path),
+                        "-ss", str(seg["start_time"]), "-to", str(seg["end_time"]),
+                        "-c:v", "libx264", "-an", "-preset", "ultrafast", "-crf", "18", "-y", str(raw_seg),
+                    ],
+                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
 
-            if crop_width > width:
-                print(f"[DEBUG] crop_to_9x8: Input is narrower than 9:8. Falling back to center crop.")
-                crop_width = width
-                crop_height = int(crop_width * 8 / 9)
-                crop_x = 0
-                crop_y = (height - crop_height) // 2
-                
-                vf = f"crop=w={crop_width}:h={crop_height}:x={crop_x}:y={crop_y},scale={box_width}:{box_height}"
-                cmd = [
-                    'ffmpeg', '-i', str(v_path),
-                    '-vf', vf,
-                    '-c:v', 'libx264', '-c:a', 'aac',
-                    '-preset', 'medium', '-crf', '23', '-y',
-                    str(o_path)
-                ]
-                subprocess.run(cmd, check=True, capture_output=True)
-                print(f"[DEBUG] crop_to_9x8 complete (fallback portrait): {box_width}x{box_height} → {o_path}")
-                return {'success': True, 'output_path': str(o_path)}
+                vf = self._build_filter(
+                    seg, ratio=ratio,
+                    src_w=src_w, src_h=src_h,
+                    crop_w=crop_w, crop_h=crop_h,
+                    out_w=out_w, out_h=out_h,
+                )
 
-            # Detect multi-face timeline
-            multi_data = self._get_multi_face_timeline(str(v_path), FACE_CHECK_INTERVAL_FRAMES)
-            timeline = multi_data['timeline']
-            
-            # Smooth face counts over time
-            raw_counts = [len(fx) for t, fx in timeline]
-            smoothed_counts = []
-            
-            # Rolling window to smooth out momentary flicker
-            for i in range(len(raw_counts)):
-                start = max(0, i - 5)
-                end = min(len(raw_counts), i + 6)
-                sub = raw_counts[start:end]
-                
-                # Get mode (most frequent value)
-                mode = max(set(sub), key=sub.count) if sub else 1
-                if mode == 0: mode = 1
-                smoothed_counts.append(mode)
-                
-            smoothed_counts = [max(1, min(3, c)) for c in smoothed_counts]
-            max_overall = max(smoothed_counts) if smoothed_counts else 1
-            print(f"[DEBUG] crop_to_9x8: Dynamically switching up to {max_overall} layouts.")
+                subprocess.run(
+                    ["ffmpeg", "-i", str(raw_seg), "-vf", vf,
+                     "-c:v", "libx264", "-an", "-preset", "medium", "-crf", "20", "-y", str(proc_seg)],
+                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                proc_files.append(proc_seg)
 
-            # Helper to generate FFmpeg enable expression for dynamic overlay switching
-            def get_enable_expr(target):
-                segments = []
-                start_t = None
-                for i, c in enumerate(smoothed_counts):
-                    t = timeline[i][0]
-                    if c == target and start_t is None: 
-                        start_t = t
-                    elif c != target and start_t is not None:
-                        segments.append((start_t, t))
-                        start_t = None
-                if start_t is not None:
-                    segments.append((start_t, duration))
-                if not segments: return "0"
-                return "+".join([f"between(t,{s:.3f},{e:.3f})" for s, e in segments])
+            # -- Concatenate processed segments --
+            concat_list = t_dir / "list.txt"
+            concat_list.write_text("\n".join(f"file '{p}'" for p in proc_files))
 
-            # Helper to generate smooth continuous tracks for a target layout
-            def get_tracks(n_faces):
-                trks = [[] for _ in range(n_faces)]
-                l_k = [width/(n_faces+1) * (i+1) for i in range(n_faces)]
-                if not timeline:
-                    for i in range(n_faces): trks[i] = [(0.0, l_k[i]), (duration, l_k[i])]
-                    return [self._bezier_interpolate(tr, total_frames, SMOOTHING_STRENGTH) for tr in trks]
-                
-                for i_t, (t, fx) in enumerate(timeline):
-                    if smoothed_counts[i_t] != n_faces:
-                        for i in range(n_faces): trks[i].append((t, l_k[i]))
-                        continue
-                    unassigned = list(fx)
-                    for i in range(n_faces):
-                        if not unassigned: trks[i].append((t, l_k[i]))
-                        else:
-                            bf = min(unassigned, key=lambda f: abs(f - l_k[i]))
-                            trks[i].append((t, bf))
-                            l_k[i] = bf
-                            unassigned.remove(bf)
-                
-                if trks[0][0][0] > 0:
-                    for i in range(n_faces): trks[i].insert(0, (0.0, trks[i][0][1]))
-                if trks[0][-1][0] < duration:
-                    for i in range(n_faces): trks[i].append((duration, trks[i][-1][1]))
-                return [self._bezier_interpolate(tr, total_frames, SMOOTHING_STRENGTH) for tr in trks]
+            v_only = t_dir / "v_only.mp4"
+            subprocess.run(
+                ["ffmpeg", "-f", "concat", "-safe", "0", "-i", str(concat_list),
+                 "-c", "copy", "-y", str(v_only)],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
 
-            vf_parts = []
-            
-            # --- BUILD FFMPEG GRAPH ---
-            if max_overall == 1:
-                # Video only ever contains 1 person
-                t1 = get_tracks(1)
-                e1 = self._build_expr(t1[0], fps, width, crop_width)
-                vf = f"crop=w={crop_width}:h={crop_height}:x='{e1}':y=0,scale={box_width}:{box_height}"
-                cmd = [
-                    'ffmpeg', '-i', str(v_path),
-                    '-vf', vf,
-                    '-c:v', 'libx264', '-c:a', 'aac',
-                    '-preset', 'medium', '-crf', '23', '-y',
-                    str(o_path)
-                ]
+            # -- Mux audio --
+            if has_audio:
+                subprocess.run(
+                    ["ffmpeg", "-i", str(v_only), "-i", str(a_path),
+                     "-c:v", "copy", "-c:a", "aac", "-shortest", "-y", str(o_path)],
+                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
             else:
-                # Video switches dynamically between 1-3 people
-                out_splits = "".join([f"[v{i}]" for i in range(max_overall)])
-                vf_parts.append(f"[0:v]split={max_overall}{out_splits};")
-                
-                # Base Mode 1 (Always running in background)
-                t1 = get_tracks(1)
-                e1 = self._build_expr(t1[0], fps, width, crop_width)
-                vf_parts.append(f"[v0]crop=w={crop_width}:h={crop_height}:x='{e1}':y=0,scale={box_width}:{box_height}[out1];")
-                
-                # Optional Mode 2
-                if max_overall >= 2:
-                    t2 = get_tracks(2)
-                    s2 = crop_width // 2
-                    e2_0, e2_1 = self._build_expr(t2[0], fps, width, s2), self._build_expr(t2[1], fps, width, s2)
-                    vf_parts.append(f"[v1]split=2[v1a][v1b];")
-                    vf_parts.append(f"[v1a]crop=w={s2}:h={crop_height}:x='{e2_0}':y=0[p2_0];")
-                    vf_parts.append(f"[v1b]crop=w={s2}:h={crop_height}:x='{e2_1}':y=0[p2_1];")
-                    vf_parts.append(f"[p2_0][p2_1]hstack=inputs=2,scale={box_width}:{box_height}[out2];")
-                
-                # Optional Mode 3
-                if max_overall == 3:
-                    t3 = get_tracks(3)
-                    s3 = crop_width // 3
-                    e3_0, e3_1, e3_2 = self._build_expr(t3[0], fps, width, s3), self._build_expr(t3[1], fps, width, s3), self._build_expr(t3[2], fps, width, s3)
-                    vf_parts.append(f"[v2]split=3[v2a][v2b][v2c];")
-                    vf_parts.append(f"[v2a]crop=w={s3}:h={crop_height}:x='{e3_0}':y=0[p3_0];")
-                    vf_parts.append(f"[v2b]crop=w={s3}:h={crop_height}:x='{e3_1}':y=0[p3_1];")
-                    vf_parts.append(f"[v2c]crop=w={s3}:h={crop_height}:x='{e3_2}':y=0[p3_2];")
-                    vf_parts.append(f"[p3_0][p3_1][p3_2]hstack=inputs=3,scale={box_width}:{box_height}[out3];")
-                
-                # Seamless Overlays based on temporal expression
-                if max_overall == 2:
-                    en2 = get_enable_expr(2)
-                    vf_parts.append(f"[out1][out2]overlay=enable='{en2}'[final]")
-                elif max_overall == 3:
-                    en2 = get_enable_expr(2)
-                    en3 = get_enable_expr(3)
-                    vf_parts.append(f"[out1][out2]overlay=enable='{en2}'[temp];")
-                    vf_parts.append(f"[temp][out3]overlay=enable='{en3}'[final]")
-                
-                vf = "".join(vf_parts)
-                cmd = [
-                    'ffmpeg', '-i', str(v_path),
-                    '-filter_complex', vf,
-                    '-map', '[final]', '-map', '0:a?',
-                    '-c:v', 'libx264', '-c:a', 'aac',
-                    '-preset', 'medium', '-crf', '23', '-y',
-                    str(o_path)
-                ]
-            subprocess.run(cmd, check=True, capture_output=True)
-            print(f"[DEBUG] crop_to_9x8 complete: {box_width}x{box_height} → {o_path}")
-            return {'success': True, 'output_path': str(o_path)}
+                shutil.copy2(str(v_only), str(o_path))
 
-        except subprocess.CalledProcessError as e:
-            err = e.stderr.decode() if e.stderr else str(e)
-            return {'success': False, 'error': f"crop_to_9x8 failed: {err}"}
-        except Exception as e:
-            return {'success': False, 'error': f"crop_to_9x8 failed: {str(e)}"}
+            print(f"[CROPPER] Done → {o_path}")
+            return {"success": True, "output_path": str(o_path)}
+
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "error": str(exc)}
+
+        finally:
+            shutil.rmtree(t_dir, ignore_errors=True)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # STACKING — combine two 9:8 clips into a single 9:16 reel
+    # FFmpeg filter builders
     # ──────────────────────────────────────────────────────────────────────────
 
-    def stack_videos(self, top_path: str, bottom_path: str, output_path: str) -> Dict:
+    def _build_filter(
+        self,
+        seg: Dict,
+        ratio: str,
+        src_w: int, src_h: int,
+        crop_w: int, crop_h: int,
+        out_w: int, out_h: int,
+    ) -> str:
+        fc    = seg["face_count"]
+        faces = seg.get("faces", [])
+
+        if ratio == "9:16":
+            return self._filter_9x16(fc, faces, src_w, src_h, crop_w, crop_h, out_w, out_h)
+        else:
+            return self._filter_9x8(fc, faces, src_w, src_h, crop_w, crop_h, out_w, out_h)
+
+    # ---------- helpers ----------
+
+    def _pan_expr(self, src_w: int, crop_w: int) -> str:
         """
-        Stack two 9:8 videos/images vertically to produce a 9:16 (1080x1920) output.
-
-        Input:
-            top_path:    Path to top 9:8 clip (1080x960) — e.g. AI photo/video
-            bottom_path: Path to bottom 9:8 clip (1080x960) — e.g. face-tracked highlight
-            output_path: Destination for the stacked 9:16 video
-
-        Output:
-            dict with 'success' and 'output_path'
-            Both inputs are re-scaled to 1080x960 before stacking, so mismatched
-            sizes are handled gracefully.
+        Smooth sinusoidal pan expression for FFmpeg.
+        Starts at the LEFT edge (x=0), reaches the RIGHT edge at t=3s,
+        then sweeps back — full cycle is PAN_CYCLE_SECONDS (6s).
+        Uses (1 - cos) which equals 0 at t=0 and 1 at t=half_period.
         """
-        try:
-            cmd = [
-                'ffmpeg',
-                '-i', str(top_path),
-                '-i', str(bottom_path),
-                '-filter_complex',
-                '[0:v]scale=1080:960[top];[1:v]scale=1080:960[bot];[top][bot]vstack[out]',
-                '-map', '[out]',
-                '-map', '1:a?',          # audio from bottom clip (optional)
-                '-c:v', 'libx264',
-                '-c:a', 'aac',
-                '-preset', 'medium',
-                '-crf', '23',
-                '-y',
-                str(output_path)
-            ]
-            subprocess.run(cmd, check=True, capture_output=True)
-            print(f"[DEBUG] stack_videos complete: 1080x1920 → {output_path}")
-            return {'success': True, 'output_path': str(output_path)}
+        pan_range = max(0, src_w - crop_w)
+        half = PAN_CYCLE_SECONDS / 2  # 3.0 — the left→right travel time
+        return f"(1-cos(t*2*PI/{PAN_CYCLE_SECONDS:.1f}))/2*{pan_range}"
 
-        except subprocess.CalledProcessError as e:
-            err = e.stderr.decode() if e.stderr else str(e)
-            return {'success': False, 'error': f"stack_videos failed: {err}"}
-        except Exception as e:
-            return {'success': False, 'error': f"stack_videos failed: {str(e)}"}
+    def _avg_center_x(self, faces: List[List[Dict]], face_idx: int, fallback: float) -> float:
+        """Average the center_x of face[face_idx] across all sample frames."""
+        xs = [
+            frame_faces[face_idx]["center_x"]
+            for frame_faces in faces
+            if len(frame_faces) > face_idx
+        ]
+        return sum(xs) / len(xs) if xs else fallback
+
+    def _clamp_cx(self, cx: float, crop_w: int, src_w: int) -> int:
+        return max(0, min(int(cx - crop_w / 2), src_w - crop_w))
+
+    # ---------- 9:16 rules ----------
+
+    def _filter_9x16(
+        self,
+        fc: int, faces: List[List[Dict]],
+        src_w: int, src_h: int,
+        crop_w: int, crop_h: int,
+        out_w: int, out_h: int,
+    ) -> str:
+
+        if fc == 0:
+            # Animate left-to-right pan
+            pan = self._pan_expr(src_w, crop_w)
+            return f"crop={crop_w}:{crop_h}:'{pan}':0,scale={out_w}:{out_h}"
+
+        if fc == 1:
+            avg_x = self._avg_center_x(faces, 0, src_w / 2)
+            cx    = self._clamp_cx(avg_x, crop_w, src_w)
+            return f"crop={crop_w}:{crop_h}:{cx}:0,scale={out_w}:{out_h}"
+
+        if fc == 2:
+            # Two stacked 9:8 blocks
+            half_h    = out_h // 2           # 960 px
+            blk_crop_w = int(src_h * out_w / half_h)   # 9:8 width in source pixels
+            blk_crop_h = src_h
+            if blk_crop_w > src_w:
+                blk_crop_w = src_w
+                blk_crop_h = int(src_w * half_h / out_w)
+
+            cx0 = self._clamp_cx(self._avg_center_x(faces, 0, src_w / 3),   blk_crop_w, src_w)
+            cx1 = self._clamp_cx(self._avg_center_x(faces, 1, src_w * 2/3), blk_crop_w, src_w)
+            cy  = (src_h - blk_crop_h) // 2
+
+            return (
+                f"[0:v]split=2[a][b];"
+                f"[a]crop={blk_crop_w}:{blk_crop_h}:{cx0}:{cy},scale={out_w}:{half_h}[ta];"
+                f"[b]crop={blk_crop_w}:{blk_crop_h}:{cx1}:{cy},scale={out_w}:{half_h}[tb];"
+                f"[ta][tb]vstack"
+            )
+
+        # >2 faces: split vertically down the middle, stack each half
+        half_out_h = out_h // 2
+        half_src_w = src_w // 2
+        return (
+            f"[0:v]split=2[l][r];"
+            f"[l]crop={half_src_w}:{src_h}:0:0,scale={out_w}:{half_out_h}[tl];"
+            f"[r]crop={half_src_w}:{src_h}:{half_src_w}:0,scale={out_w}:{half_out_h}[tr];"
+            f"[tl][tr]vstack"
+        )
+
+    # ---------- 9:8 rules ----------
+
+    def _filter_9x8(
+        self,
+        fc: int, faces: List[List[Dict]],
+        src_w: int, src_h: int,
+        crop_w: int, crop_h: int,
+        out_w: int, out_h: int,
+    ) -> str:
+
+        if fc == 0 or fc > 2:
+            # Animate left-to-right pan (both 0 and >2 faces)
+            pan = self._pan_expr(src_w, crop_w)
+            return f"crop={crop_w}:{crop_h}:'{pan}':0,scale={out_w}:{out_h}"
+
+        if fc == 1:
+            avg_x = self._avg_center_x(faces, 0, src_w / 2)
+            cx    = self._clamp_cx(avg_x, crop_w, src_w)
+            return f"crop={crop_w}:{crop_h}:{cx}:0,scale={out_w}:{out_h}"
+
+        # fc == 2: each face gets 4.5:8 (half of 9:8), hstacked
+        half_out_w  = out_w // 2           # 540 px
+        half_crop_w = int(src_h * half_out_w / out_h)   # 4.5:8 width in source
+        if half_crop_w > src_w // 2:
+            half_crop_w = src_w // 2
+
+        cx0 = self._clamp_cx(self._avg_center_x(faces, 0, src_w / 3),   half_crop_w, src_w)
+        cx1 = self._clamp_cx(self._avg_center_x(faces, 1, src_w * 2/3), half_crop_w, src_w)
+
+        return (
+            f"[0:v]split=2[a][b];"
+            f"[a]crop={half_crop_w}:{src_h}:{cx0}:0,scale={half_out_w}:{out_h}[la];"
+            f"[b]crop={half_crop_w}:{src_h}:{cx1}:0,scale={half_out_w}:{out_h}[lb];"
+            f"[la][lb]hstack"
+        )

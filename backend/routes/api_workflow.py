@@ -163,6 +163,21 @@ async def execute_workflow(
         final_output_path = video_dir / final_filename
         temp_output_path = TEMP_DIR / final_filename
 
+        # ── Pre-process main video to 9:8 with face tracking ────────────────
+        from backend.videoprocessor.video_cropper import VideoCropper
+        cropper = VideoCropper()
+        await broadcast_log("> Cropping main video to 9:8 with face tracking...")
+        cropped_main_path = TEMP_DIR / f"{stem}_9x8_{timestamp}.mp4"
+        loop = asyncio.get_event_loop()
+        crop_result = await loop.run_in_executor(None, cropper.crop_to_9x8, str(main_video_path), str(cropped_main_path))
+        if crop_result.get('success'):
+            main_for_workflow = str(cropped_main_path)
+            tmp_files_to_clean.append(main_for_workflow)
+            await broadcast_log("> 9:8 crop complete.")
+        else:
+            await broadcast_log(f"[WARN] Crop failed ({crop_result.get('error')}), using original video.")
+            main_for_workflow = str(main_video_path)
+
         # ── Assemble secondary media if multiple files ───────────────────────
         assembled_second = await assemble_secondary_media(
             second_media_paths, second_media_durations, client_id, TEMP_DIR, broadcast_log
@@ -172,7 +187,7 @@ async def execute_workflow(
 
         cmd = [
             sys.executable, str(workflow_script),
-            "--main", str(main_video_path),
+            "--main", main_for_workflow,
             "--second", assembled_second,
             "--main-position", main_position,
             "--text", text,

@@ -56,9 +56,26 @@ async def execute_workflow2(
         final_output_path = video_dir / final_filename
         temp_output_path = TEMP_DIR / final_filename
 
+        # ── Pre-process main video to 9:8 with face tracking ────────────────
+        from backend.videoprocessor.video_cropper import VideoCropper
+        import asyncio as _asyncio
+        cropper = VideoCropper()
+        await broadcast_log("> Cropping main video to 9:8 with face tracking...")
+        cropped_main_path = TEMP_DIR / f"{stem}_9x8_{timestamp}.mp4"
+        loop = _asyncio.get_event_loop()
+        crop_result = await loop.run_in_executor(None, cropper.crop_to_9x8, str(main_video_path), str(cropped_main_path))
+        cropped_main_to_clean = None
+        if crop_result.get('success'):
+            video_for_workflow = str(cropped_main_path)
+            cropped_main_to_clean = video_for_workflow
+            await broadcast_log("> 9:8 crop complete.")
+        else:
+            await broadcast_log(f"[WARN] Crop failed ({crop_result.get('error')}), using original video.")
+            video_for_workflow = str(main_video_path)
+
         cmd = [
             sys.executable, str(workflow_script),
-            "--video",          str(main_video_path),
+            "--video",          video_for_workflow,
             "--header-image",   header_image_path,
             "--story-text",     story_text,
             "--suffix-text1",   suffix_text1,
@@ -147,6 +164,12 @@ async def execute_workflow2(
         try:
             if os.path.exists(header_image_path):
                 os.remove(header_image_path)
+        except OSError:
+            pass
+        # Clean up cropped temp video
+        try:
+            if cropped_main_to_clean and os.path.exists(cropped_main_to_clean):
+                os.remove(cropped_main_to_clean)
         except OSError:
             pass
 
