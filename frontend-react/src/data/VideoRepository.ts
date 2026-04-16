@@ -212,6 +212,7 @@ export class VideoRepository {
     if (!response.ok) throw new Error('Failed to set clip marker');
   }
 
+
   static async getTranscript(videoId: string): Promise<any[]> {
     const response = await fetch(`${this.API_BASE}/transcript/${encodeURIComponent(videoId)}`);
     if (!response.ok) throw new Error('Failed to fetch full transcript');

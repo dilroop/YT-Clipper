@@ -220,21 +220,75 @@ export const GalleryPage: React.FC = () => {
               
               {/* Play Button Overlay */}
               {activePlayIndex !== i ? (
-                <div 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActivePlayIndex(i);
-                    const v = e.currentTarget.parentElement?.querySelector('video');
-                    if (v) {
-                      v.currentTime = 0;
-                      v.muted = false;
-                      v.play().catch(() => {});
-                    }
-                  }}
-                  style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                </div>
+                <>
+                  {/* Trash / Delete button — top right, only when not playing */}
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!window.confirm(`Delete "${clip.title || clip.filename}"?\nThis cannot be undone.`)) return;
+                      try {
+                        await VideoRepository.deleteClip(clip.project, clip.format, clip.filename);
+                        setClips(prev => prev.filter((_, idx) => idx !== i));
+                      } catch (err) {
+                        console.error('Delete failed', err);
+                        alert('Failed to delete clip.');
+                      }
+                    }}
+                    title="Delete clip"
+                    style={{
+                      position: 'absolute',
+                      top: '12px',
+                      right: '12px',
+                      background: 'rgba(0,0,0,0.55)',
+                      backdropFilter: 'blur(6px)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      width: '34px',
+                      height: '34px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      zIndex: 3,
+                      color: '#ff4444',
+                      transition: 'background 0.2s, transform 0.15s',
+                    }}
+                    onMouseOver={e => {
+                      (e.currentTarget as HTMLButtonElement).style.background = 'rgba(220,38,38,0.75)';
+                      (e.currentTarget as HTMLButtonElement).style.color = '#fff';
+                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.1)';
+                    }}
+                    onMouseOut={e => {
+                      (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.55)';
+                      (e.currentTarget as HTMLButtonElement).style.color = '#ff4444';
+                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)';
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                      <path d="M10 11v6M14 11v6"/>
+                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
+
+                  {/* Play button */}
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActivePlayIndex(i);
+                      const v = e.currentTarget.parentElement?.querySelector('video');
+                      if (v) {
+                        v.currentTime = 0;
+                        v.muted = false;
+                        v.play().catch(() => {});
+                      }
+                    }}
+                    style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  </div>
+                </>
               ) : (
                 /* Details Button Overlay (shown only when playing) */
                 <button
