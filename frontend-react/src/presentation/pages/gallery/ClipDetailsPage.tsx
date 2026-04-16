@@ -916,14 +916,15 @@ export const ClipDetailsPage: React.FC = () => {
                 setLogs([]);
                 
                 const url = clip.info_data.video.url;
-                const format = clip.info_data.clip.format.toLowerCase().includes('reel') ? 'reels' : 'original';
+                const format = clip.info_data.clip.format || 'original';
+                const burnCaptions = clip.info_data.clip.burn_captions !== undefined ? clip.info_data.clip.burn_captions : true;
                 
                 updatedClip.id = 'refine-target';
                 
                 await VideoRepository.processVideo(
                   url,
                   format,
-                  true, // burnCaptions
+                  burnCaptions, // burnCaptions
                   'viral-moments', // strategy
                   null, // extraContext
                   clientId,
