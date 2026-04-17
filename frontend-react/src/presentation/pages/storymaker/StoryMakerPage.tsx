@@ -60,6 +60,7 @@ export interface StoryStyle {
   bodyPosition: Position;
   bodyPaddingLeft: number;
   bodyPaddingRight: number;
+  highlightColor: string;
 }
 
 interface StoryContent {
@@ -113,6 +114,7 @@ const defaultStyle = (): StoryStyle => ({
   bodyPosition: 'bottom-left',
   bodyPaddingLeft: 20,
   bodyPaddingRight: 20,
+  highlightColor: '#22DD66',
 });
 
 const loadSavedCurrentStyle = (): StoryStyle => {
@@ -138,6 +140,7 @@ const loadSavedCurrentStyle = (): StoryStyle => {
         bodyPosition: parsed.bodyPosition || 'bottom-left',
         bodyPaddingLeft: parsed.bodyPaddingLeft ?? parsed.bodyPaddingHorizontal ?? 20,
         bodyPaddingRight: parsed.bodyPaddingRight ?? parsed.bodyPaddingHorizontal ?? 20,
+        highlightColor: parsed.highlightColor || '#22DD66',
       };
     }
   } catch {}
@@ -219,8 +222,17 @@ function bgShapeStyle(shape: BgShape, color: string): React.CSSProperties {
   };
 }
 
-// Renders text element, applying bgShape including side-lines
-function renderTextEl(text: string, s: TextElementStyle, align: React.CSSProperties['textAlign']): React.ReactNode {
+function renderTextEl(text: string, s: TextElementStyle, align: React.CSSProperties['textAlign'], overrideWeight?: any, hColor?: string): React.ReactNode {
+  // 1. Parsing for highlights [text]
+  const parts = text.split(/(\[.*?\])/g);
+  const contentParts = parts.map((part, i) => {
+    if (part.startsWith('[') && part.endsWith(']')) {
+      return <span key={i} style={{ color: hColor || s.color }}>{part.slice(1, -1)}</span>;
+    }
+    return part;
+  });
+
+  // 2. Base Style
   const baseStyle: React.CSSProperties = {
     fontFamily: `'${s.font}', ${s.font}, sans-serif`,
     fontSize: s.fontSize,
@@ -229,20 +241,26 @@ function renderTextEl(text: string, s: TextElementStyle, align: React.CSSPropert
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
     textAlign: (s.textAlign as React.CSSProperties['textAlign']) || align,
+    fontWeight: overrideWeight || 800,
   };
+
+  // 3. Special Case: Side Lines
   if (s.bgShape === 'side-lines') {
     const lineColor = s.bgColor && s.bgColor.startsWith('#') ? s.bgColor : s.color;
+    const lAlign = baseStyle.textAlign;
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: lAlign === 'center' ? 'center' : (lAlign === 'right' ? 'flex-end' : 'flex-start') }}>
         <div style={{ flex: 1, height: 2, background: lineColor, opacity: 0.8 }} />
-        <span style={{ ...baseStyle, whiteSpace: 'nowrap', textAlign: 'center' }}>{text}</span>
+        <span style={{ ...baseStyle, whiteSpace: 'nowrap', textAlign: 'center' }}>{contentParts}</span>
         <div style={{ flex: 1, height: 2, background: lineColor, opacity: 0.8 }} />
       </div>
     );
   }
+
+  // 4. Default: optionally applying other shapes
   return (
     <div style={{ display: 'block', ...baseStyle, ...bgShapeStyle(s.bgShape, s.bgColor) }}>
-      {text}
+      {contentParts}
     </div>
   );
 }
@@ -449,7 +467,13 @@ const StoryCard: React.FC<StoryCardProps> = ({ content, style, cardRef, interact
       }}>
         {bodyElems.map(el => (
           <div key={el.key}>
-            {renderTextEl(el.text, el.s, (el.s.textAlign as React.CSSProperties['textAlign']) || bodyAlign)}
+            {renderTextEl(
+              el.text, 
+              el.s, 
+              (el.s.textAlign as React.CSSProperties['textAlign']) || bodyAlign,
+              undefined,
+              style.highlightColor
+            )}
           </div>
         ))}
       </div>
@@ -737,6 +761,7 @@ export const StoryMakerPage: React.FC = () => {
         bodyPosition: s.bodyPosition || 'bottom-left',
         bodyPaddingLeft: s.bodyPaddingLeft ?? s.bodyPaddingHorizontal ?? 20,
         bodyPaddingRight: s.bodyPaddingRight ?? s.bodyPaddingHorizontal ?? 20,
+        highlightColor: s.highlightColor || '#22DD66',
       }));
     } catch { return []; }
   });
@@ -890,7 +915,7 @@ export const StoryMakerPage: React.FC = () => {
         <button onClick={() => navigate('/')} style={navCircleBtnStyle} title="Home">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </button>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff', letterSpacing: '0.02em' }}>✨ Story Maker</h2>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff', letterSpacing: '0.02em' }}>Story Maker</h2>
         <div style={{ flex: 1 }} />
       </div>
 
@@ -926,12 +951,17 @@ export const StoryMakerPage: React.FC = () => {
               </div>
 
               <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
-                <label style={labelStyle}>Group (Alert + Title + Desc) Position
-                  <select value={currentStyle.bodyPosition} onChange={e => updStyle('bodyPosition', e.target.value as Position)} style={selectStyle}>
-                    {positions.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                <p style={{ ...labelStyle, marginBottom: 8, color: '#cc0000' }}>Highlight Color ([text])</p>
+                <ColorControl label="Highlight" value={currentStyle.highlightColor} onChange={c => updStyle('highlightColor', c)} />
+              </div>
+
+              <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
+                <p style={{ ...labelStyle, marginBottom: 8, color: '#cc0000' }}>Group (Alert + Title + Desc) Position</p>
+                <select value={currentStyle.bodyPosition} onChange={e => updStyle('bodyPosition', e.target.value as Position)} style={{ ...selectStyle, marginTop: 4 }}>
+                  {positions.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
                   <label style={labelStyle}>Left Padding: {currentStyle.bodyPaddingLeft}px
                     <input type="range" min={0} max={1000} value={currentStyle.bodyPaddingLeft} onChange={e => updStyle('bodyPaddingLeft', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
                   </label>
