@@ -40,13 +40,14 @@ header {
 
 .header-left .title-link {
     text-decoration: none;
-    color: var(--primary-color);
+    color: var(--text-primary);
 }
 
 h1 {
-    font-size: 32px;
+    font-size: 24px;
     font-weight: 800;
     letter-spacing: -0.5px;
+    color: var(--text-primary);
 }
 
 .header-buttons {

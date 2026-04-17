@@ -13,6 +13,11 @@ type AspectRatio = '1:1' | '2:3';
 // Alignment is separate from layout position — controls text-align within the block
 type TextAlign = 'left' | 'center' | 'right';
 
+const PRESET_FONTS = [
+  'Inter', 'Roboto', 'Bebas Neue', 'Montserrat', 'Oswald',
+  'Playfair Display', 'Poppins', 'Lato', 'Open Sans', 'Raleway', 'Ubuntu'
+];
+
 interface TextElementStyle {
   font: string;
   fontSize: number;
@@ -51,8 +56,9 @@ export interface StoryStyle {
   bgColor: string;
   watermark: WatermarkStyle;
   aspectRatio: AspectRatio;
-  // Shared position for the alert+title+description group
+  // Shared position/padding for the alert+title+description group
   bodyPosition: Position;
+  bodyPaddingHorizontal: number;
 }
 
 interface StoryContent {
@@ -104,6 +110,7 @@ const defaultStyle = (): StoryStyle => ({
   watermark: { position: 'top-right', padding: 16, font: 'Arial', fontSize: 14, color: '#ffffff' },
   aspectRatio: '2:3',
   bodyPosition: 'bottom-left',
+  bodyPaddingHorizontal: 20,
 });
 
 const loadSavedCurrentStyle = (): StoryStyle => {
@@ -127,6 +134,7 @@ const loadSavedCurrentStyle = (): StoryStyle => {
         feather:  parsed.gradient?.feather  ?? 40,
       },
         bodyPosition: parsed.bodyPosition || 'bottom-left',
+        bodyPaddingHorizontal: parsed.bodyPaddingHorizontal ?? 20,
       };
     }
   } catch {}
@@ -427,7 +435,7 @@ const StoryCard: React.FC<StoryCardProps> = ({ content, style, cardRef, interact
       {/* Layer 3a: Body group (Alert + Title + Description) — single unit, shared position */}
       <div style={{
         position: 'absolute',
-        padding: `14px 14px ${finalBodyPaddingBottom}px 14px`,
+        padding: `14px ${style.bodyPaddingHorizontal ?? 20}px ${finalBodyPaddingBottom}px ${style.bodyPaddingHorizontal ?? 20}px`,
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
@@ -551,9 +559,25 @@ const TextStyleEditor: React.FC<TextStyleEditorProps> = ({ label, value, onChang
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <label style={labelStyle}>Google Font
-              <input style={inputStyle} value={value.font} onChange={e => up('font', e.target.value)} placeholder="e.g. Roboto" onBlur={e => loadGoogleFont(e.target.value)} />
+            <label style={labelStyle}>Font (preset)
+              <select
+                value={PRESET_FONTS.includes(value.font) ? value.font : 'Custom'}
+                onChange={e => {
+                  if (e.target.value !== 'Custom') up('font', e.target.value);
+                }}
+                style={selectStyle}
+              >
+                {!PRESET_FONTS.includes(value.font) && <option value="Custom">Custom Font...</option>}
+                {PRESET_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                <option value="Custom">Custom Font...</option>
+              </select>
             </label>
+            <label style={labelStyle}>Custom Google Font
+              <input style={inputStyle} value={value.font} onChange={e => up('font', e.target.value)} placeholder="e.g. Bebas Neue" onBlur={e => loadGoogleFont(e.target.value)} />
+            </label>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <label style={labelStyle}>Text Align
               <div style={{ display: 'flex', gap: 4 }}>
                 {alignments.map(a => (
@@ -671,6 +695,11 @@ const topBtnStyle: React.CSSProperties = {
   color: '#ffffff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
   transition: 'background 0.15s',
 };
+const navCircleBtnStyle: React.CSSProperties = {
+  background: '#252525', border: 'none', borderRadius: '8px', width: '40px', height: '40px',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer',
+  transition: 'background 0.2s',
+};
 
 // ─────────────────────────────────────────────
 // Main Page
@@ -703,6 +732,7 @@ export const StoryMakerPage: React.FC = () => {
           feather:  s.gradient?.feather  ?? 40,
         },
         bodyPosition: s.bodyPosition || 'bottom-left',
+        bodyPaddingHorizontal: s.bodyPaddingHorizontal ?? 20,
       }));
     } catch { return []; }
   });
@@ -711,6 +741,10 @@ export const StoryMakerPage: React.FC = () => {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
+
+  // Bulk deletion states
+  const [isGridEditMode, setIsGridEditMode] = useState(false);
+  const [selectedStyleIds, setSelectedStyleIds] = useState<Set<string>>(new Set());
 
   // Persist saved styles list
   useEffect(() => {
@@ -779,8 +813,22 @@ export const StoryMakerPage: React.FC = () => {
     setRightView('grid');
   };
 
-  const handleDeleteStyle = (id: string) => {
-    setSavedStyles(prev => prev.filter(s => s.id !== id));
+
+  const toggleStyleSelection = (id: string) => {
+    setSelectedStyleIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedStyleIds.size > 0) {
+      setSavedStyles(prev => prev.filter(s => !selectedStyleIds.has(s.id)));
+      setSelectedStyleIds(new Set());
+    }
+    setIsGridEditMode(false);
   };
 
   const handleDownload = async (storyStyle: StoryStyle) => {
@@ -832,10 +880,14 @@ export const StoryMakerPage: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f0f0f', color: '#fff', fontFamily: 'Roboto, Arial, sans-serif' }}>
       {/* Top Bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid #3e3e3e', background: '#0f0f0f' }}>
-        <button onClick={() => navigate(-1)} style={topBtnStyle}>← Back</button>
-        <button onClick={() => navigate('/')} style={topBtnStyle}>🏠 Home</button>
+        <button onClick={() => navigate(-1)} style={navCircleBtnStyle} title="Back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <button onClick={() => navigate('/')} style={navCircleBtnStyle} title="Home">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </button>
         <div style={{ flex: 1 }} />
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#cc0000', letterSpacing: '0.02em' }}>✨ Story Maker</h2>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff', letterSpacing: '0.02em' }}>✨ Story Maker</h2>
       </div>
 
       {/* Body */}
@@ -874,6 +926,9 @@ export const StoryMakerPage: React.FC = () => {
                   <select value={currentStyle.bodyPosition} onChange={e => updStyle('bodyPosition', e.target.value as Position)} style={selectStyle}>
                     {positions.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
+                </label>
+                <label style={{ ...labelStyle, marginTop: 12 }}>Side Padding (Left/Right): {currentStyle.bodyPaddingHorizontal}px
+                  <input type="range" min={0} max={100} value={currentStyle.bodyPaddingHorizontal} onChange={e => updStyle('bodyPaddingHorizontal', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
                 </label>
               </div>
             </div>
@@ -1032,20 +1087,48 @@ export const StoryMakerPage: React.FC = () => {
               </button>
             ))}
             <div style={{ flex: 1 }} />
-            {savedStyles.length > 0 && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {savedStyles.map(s => (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#282828', border: '1px solid #3e3e3e', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#aaa' }}>
-                    {s.name}
-                    <button onClick={() => handleDeleteStyle(s.id)} style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
-                  </div>
-                ))}
-              </div>
+            {rightView === 'preview' && (
+              <button
+                onClick={() => handleDownload(currentStyle)}
+                disabled={downloading === currentStyle.id}
+                style={{
+                  ...topBtnStyle, background: '#cc0000', color: '#fff', border: 'none',
+                  padding: '7px 20px', fontSize: 13, fontWeight: 700,
+                }}
+              >
+                {downloading === currentStyle.id ? '⏳ Rendering...' : '⬇ Export Current Preview'}
+              </button>
+            )}
+            {rightView === 'grid' && savedStyles.length > 0 && (
+              <button
+                onClick={() => {
+                  if (isGridEditMode) handleBulkDelete();
+                  else setIsGridEditMode(true);
+                }}
+                style={{
+                  ...topBtnStyle,
+                  background: isGridEditMode ? (selectedStyleIds.size > 0 ? '#cc0000' : '#3e3e3e') : '#1a1a1a',
+                  color: isGridEditMode ? '#fff' : '#888',
+                  borderColor: isGridEditMode ? '#ff4d4d' : '#3e3e3e',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '7px 16px', borderRadius: 8,
+                }}
+              >
+                {isGridEditMode ? (
+                  <>✓ {selectedStyleIds.size > 0 ? `Delete (${selectedStyleIds.size})` : 'Done'}</>
+                ) : (
+                  <>🗑 Edit List</>
+                )}
+              </button>
             )}
           </div>
 
           {/* Content area */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20, alignItems: 'center' }}>
+          <div style={{
+            flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20, alignItems: 'center',
+            background: rightView === 'preview' ? '#e5e5e5' : '#111',
+            transition: 'background 0.3s ease',
+          }}>
 
             {rightView === 'preview' ? (
               <>
@@ -1069,18 +1152,36 @@ export const StoryMakerPage: React.FC = () => {
                       const scale = 0.5;
                       const displayW = cW * scale;
                       const displayH = cH * scale;
+                      const isSelected = selectedStyleIds.has(s.id);
                       return (
-                        <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, background: '#282828', padding: 12, borderRadius: 14, border: '1px solid #3e3e3e' }}>
-                          <p style={{ margin: 0, color: '#aaa', fontSize: 12, fontWeight: 700, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.name}</p>
+                        <div
+                          key={s.id}
+                          onClick={() => { if (isGridEditMode) toggleStyleSelection(s.id); }}
+                          style={{
+                            display: 'flex', flexDirection: 'column', gap: 10, background: '#282828', padding: 12,
+                            borderRadius: 14, border: `1px solid ${isSelected ? '#cc0000' : '#3e3e3e'}`,
+                            boxShadow: isSelected ? '0 0 12px rgba(204,0,0,0.3)' : 'none',
+                            transition: 'all 0.2s',
+                          }}
+                        >
+                          <p style={{ margin: 0, color: isSelected ? '#ff4d4d' : '#888', fontSize: 12, fontWeight: 700, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.name}</p>
                           <div
-                            style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', cursor: 'pointer', width: displayW, height: displayH }}
-                            onMouseEnter={() => setHoveredCard(s.id)}
-                            onMouseLeave={() => setHoveredCard(null)}
+                            style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', cursor: isGridEditMode ? 'pointer' : 'default', width: displayW, height: displayH }}
+                            onMouseEnter={() => { if (!isGridEditMode) setHoveredCard(s.id); }}
+                            onMouseLeave={() => { if (!isGridEditMode) setHoveredCard(null); }}
                           >
-                            <div style={{ position: 'absolute', top: 0, left: 0, transformOrigin: 'top left', transform: `scale(${scale})`, pointerEvents: 'none' }}>
+                            <div style={{ position: 'absolute', top: 0, left: 0, transformOrigin: 'top left', transform: `scale(${scale})`, pointerEvents: 'none', opacity: isGridEditMode ? 0.7 : 1 }}>
                               <StoryCard content={content} style={s} />
                             </div>
-                            {hoveredCard === s.id && (
+
+                            {/* Checkbox overlay in edit mode */}
+                            {isGridEditMode && (
+                              <div style={{ position: 'absolute', top: 10, right: 10, width: 22, height: 22, borderRadius: '50%', background: isSelected ? '#cc0000' : 'rgba(0,0,0,0.4)', border: `2px solid ${isSelected ? '#cc0000' : '#888'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                                {isSelected && <span style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }}>✓</span>}
+                              </div>
+                            )}
+
+                            {!isGridEditMode && hoveredCard === s.id && (
                               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <button
                                   onClick={() => handleDownload(s)}
