@@ -336,6 +336,20 @@ const StoryCard: React.FC<StoryCardProps> = ({ content, style, cardRef, interact
   const bodyAlign = alignFromPosition(bodyPos);
   const bodyCSS = positionToCSS(bodyPos);
 
+  // ── Smart Padding: Offset body if it overlaps with bottom-positioned footers ──
+  const getFooterHeight = (s: TextElementStyle) => (s.fontSize * 1.5) + 20; // 20 is footer container padding
+  let maxBottomFooterHeight = 0;
+  if (content.footer1Text && style.footer1.position.includes('bottom')) {
+    maxBottomFooterHeight = Math.max(maxBottomFooterHeight, getFooterHeight(style.footer1));
+  }
+  if (content.footer2Text && style.footer2.position.includes('bottom')) {
+    maxBottomFooterHeight = Math.max(maxBottomFooterHeight, getFooterHeight(style.footer2));
+  }
+
+  const finalBodyPaddingBottom = bodyPos.includes('bottom') && maxBottomFooterHeight > 0
+    ? maxBottomFooterHeight + 20 // footer height + 20px gap
+    : 14; // Default padding
+
   const bodyElems = [
     { text: content.alertText, s: style.alert, key: 'alert' },
     { text: content.titleText, s: style.title, key: 'title' },
@@ -413,7 +427,7 @@ const StoryCard: React.FC<StoryCardProps> = ({ content, style, cardRef, interact
       {/* Layer 3a: Body group (Alert + Title + Description) — single unit, shared position */}
       <div style={{
         position: 'absolute',
-        padding: '14px',
+        padding: `14px 14px ${finalBodyPaddingBottom}px 14px`,
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
@@ -509,7 +523,7 @@ const TextStyleEditor: React.FC<TextStyleEditorProps> = ({ label, value, onChang
     onChange({ ...value, [k]: v });
   };
 
-  const positions: Position[] = ['top-left','top-center','top-right','center','bottom-left','bottom-center','bottom-right'];
+  const positions: Position[] = ['top-left', 'top-center', 'top-right', 'center', 'bottom-left', 'bottom-center', 'bottom-right'];
   const alignments: TextAlign[] = ['left', 'center', 'right'];
 
   return (
@@ -525,8 +539,9 @@ const TextStyleEditor: React.FC<TextStyleEditorProps> = ({ label, value, onChang
         <span style={{ transform: open ? 'rotate(90deg)' : 'rotate(0)', display: 'inline-block', transition: '0.2s' }}>▶</span>
         Advanced {label}
       </button>
+
       {open && (
-        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8, padding: '10px', background: '#1a1a1a', borderRadius: 8, border: '1px solid #2a2a2a' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8, padding: '12px', background: '#1a1a1a', borderRadius: 8, border: '1px solid #2a2a2a' }}>
           {!hidePosition && (
             <label style={labelStyle}>Position
               <select value={value.position} onChange={e => up('position', e.target.value as Position)} style={selectStyle}>
@@ -534,50 +549,102 @@ const TextStyleEditor: React.FC<TextStyleEditorProps> = ({ label, value, onChang
               </select>
             </label>
           )}
-          <label style={labelStyle}>Text Align
-            <div style={{ display: 'flex', gap: 6 }}>
-              {alignments.map(a => (
-                <button key={a} onClick={() => up('textAlign', a)} style={{
-                  flex: 1, padding: '5px', border: `1px solid ${value.textAlign === a ? '#7c3aed' : '#333'}`,
-                  borderRadius: 4, background: value.textAlign === a ? '#7c3aed22' : '#0d0d0d',
-                  color: value.textAlign === a ? '#a78bfa' : '#888', cursor: 'pointer', fontSize: 12,
-                }}>
-                  {a === 'left' ? '⬅' : a === 'center' ? '↔' : '➡'}
-                </button>
-              ))}
-            </div>
-          </label>
-          <label style={labelStyle}>Google Font
-            <input style={inputStyle} value={value.font} onChange={e => up('font', e.target.value)} placeholder="e.g. Bebas Neue" onBlur={e => loadGoogleFont(e.target.value)} />
-          </label>
-          <label style={labelStyle}>Size: {value.fontSize}px
-            <input type="range" min={10} max={80} value={value.fontSize} onChange={e => up('fontSize', Number(e.target.value))} style={{ width: '100%', accentColor: '#7c3aed' }} />
-          </label>
-          <label style={labelStyle}>Text Color
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="color" value={value.color} onChange={e => up('color', e.target.value)} style={colorPickerStyle} />
-              <span style={{ fontSize: 11, color: '#777', fontFamily: 'monospace' }}>{value.color}</span>
-            </div>
-          </label>
-          <label style={labelStyle}>Background Style
-            <select value={value.bgShape} onChange={e => up('bgShape', e.target.value as BgShape)} style={selectStyle}>
-              <option value="none">None</option>
-              <option value="rectangle">Rectangle (fill)</option>
-              <option value="rounded">Rounded (fill)</option>
-              <option value="side-lines">Side Lines ——text——</option>
-            </select>
-          </label>
-          {(value.bgShape === 'rectangle' || value.bgShape === 'rounded' || value.bgShape === 'side-lines') && (
-            <label style={labelStyle}>{value.bgShape === 'side-lines' ? 'Line Color' : 'Background Color'}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="color" value={value.bgColor.startsWith('#') ? value.bgColor : '#ffffff'} onChange={e => up('bgColor', e.target.value)} style={colorPickerStyle} />
-                <span style={{ fontSize: 11, color: '#777', fontFamily: 'monospace' }}>{value.bgColor}</span>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <label style={labelStyle}>Google Font
+              <input style={inputStyle} value={value.font} onChange={e => up('font', e.target.value)} placeholder="e.g. Roboto" onBlur={e => loadGoogleFont(e.target.value)} />
+            </label>
+            <label style={labelStyle}>Text Align
+              <div style={{ display: 'flex', gap: 4 }}>
+                {alignments.map(a => (
+                  <button key={a} onClick={() => up('textAlign', a)} style={{
+                    flex: 1, padding: '4px', border: `1px solid ${value.textAlign === a ? '#cc0000' : '#333'}`,
+                    borderRadius: 4, background: value.textAlign === a ? '#cc000022' : '#0d0d0d',
+                    color: value.textAlign === a ? '#ff4d4d' : '#888', cursor: 'pointer', fontSize: 11,
+                  }}>
+                    {a === 'left' ? '⬅' : a === 'center' ? '↔' : '➡'}
+                  </button>
+                ))}
               </div>
             </label>
-          )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <label style={labelStyle}>Size: {value.fontSize}px
+              <input type="range" min={10} max={100} value={value.fontSize} onChange={e => up('fontSize', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
+            </label>
+            <ColorControl label="Text Color" value={value.color} onChange={v => up('color', v)} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
+            <label style={labelStyle}>Bg Style
+              <select value={value.bgShape} onChange={e => up('bgShape', e.target.value as BgShape)} style={selectStyle}>
+                <option value="none">None</option>
+                <option value="rectangle">Rectangle</option>
+                <option value="rounded">Rounded</option>
+                <option value="side-lines">Side Lines</option>
+              </select>
+            </label>
+            {value.bgShape !== 'none' && (
+              <ColorControl label={value.bgShape === 'side-lines' ? 'Line Color' : 'Bg Color'} value={value.bgColor} onChange={v => up('bgColor', v)} />
+            )}
+          </div>
         </div>
       )}
     </div>
+  );
+};
+
+// ─────────────────────────────────────────────
+// Color Picker with Alpha Selector
+// ─────────────────────────────────────────────
+
+const ColorControl: React.FC<{
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}> = ({ label, value, onChange }) => {
+  // Parse #RRGGBB or rgba(...) into [hex, opacity0to1]
+  const parse = (v: string): { hex: string; alpha: number } => {
+    if (v.startsWith('rgba')) {
+      const match = v.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+      if (match) {
+        const r = parseInt(match[1]).toString(16).padStart(2, '0');
+        const g = parseInt(match[2]).toString(16).padStart(2, '0');
+        const b = parseInt(match[3]).toString(16).padStart(2, '0');
+        const a = match[4] ? parseFloat(match[4]) : 1;
+        return { hex: `#${r}${g}${b}`, alpha: a };
+      }
+    }
+    if (v.startsWith('#')) {
+      return { hex: v.substring(0, 7), alpha: 1 };
+    }
+    return { hex: '#ffffff', alpha: 1 };
+  };
+
+  const { hex, alpha } = parse(value);
+
+  const handleChange = (newHex: string, newAlpha: number) => {
+    const r = parseInt(newHex.substring(1, 3), 16);
+    const g = parseInt(newHex.substring(3, 5), 16);
+    const b = parseInt(newHex.substring(5, 7), 16);
+    onChange(`rgba(${r}, ${g}, ${b}, ${newAlpha})`);
+  };
+
+  return (
+    <label style={labelStyle}>{label}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="color" value={hex} onChange={e => handleChange(e.target.value, alpha)} style={colorPickerStyle} />
+          <span style={{ fontSize: 11, color: '#777', fontFamily: 'monospace', flex: 1 }}>{value}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, color: '#555', minWidth: 40 }}>Alpha</span>
+          <input type="range" min={0} max={1} step={0.01} value={alpha} onChange={e => handleChange(hex, parseFloat(e.target.value))} style={{ flex: 1, accentColor: '#cc0000', height: 12 }} />
+          <span style={{ fontSize: 10, color: '#555', minWidth: 30 }}>{Math.round(alpha * 100)}%</span>
+        </div>
+      </div>
+    </label>
   );
 };
 
@@ -596,13 +663,13 @@ const inputStyle: React.CSSProperties = {
 const textareaStyle: React.CSSProperties = { ...inputStyle, resize: 'vertical', minHeight: 56 };
 const selectStyle: React.CSSProperties = { ...inputStyle };
 const colorPickerStyle: React.CSSProperties = {
-  width: 32, height: 32, padding: 0, border: 'none',
+  width: 32, height: 32, padding: 0, border: '1px solid #3e3e3e',
   background: 'none', cursor: 'pointer', borderRadius: 4,
 };
 const topBtnStyle: React.CSSProperties = {
-  padding: '7px 14px', background: '#111', border: '1px solid #2a2a2a', borderRadius: 8,
-  color: '#aaa', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-  transition: 'border-color 0.15s',
+  padding: '7px 14px', background: '#3e3e3e', border: '1px solid #4e4e4e', borderRadius: 8,
+  color: '#ffffff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+  transition: 'background 0.15s',
 };
 
 // ─────────────────────────────────────────────
@@ -762,13 +829,13 @@ export const StoryMakerPage: React.FC = () => {
   const positions: Position[] = ['top-left','top-center','top-right','center','bottom-left','bottom-center','bottom-right'];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f0f0f', color: '#fff', fontFamily: 'Roboto, Arial, sans-serif' }}>
       {/* Top Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid #1e1e1e', background: '#0d0d0d' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid #3e3e3e', background: '#0f0f0f' }}>
         <button onClick={() => navigate(-1)} style={topBtnStyle}>← Back</button>
         <button onClick={() => navigate('/')} style={topBtnStyle}>🏠 Home</button>
         <div style={{ flex: 1 }} />
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#7c3aed', letterSpacing: '0.02em' }}>✨ Story Maker</h2>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#cc0000', letterSpacing: '0.02em' }}>✨ Story Maker</h2>
       </div>
 
       {/* Body */}
@@ -776,70 +843,40 @@ export const StoryMakerPage: React.FC = () => {
 
         {/* ─── LEFT SIDEBAR ─── */}
         <div style={{
-          width: 320, minWidth: 300, overflowY: 'auto', padding: '16px',
-          borderRight: '1px solid #1e1e1e', background: '#0d0d0d',
+          width: 380, minWidth: 350, overflowY: 'auto', padding: '16px',
+          borderRight: '1px solid #3e3e3e', background: '#0f0f0f',
           display: 'flex', flexDirection: 'column', gap: 14,
         }}>
 
-          {/* Canvas */}
-          <SectionCard title="Canvas">
-            <div style={{ display: 'flex', gap: 8 }}>
-              {(['1:1', '2:3'] as AspectRatio[]).map(ar => (
-                <button key={ar} onClick={() => updStyle('aspectRatio', ar)} style={{
-                  flex: 1, padding: '8px',
-                  border: `2px solid ${currentStyle.aspectRatio === ar ? '#7c3aed' : '#333'}`,
-                  borderRadius: 8, background: currentStyle.aspectRatio === ar ? '#7c3aed22' : '#111',
-                  color: currentStyle.aspectRatio === ar ? '#a78bfa' : '#888', cursor: 'pointer', fontWeight: 700, fontSize: 14,
-                }}>
-                  {ar}
-                </button>
-              ))}
-            </div>
-            <label style={{ ...labelStyle, marginTop: 4 }}>Background Color
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="color" value={currentStyle.bgColor} onChange={e => updStyle('bgColor', e.target.value)} style={colorPickerStyle} />
-                <span style={{ color: '#777', fontSize: 11, fontFamily: 'monospace' }}>{currentStyle.bgColor}</span>
+          {/* ── Main Content (Alert, Title, Description) ── */}
+          <SectionCard title="Main Content">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div>
+                <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Alert Text</p>
+                <input style={inputStyle} value={content.alertText} onChange={e => updContent('alertText', e.target.value)} placeholder="BREAKING 🚨" />
+                <TextStyleEditor label="Alert" value={currentStyle.alert} onChange={v => updStyle('alert', v)} hidePosition />
               </div>
-            </label>
-          </SectionCard>
 
-          {/* Gradient */}
-          <SectionCard title="Background Gradient">
-            <label style={labelStyle}>Color
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="color" value={currentStyle.gradient.color} onChange={e => updGradient('color', e.target.value)} style={colorPickerStyle} />
-                <span style={{ color: '#777', fontSize: 11, fontFamily: 'monospace' }}>{currentStyle.gradient.color}</span>
+              <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
+                <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Title Text</p>
+                <textarea style={textareaStyle} value={content.titleText} onChange={e => updContent('titleText', e.target.value)} placeholder="Your main headline..." />
+                <TextStyleEditor label="Title" value={currentStyle.title} onChange={v => updStyle('title', v)} hidePosition />
               </div>
-            </label>
-            <label style={labelStyle}>Angle: {currentStyle.gradient.angle}°
-              <input type="range" min={0} max={360} value={currentStyle.gradient.angle} onChange={e => updGradient('angle', Number(e.target.value))} style={{ width: '100%', accentColor: '#7c3aed' }} />
-            </label>
-            <label style={labelStyle}>Opacity: {currentStyle.gradient.opacity ?? 100}%
-              <input type="range" min={0} max={100} value={currentStyle.gradient.opacity ?? 100} onChange={e => updGradient('opacity', Number(e.target.value))} style={{ width: '100%', accentColor: '#7c3aed' }} />
-            </label>
-            <label style={labelStyle}>Coverage (solid end): {currentStyle.gradient.coverage ?? 60}%
-              <input type="range" min={0} max={100} value={currentStyle.gradient.coverage ?? 60} onChange={e => updGradient('coverage', Number(e.target.value))} style={{ width: '100%', accentColor: '#7c3aed' }} />
-            </label>
-            <label style={labelStyle}>Feather width: {currentStyle.gradient.feather ?? 40}px
-              <input type="range" min={0} max={200} value={currentStyle.gradient.feather ?? 40} onChange={e => updGradient('feather', Number(e.target.value))} style={{ width: '100%', accentColor: '#7c3aed' }} />
-            </label>
-            {/* Visual preview bar */}
-            <div style={{
-              height: 12, borderRadius: 6, marginTop: 2,
-              background: (() => {
-                const g = currentStyle.gradient;
-                const hex = g.color.replace('#', '');
-                const r2 = parseInt(hex.substring(0,2),16)||0;
-                const g2 = parseInt(hex.substring(2,4),16)||0;
-                const b2 = parseInt(hex.substring(4,6),16)||0;
-                const op = (g.opacity ?? 100) / 100;
-                const cardDim2 = 540;
-                const fp = Math.min(((g.feather ?? 40) / cardDim2) * 100, g.coverage ?? 60);
-                const se = Math.max(0, (g.coverage ?? 60) - fp);
-                const sc = `rgba(${r2},${g2},${b2},${op})`;
-                return `linear-gradient(90deg, ${sc} 0%, ${sc} ${se.toFixed(1)}%, rgba(${r2},${g2},${b2},0) ${(g.coverage??60).toFixed(1)}%)`;
-              })(),
-            }} />
+
+              <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
+                <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Description Text</p>
+                <textarea style={textareaStyle} value={content.descriptionText} onChange={e => updContent('descriptionText', e.target.value)} placeholder="Supporting details..." />
+                <TextStyleEditor label="Description" value={currentStyle.description} onChange={v => updStyle('description', v)} hidePosition />
+              </div>
+
+              <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
+                <label style={labelStyle}>Group (Alert + Title + Desc) Position
+                  <select value={currentStyle.bodyPosition} onChange={e => updStyle('bodyPosition', e.target.value as Position)} style={selectStyle}>
+                    {positions.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </label>
+              </div>
+            </div>
           </SectionCard>
 
           {/* Image */}
@@ -852,12 +889,28 @@ export const StoryMakerPage: React.FC = () => {
                 <label style={labelStyle}>Zoom: {content.imageScale.toFixed(2)}×
                   <input type="range" min={0.5} max={3} step={0.01} value={content.imageScale}
                     onChange={e => updContent('imageScale', Number(e.target.value))}
-                    style={{ width: '100%', accentColor: '#7c3aed' }} />
+                    style={{ width: '100%', accentColor: '#cc0000' }} />
                 </label>
                 <p style={{ fontSize: 11, color: '#555', margin: 0 }}>Drag image in the preview to reposition it.</p>
                 <button onClick={() => handleImageUpload(null)} style={{ ...topBtnStyle, color: '#f87171', borderColor: '#f8717130', fontSize: 12, padding: '4px 10px', marginTop: 4 }}>Remove Image</button>
               </>
             )}
+          </SectionCard>
+
+          {/* Footers */}
+          <SectionCard title="Footers">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div>
+                <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Footer 1</p>
+                <input style={inputStyle} value={content.footer1Text} onChange={e => updContent('footer1Text', e.target.value)} placeholder="Source name..." />
+                <TextStyleEditor label="Footer 1" value={currentStyle.footer1} onChange={v => updStyle('footer1', v)} />
+              </div>
+              <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
+                <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Footer 2</p>
+                <input style={inputStyle} value={content.footer2Text} onChange={e => updContent('footer2Text', e.target.value)} placeholder="Date / Location..." />
+                <TextStyleEditor label="Footer 2" value={currentStyle.footer2} onChange={v => updStyle('footer2', v)} />
+              </div>
+            </div>
           </SectionCard>
 
           {/* Watermark */}
@@ -867,7 +920,7 @@ export const StoryMakerPage: React.FC = () => {
                 <input style={inputStyle} value={content.watermarkText} onChange={e => updContent('watermarkText', e.target.value)} placeholder="@yourhandle" />
               </label>
             )}
-            <label style={labelStyle}>Watermark Image (optional)
+            <label style={labelStyle}>Watermark Image
               <input type="file" accept="image/*" onChange={e => handleWatermarkImageUpload(e.target.files?.[0] || null)} style={{ color: '#aaa', fontSize: 12 }} />
             </label>
             {content.watermarkImageUrl && (
@@ -886,79 +939,77 @@ export const StoryMakerPage: React.FC = () => {
                   </select>
                 </label>
                 <label style={labelStyle}>Padding: {currentStyle.watermark.padding}px
-                  <input type="range" min={0} max={60} value={currentStyle.watermark.padding} onChange={e => updWatermark('padding', Number(e.target.value))} style={{ width: '100%', accentColor: '#7c3aed' }} />
+                  <input type="range" min={0} max={60} value={currentStyle.watermark.padding} onChange={e => updWatermark('padding', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
                 </label>
                 <label style={labelStyle}>Google Font
                   <input style={inputStyle} value={currentStyle.watermark.font} onChange={e => updWatermark('font', e.target.value)} onBlur={e => loadGoogleFont(e.target.value)} placeholder="e.g. Roboto" />
                 </label>
-                <label style={labelStyle}>Font Size: {currentStyle.watermark.fontSize}px
-                  <input type="range" min={8} max={36} value={currentStyle.watermark.fontSize} onChange={e => updWatermark('fontSize', Number(e.target.value))} style={{ width: '100%', accentColor: '#7c3aed' }} />
+                <label style={labelStyle}>Size: {currentStyle.watermark.fontSize}px
+                  <input type="range" min={8} max={36} value={currentStyle.watermark.fontSize} onChange={e => updWatermark('fontSize', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
                 </label>
-                <label style={labelStyle}>Color
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input type="color" value={currentStyle.watermark.color} onChange={e => updWatermark('color', e.target.value)} style={colorPickerStyle} />
-                    <span style={{ fontSize: 11, color: '#777', fontFamily: 'monospace' }}>{currentStyle.watermark.color}</span>
-                  </div>
-                </label>
+                <ColorControl label="Color" value={currentStyle.watermark.color} onChange={v => updWatermark('color', v)} />
               </div>
             )}
           </SectionCard>
 
-          {/* ── Body Group: Alert + Title + Description share position ── */}
-          <SectionCard title="Body Layout (Alert + Title + Description)">
-            <label style={labelStyle}>Group Position
-              <select value={currentStyle.bodyPosition} onChange={e => updStyle('bodyPosition', e.target.value as Position)} style={selectStyle}>
-                {positions.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </label>
-            <p style={{ fontSize: 11, color: '#555', margin: 0 }}>Alert, Title and Description flow together. Use Advanced panels below to tweak each element's individual font, color, and text-align.</p>
+          {/* Background */}
+          <SectionCard title="Background">
+            <ColorControl label="Base Solid Color" value={currentStyle.bgColor} onChange={v => updStyle('bgColor', v)} />
+            <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 12 }}>
+              <p style={{ ...labelStyle, color: '#cc0000', marginBottom: 6 }}>Gradient Overlay</p>
+              <ColorControl label="Gradient Color" value={currentStyle.gradient.color} onChange={v => updGradient('color', v)} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <label style={labelStyle}>Angle: {currentStyle.gradient.angle}°
+                  <input type="range" min={0} max={360} value={currentStyle.gradient.angle} onChange={e => updGradient('angle', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
+                </label>
+                <label style={labelStyle}>Opacity: {currentStyle.gradient.opacity ?? 100}%
+                  <input type="range" min={0} max={100} value={currentStyle.gradient.opacity ?? 100} onChange={e => updGradient('opacity', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
+                </label>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <label style={labelStyle}>Coverage: {currentStyle.gradient.coverage ?? 60}%
+                  <input type="range" min={0} max={100} value={currentStyle.gradient.coverage ?? 60} onChange={e => updGradient('coverage', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
+                </label>
+                <label style={labelStyle}>Feather: {currentStyle.gradient.feather ?? 40}px
+                  <input type="range" min={0} max={200} value={currentStyle.gradient.feather ?? 40} onChange={e => updGradient('feather', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
+                </label>
+              </div>
+              {/* Visual preview bar */}
+              <div style={{
+                height: 8, borderRadius: 4, marginTop: 8,
+                background: (() => {
+                  const g = currentStyle.gradient;
+                  const sc = g.color.startsWith('#') ? g.color : (g.color.includes('rgba') ? g.color : '#ffffff');
+                  const cardDim2 = 540;
+                  const fp = Math.min(((g.feather ?? 40) / cardDim2) * 100, g.coverage ?? 60);
+                  const se = Math.max(0, (g.coverage ?? 60) - fp);
+                  return `linear-gradient(90deg, ${sc} 0%, ${sc} ${se.toFixed(1)}%, rgba(255,255,255,0) ${(g.coverage??60).toFixed(1)}%)`;
+                })(),
+              }} />
+            </div>
           </SectionCard>
 
-          {/* Alert */}
-          <SectionCard title="Alert">
-            <label style={labelStyle}>Text
-              <input style={inputStyle} value={content.alertText} onChange={e => updContent('alertText', e.target.value)} placeholder="BREAKING 🚨" />
-            </label>
-            <TextStyleEditor label="Alert" value={currentStyle.alert} onChange={v => updStyle('alert', v)} hidePosition />
-          </SectionCard>
-
-          {/* Title */}
-          <SectionCard title="Title">
-            <label style={labelStyle}>Text
-              <textarea style={textareaStyle} value={content.titleText} onChange={e => updContent('titleText', e.target.value)} placeholder="Your main headline..." />
-            </label>
-            <TextStyleEditor label="Title" value={currentStyle.title} onChange={v => updStyle('title', v)} hidePosition />
-          </SectionCard>
-
-          {/* Description */}
-          <SectionCard title="Description">
-            <label style={labelStyle}>Text
-              <textarea style={textareaStyle} value={content.descriptionText} onChange={e => updContent('descriptionText', e.target.value)} placeholder="Supporting details..." />
-            </label>
-            <TextStyleEditor label="Description" value={currentStyle.description} onChange={v => updStyle('description', v)} hidePosition />
-          </SectionCard>
-
-          {/* Footer 1 */}
-          <SectionCard title="Footer 1">
-            <label style={labelStyle}>Text
-              <input style={inputStyle} value={content.footer1Text} onChange={e => updContent('footer1Text', e.target.value)} placeholder="Source name..." />
-            </label>
-            <TextStyleEditor label="Footer 1" value={currentStyle.footer1} onChange={v => updStyle('footer1', v)} />
-          </SectionCard>
-
-          {/* Footer 2 */}
-          <SectionCard title="Footer 2">
-            <label style={labelStyle}>Text
-              <input style={inputStyle} value={content.footer2Text} onChange={e => updContent('footer2Text', e.target.value)} placeholder="Date / Location..." />
-            </label>
-            <TextStyleEditor label="Footer 2" value={currentStyle.footer2} onChange={v => updStyle('footer2', v)} />
+          {/* Canvas */}
+          <SectionCard title="Canvas">
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['1:1', '2:3'] as AspectRatio[]).map(ar => (
+                <button key={ar} onClick={() => updStyle('aspectRatio', ar)} style={{
+                  flex: 1, padding: '6px',
+                  border: `2px solid ${currentStyle.aspectRatio === ar ? '#cc0000' : '#3e3e3e'}`,
+                  borderRadius: 8, background: currentStyle.aspectRatio === ar ? '#cc000022' : '#1f1f1f',
+                  color: currentStyle.aspectRatio === ar ? '#ff4d4d' : '#888', cursor: 'pointer', fontWeight: 700, fontSize: 12,
+                }}>
+                  {ar}
+                </button>
+              ))}
+            </div>
           </SectionCard>
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 8, paddingTop: 8, paddingBottom: 24 }}>
             <button onClick={handleSaveStyle} style={{
-              flex: 1, padding: '11px', border: '2px solid #7c3aed', borderRadius: 10,
-              background: '#7c3aed22', color: '#a78bfa', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+              flex: 1, padding: '11px', border: '2px solid #cc0000', borderRadius: 10,
+              background: '#cc000022', color: '#ff4d4d', cursor: 'pointer', fontWeight: 700, fontSize: 13,
             }}>
               💾 Save Style
             </button>
@@ -969,12 +1020,12 @@ export const StoryMakerPage: React.FC = () => {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
           {/* Toggle bar */}
-          <div style={{ display: 'flex', gap: 8, padding: '12px 20px', borderBottom: '1px solid #1e1e1e', background: '#0d0d0d', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, padding: '12px 20px', borderBottom: '1px solid #3e3e3e', background: '#0f0f0f', alignItems: 'center' }}>
             {(['preview', 'grid'] as const).map(v => (
               <button key={v} onClick={() => setRightView(v)} style={{
-                padding: '7px 18px', border: `2px solid ${rightView === v ? '#7c3aed' : '#2a2a2a'}`,
-                borderRadius: 8, background: rightView === v ? '#7c3aed22' : '#111',
-                color: rightView === v ? '#a78bfa' : '#666', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                padding: '7px 18px', border: `2px solid ${rightView === v ? '#cc0000' : '#4e4e4e'}`,
+                borderRadius: 8, background: rightView === v ? '#cc000022' : '#282828',
+                color: rightView === v ? '#ff4d4d' : '#888', cursor: 'pointer', fontWeight: 700, fontSize: 13,
                 textTransform: 'capitalize',
               }}>
                 {v === 'preview' ? '👁 Preview' : `⚡ Grid (${savedStyles.length})`}
@@ -984,9 +1035,9 @@ export const StoryMakerPage: React.FC = () => {
             {savedStyles.length > 0 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {savedStyles.map(s => (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#888' }}>
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#282828', border: '1px solid #3e3e3e', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#aaa' }}>
                     {s.name}
-                    <button onClick={() => handleDeleteStyle(s.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+                    <button onClick={() => handleDeleteStyle(s.id)} style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
                   </div>
                 ))}
               </div>
@@ -998,71 +1049,60 @@ export const StoryMakerPage: React.FC = () => {
 
             {rightView === 'preview' ? (
               <>
-                <h3 style={{ margin: 0, color: '#555', fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Live Preview — drag image to reframe</h3>
-                <div style={{ boxShadow: '0 8px 40px rgba(124,58,237,0.25)', borderRadius: 12, overflow: 'hidden' }}>
+                <h3 style={{ margin: 0, color: '#888', fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Live Preview — drag image to reframe</h3>
+                <div style={{ boxShadow: '0 8px 40px rgba(204,0,0,0.15)', borderRadius: 12, overflow: 'hidden' }}>
                   <StoryCard content={content} style={currentStyle} cardRef={previewRef} interactive onDragImage={handleDragImage} onDropFile={handleImageUpload} />
                 </div>
               </>
             ) : (
-              <>
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <h2 style={{ margin: '0 0 24px 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>Saved Styles ({savedStyles.length})</h2>
                 {savedStyles.length === 0 ? (
-                  <div style={{ color: '#555', textAlign: 'center', paddingTop: 60 }}>
-                    <p style={{ fontSize: 16, marginBottom: 8 }}>No saved styles yet</p>
-                    <p style={{ fontSize: 13 }}>Switch to Preview, tweak your design, then hit "Save Style"</p>
+                  <div style={{ padding: '60px 20px', textAlign: 'center', background: '#282828', borderRadius: 16, border: '1px dashed #3e3e3e', width: '100%', maxWidth: 500 }}>
+                    <p style={{ color: '#888', fontSize: 15, margin: 0 }}>No saved styles yet. Create one in the sidebar! ✨</p>
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, width: '100%', maxWidth: 1100 }}>
                     {savedStyles.map(s => {
-                      // Compute correct scaled dimensions to avoid zero-height containers
                       const cW = s.aspectRatio === '1:1' ? 500 : 360;
                       const cH = s.aspectRatio === '1:1' ? 500 : 540;
                       const scale = 0.5;
                       const displayW = cW * scale;
                       const displayH = cH * scale;
                       return (
-                      <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <p style={{ margin: 0, color: '#777', fontSize: 11, fontWeight: 700, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.name}</p>
-
-                        {/* Card container with hover overlay download button */}
-                        <div
-                          style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', cursor: 'pointer', width: displayW, height: displayH }}
-                          onMouseEnter={() => setHoveredCard(s.id)}
-                          onMouseLeave={() => setHoveredCard(null)}
-                        >
-                          {/* Scaled thumbnail — must clip correctly */}
-                          <div style={{ position: 'absolute', top: 0, left: 0, transformOrigin: 'top left', transform: `scale(${scale})`, pointerEvents: 'none' }}>
-                            <StoryCard content={content} style={s} />
-                          </div>
-
-                          {/* Download overlay — shows on hover */}
-                          {hoveredCard === s.id && (
-                            <div style={{
-                              position: 'absolute', inset: 0,
-                              background: 'rgba(0,0,0,0.55)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>
-                              <button
-                                onClick={() => handleDownload(s)}
-                                disabled={downloading === s.id}
-                                style={{
-                                  padding: '10px 20px', border: 'none', borderRadius: 10,
-                                  background: downloading === s.id ? '#555' : 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-                                  color: '#fff', cursor: downloading === s.id ? 'not-allowed' : 'pointer',
-                                  fontWeight: 700, fontSize: 13, boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
-                                }}
-                              >
-                                {downloading === s.id ? '⏳ Exporting…' : '⬇ Download 1080p'}
-                              </button>
+                        <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, background: '#282828', padding: 12, borderRadius: 14, border: '1px solid #3e3e3e' }}>
+                          <p style={{ margin: 0, color: '#aaa', fontSize: 12, fontWeight: 700, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.name}</p>
+                          <div
+                            style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', cursor: 'pointer', width: displayW, height: displayH }}
+                            onMouseEnter={() => setHoveredCard(s.id)}
+                            onMouseLeave={() => setHoveredCard(null)}
+                          >
+                            <div style={{ position: 'absolute', top: 0, left: 0, transformOrigin: 'top left', transform: `scale(${scale})`, pointerEvents: 'none' }}>
+                              <StoryCard content={content} style={s} />
                             </div>
-                          )}
+                            {hoveredCard === s.id && (
+                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <button
+                                  onClick={() => handleDownload(s)}
+                                  disabled={downloading === s.id}
+                                  style={{
+                                    padding: '10px 20px', border: 'none', borderRadius: 10,
+                                    background: downloading === s.id ? '#555' : 'linear-gradient(135deg, #cc0000, #ff4d4d)',
+                                    color: '#fff', cursor: downloading === s.id ? 'not-allowed' : 'pointer',
+                                    fontWeight: 700, fontSize: 13, boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                                  }}
+                                >
+                                  {downloading === s.id ? '⏳ Exporting…' : '⬇ Download 1080p'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-
-                        {/* No more hidden offscreen card needed — download renders fresh via createRoot */}
-                      </div>)
+                      );
                     })}
                   </div>
                 )}
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -1076,8 +1116,8 @@ export const StoryMakerPage: React.FC = () => {
 // ─────────────────────────────────────────────
 
 const SectionCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 12, padding: '14px 14px 12px' }}>
-    <p style={{ margin: '0 0 10px 0', fontSize: 11, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{title}</p>
+  <div style={{ background: '#1f1f1f', border: '1px solid #3e3e3e', borderRadius: 12, padding: '14px 14px 12px' }}>
+    <p style={{ margin: '0 0 10px 0', fontSize: 11, fontWeight: 800, color: '#cc0000', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{title}</p>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {children}
     </div>
