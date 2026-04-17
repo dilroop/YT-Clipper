@@ -58,7 +58,8 @@ export interface StoryStyle {
   aspectRatio: AspectRatio;
   // Shared position/padding for the alert+title+description group
   bodyPosition: Position;
-  bodyPaddingHorizontal: number;
+  bodyPaddingLeft: number;
+  bodyPaddingRight: number;
 }
 
 interface StoryContent {
@@ -110,7 +111,8 @@ const defaultStyle = (): StoryStyle => ({
   watermark: { position: 'top-right', padding: 16, font: 'Arial', fontSize: 14, color: '#ffffff' },
   aspectRatio: '2:3',
   bodyPosition: 'bottom-left',
-  bodyPaddingHorizontal: 20,
+  bodyPaddingLeft: 20,
+  bodyPaddingRight: 20,
 });
 
 const loadSavedCurrentStyle = (): StoryStyle => {
@@ -134,7 +136,8 @@ const loadSavedCurrentStyle = (): StoryStyle => {
         feather:  parsed.gradient?.feather  ?? 40,
       },
         bodyPosition: parsed.bodyPosition || 'bottom-left',
-        bodyPaddingHorizontal: parsed.bodyPaddingHorizontal ?? 20,
+        bodyPaddingLeft: parsed.bodyPaddingLeft ?? parsed.bodyPaddingHorizontal ?? 20,
+        bodyPaddingRight: parsed.bodyPaddingRight ?? parsed.bodyPaddingHorizontal ?? 20,
       };
     }
   } catch {}
@@ -435,7 +438,7 @@ const StoryCard: React.FC<StoryCardProps> = ({ content, style, cardRef, interact
       {/* Layer 3a: Body group (Alert + Title + Description) — single unit, shared position */}
       <div style={{
         position: 'absolute',
-        padding: `14px ${style.bodyPaddingHorizontal ?? 20}px ${finalBodyPaddingBottom}px ${style.bodyPaddingHorizontal ?? 20}px`,
+        padding: `14px ${style.bodyPaddingRight ?? 20}px ${finalBodyPaddingBottom}px ${style.bodyPaddingLeft ?? 20}px`,
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
@@ -732,7 +735,8 @@ export const StoryMakerPage: React.FC = () => {
           feather:  s.gradient?.feather  ?? 40,
         },
         bodyPosition: s.bodyPosition || 'bottom-left',
-        bodyPaddingHorizontal: s.bodyPaddingHorizontal ?? 20,
+        bodyPaddingLeft: s.bodyPaddingLeft ?? s.bodyPaddingHorizontal ?? 20,
+        bodyPaddingRight: s.bodyPaddingRight ?? s.bodyPaddingHorizontal ?? 20,
       }));
     } catch { return []; }
   });
@@ -886,8 +890,8 @@ export const StoryMakerPage: React.FC = () => {
         <button onClick={() => navigate('/')} style={navCircleBtnStyle} title="Home">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </button>
-        <div style={{ flex: 1 }} />
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ffffff', letterSpacing: '0.02em' }}>✨ Story Maker</h2>
+        <div style={{ flex: 1 }} />
       </div>
 
       {/* Body */}
@@ -927,9 +931,14 @@ export const StoryMakerPage: React.FC = () => {
                     {positions.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </label>
-                <label style={{ ...labelStyle, marginTop: 12 }}>Side Padding (Left/Right): {currentStyle.bodyPaddingHorizontal}px
-                  <input type="range" min={0} max={100} value={currentStyle.bodyPaddingHorizontal} onChange={e => updStyle('bodyPaddingHorizontal', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
-                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                  <label style={labelStyle}>Left Padding: {currentStyle.bodyPaddingLeft}px
+                    <input type="range" min={0} max={1000} value={currentStyle.bodyPaddingLeft} onChange={e => updStyle('bodyPaddingLeft', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
+                  </label>
+                  <label style={labelStyle}>Right Padding: {currentStyle.bodyPaddingRight}px
+                    <input type="range" min={0} max={1000} value={currentStyle.bodyPaddingRight} onChange={e => updStyle('bodyPaddingRight', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
+                  </label>
+                </div>
               </div>
             </div>
           </SectionCard>
