@@ -219,6 +219,39 @@ def get_history(limit: int = 50) -> List[Dict]:
         return []
 
 
+def get_history_entry(url: str) -> Optional[Dict]:
+    """
+    Get a specific history entry by URL
+
+    Args:
+        url: URL to search for
+
+    Returns:
+        Dictionary with history data or None if not found
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                id, url, video_id, title, channel, duration,
+                description, thumbnail, view_count, last_viewed, first_viewed
+            FROM history
+            WHERE url = ?
+        """, (url,))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
+
+    except Exception as e:
+        print(f"❌ Error getting history entry: {e}")
+        return None
+
+
 def clear_history() -> bool:
     """
     Clear all history entries

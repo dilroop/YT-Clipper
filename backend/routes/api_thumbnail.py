@@ -13,6 +13,24 @@ async def get_thumbnail(request: VideoURLRequest):
     Get video thumbnail and metadata without downloading
     """
     try:
+        # Handle local files (previously uploaded)
+        if request.url.startswith("local:"):
+            from backend.database import get_history_entry
+            entry = get_history_entry(request.url)
+            if entry:
+                return {
+                    "success": True,
+                    "video_id": entry["video_id"],
+                    "title": entry["title"],
+                    "channel": entry["channel"],
+                    "duration": entry["duration"],
+                    "description": entry["description"],
+                    "thumbnail": entry["thumbnail"],
+                    "thumbnail_fallback": entry["thumbnail"],
+                }
+            else:
+                raise HTTPException(status_code=404, detail="Local history entry not found")
+
         video_id = extract_video_id(request.url)
         thumbnail_urls = get_thumbnail_url(video_id)
 
