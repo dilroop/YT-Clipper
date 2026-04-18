@@ -101,6 +101,10 @@ export type HomeIntent =
   // Clips
   | { type: 'UPDATE_CLIP'; payload: { index: number; clip: Clip } }
   | { type: 'ADD_CUSTOM_CLIP'; payload: Clip }
+  // Upload Local
+  | { type: 'START_UPLOAD' }
+  | { type: 'UPLOAD_SUCCESS'; payload: VideoData }
+  | { type: 'UPLOAD_ERROR'; payload: string }
   // Reset
   | { type: 'RESET_TO_VIDEO_INFO' };
 
@@ -185,6 +189,14 @@ export function homeReducer(state: HomeState, intent: HomeIntent): HomeState {
     // Reset back to config screen
     case 'RESET_TO_VIDEO_INFO':
       return { ...state, screen: 'videoInfo', progress: null, clips: null, error: null, generationMode: null };
+
+    // Upload
+    case 'START_UPLOAD':
+      return { ...state, infoStatus: 'loading', error: null, screen: null, videoInfo: null };
+    case 'UPLOAD_SUCCESS':
+      return { ...state, infoStatus: 'success', videoInfo: intent.payload, screen: 'videoInfo', url: intent.payload.url || '' };
+    case 'UPLOAD_ERROR':
+      return { ...state, infoStatus: 'error', error: intent.payload };
 
     default:
       return state;

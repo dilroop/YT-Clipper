@@ -60,6 +60,22 @@ export const VideoInput: React.FC<Props> = ({ state, intents }) => {
     setHistoryOpen(false);
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      intents.uploadLocalVideo(file);
+      // Reset input value so the same file can be picked again if needed
+      e.target.value = '';
+    }
+  };
+
+  const triggerFileSelect = () => {
+    setHistoryOpen(false);
+    fileInputRef.current?.click();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       const trimmed = state.url.trim();
@@ -104,10 +120,57 @@ export const VideoInput: React.FC<Props> = ({ state, intents }) => {
           onFocus={() => setHistoryOpen(true)}
           onClick={() => setHistoryOpen(true)}
           onKeyDown={handleKeyDown}
+          style={{ paddingRight: '85px' }} // Room for clear and file buttons
         />
-        {state.url && (
-          <button className="clear-btn" aria-label="Clear input" onClick={intents.clearInput}>✕</button>
-        )}
+        
+        {/* Input End Icons */}
+        <div style={{ position: 'absolute', right: '8px', display: 'flex', gap: '4px', alignItems: 'center' }}>
+          {state.url && (
+            <button 
+              className="clear-btn" 
+              aria-label="Clear input" 
+              onClick={intents.clearInput}
+              style={{ position: 'static', padding: '8px', fontSize: '14px', color: '#666' }}
+            >
+              ✕
+            </button>
+          )}
+
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            accept="video/*"
+            onChange={handleFileSelect}
+          />
+          
+          <button
+            onClick={triggerFileSelect}
+            title="Select local video file"
+            style={{
+              width: '38px',
+              height: '38px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid #30363d',
+              borderRadius: '8px',
+              color: '#fff',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              flexShrink: 0
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.borderColor = '#8b949e'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = '#30363d'; }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              <line x1="12" y1="11" x2="12" y2="17"></line>
+              <line x1="9" y1="14" x2="15" y2="14"></line>
+            </svg>
+          </button>
+        </div>
         
         {/* History Dropdown */}
         {isHistoryOpen && (

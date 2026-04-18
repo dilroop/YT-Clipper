@@ -86,6 +86,23 @@ export class VideoRepository {
     return response.json();
   }
 
+  static async uploadLocalVideo(file: File): Promise<VideoData> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${this.API_BASE}/upload-video`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to upload local video');
+    }
+
+    return response.json();
+  }
+
   static async processVideo(
     url: string,
     format: string,

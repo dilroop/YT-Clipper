@@ -2,7 +2,10 @@ import re
 import requests
 
 def extract_video_id(url: str) -> str:
-    """Extract YouTube video ID from URL"""
+    """Extract YouTube video ID or local filename from URL"""
+    if url.startswith("local:"):
+        return url.replace("local:", "")
+    
     patterns = [
         r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})',
         r'youtube\.com/watch\?.*v=([a-zA-Z0-9_-]{11})',

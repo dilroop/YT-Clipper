@@ -45,6 +45,7 @@ from backend.routes import (
     api_workflow,
     api_workflow2,
     api_generate_metadata,
+    api_local_video,
     websocket
 )
 
@@ -73,6 +74,10 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "frontend-react")), na
 # Mount ToUpload folder for serving generated clips
 app.mount("/clips", StaticFiles(directory=str(BASE_DIR / "ToUpload")), name="clips")
 
+# Mount thumbnails folder for local video previews
+from backend.core.constants import THUMBNAILS_DIR
+app.mount("/thumbnails", StaticFiles(directory=str(THUMBNAILS_DIR)), name="thumbnails")
+
 # Include all routers
 app.include_router(pages.router)
 app.include_router(api_thumbnail.router)
@@ -86,6 +91,7 @@ app.include_router(api_upload.router)
 app.include_router(api_workflow.router)
 app.include_router(api_workflow2.router)
 app.include_router(api_generate_metadata.router)
+app.include_router(api_local_video.router)
 app.include_router(websocket.router)
 
 @app.on_event("shutdown")

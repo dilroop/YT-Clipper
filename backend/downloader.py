@@ -112,6 +112,24 @@ class VideoDownloader:
         }
 
         try:
+            # Handle local files (previously uploaded)
+            if url.startswith("local:"):
+                filename = url.replace("local:", "")
+                video_path = self.download_dir / filename
+                if not video_path.exists():
+                    raise FileNotFoundError(f"Local video file not found: {video_path}")
+                
+                # We need some basic info for the process flow
+                return {
+                    'success': True,
+                    'video_path': str(video_path),
+                    'video_id': filename.split('.')[0],
+                    'title': filename,
+                    'channel': 'Local File',
+                    'duration': 0, # Duration will be handled by transcriber/analyzer
+                    'description': 'Local uploaded file',
+                }
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Get video info first
                 info = ydl.extract_info(url, download=False)

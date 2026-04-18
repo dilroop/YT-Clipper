@@ -161,6 +161,16 @@ export function useHomeMVI() {
     dispatch({ type: 'UPDATE_AI_CONTENT_FILE', payload: file });
   }, []);
 
+  const uploadLocalVideo = useCallback(async (file: File) => {
+    dispatch({ type: 'START_UPLOAD' });
+    try {
+      const data = await VideoRepository.uploadLocalVideo(file);
+      dispatch({ type: 'UPLOAD_SUCCESS', payload: data });
+    } catch (err: any) {
+      dispatch({ type: 'UPLOAD_ERROR', payload: err.message });
+    }
+  }, []);
+
   return {
     state,
     intents: {
@@ -173,6 +183,7 @@ export function useHomeMVI() {
       updateAiProvider,
       updatePosition,
       updateAiContentFile,
+      uploadLocalVideo,
       fetchVideoInfo,
       analyzeVideo,
       processVideo,

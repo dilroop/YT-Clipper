@@ -45,4 +45,5 @@ export interface VideoData {
   thumbnail: string;
   channel: string;
   original_duration?: number;
+  url?: string;
 }
