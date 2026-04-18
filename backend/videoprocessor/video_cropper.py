@@ -9,10 +9,10 @@ Rules for 9:16 (Reels):
   - >2 faces → vertical centre-split, each half scaled to 9:8, then vstacked
 
 Rules for 9:8 (Workflow main block):
-  - 0 faces  → smooth left-right pan (3s cycles)
-  - 1 face   → center a 9:8 crop window on the face
-  - 2 faces  → each face gets a 4.5:8 crop; hstacked to fill 9:8
-  - >2 faces → smooth left-right pan (same as 0 faces)
+  - 0 count  → smooth left-right pan (3s cycles)
+  - 1 count  → center a 9:8 crop window on the target (face/torso)
+  - 2 count  → each target gets a 4.5:8 crop; hstacked to fill 9:8
+  - >2 count → smooth left-right pan (same as 0 count)
 """
 
 import cv2
@@ -32,7 +32,7 @@ from mediapipe.tasks.python import vision
 # Module-level constants
 # ──────────────────────────────────────────────────────────────────────────────
 
-FACE_CHECK_INTERVAL_FRAMES = 12   # Sample every N frames for performance
+FACE_CHECK_INTERVAL_FRAMES = 4    # Sample every N frames for performance
 MIN_SEGMENT_DURATION_S     = 1.5  # Shorter segments are merged to avoid flicker
 PAN_CYCLE_SECONDS          = 6.0  # Full cycle: left→right (3s) then right→left (3s)
 
@@ -52,14 +52,33 @@ class VideoCropper:
 
     def _get_face_detection_model(self) -> bytes:
         """Download (once) and return the MediaPipe face-detection model bytes."""
-        model_path = Path.home() / ".cache" / "mediapipe" / "blaze_face_short_range.tflite"
+        # Using full-range for better distance detection as planned
+        model_name = "blaze_face_full_range.tflite"
+        model_path = Path.home() / ".cache" / "mediapipe" / model_name
         model_path.parent.mkdir(parents=True, exist_ok=True)
         if not model_path.exists():
-            print("[CROPPER] Downloading MediaPipe face detection model…")
+            print(f"[CROPPER] Downloading MediaPipe face detection model ({model_name})…")
             url = (
                 "https://storage.googleapis.com/mediapipe-models/"
-                "face_detector/blaze_face_short_range/float16/1/"
-                "blaze_face_short_range.tflite"
+                "face_detector/blaze_face_full_range/float16/1/"
+                "blaze_face_full_range.tflite"
+            )
+            urllib.request.urlretrieve(url, model_path)
+            print("[CROPPER] Model downloaded.")
+        with open(model_path, "rb") as f:
+            return f.read()
+
+    def _get_pose_model(self) -> bytes:
+        """Download (once) and return the MediaPipe pose landmarker model bytes."""
+        model_name = "pose_landmarker_lite.task"
+        model_path = Path.home() / ".cache" / "mediapipe" / model_name
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        if not model_path.exists():
+            print(f"[CROPPER] Downloading MediaPipe pose landmarker model ({model_name})…")
+            url = (
+                "https://storage.googleapis.com/mediapipe-models/"
+                "pose_landmarker/pose_landmarker_lite/float16/1/"
+                "pose_landmarker_lite.task"
             )
             urllib.request.urlretrieve(url, model_path)
             print("[CROPPER] Model downloaded.")
@@ -74,10 +93,9 @@ class VideoCropper:
         """
         Filter raw MediaPipe detections to valid, prominent faces.
         Returns a list of dicts with 'center_x', 'center_y', 'width', 'height'.
-        Sorted left-to-right by center_x.
         """
-        min_face_size = int(height * 0.08)
-        edge_margin   = int(width  * 0.05)
+        min_face_size = int(height * 0.04)
+        edge_margin   = int(width  * 0.02)
         faces = []
 
         for det in (detections or []):
@@ -90,23 +108,22 @@ class VideoCropper:
             if cx < edge_margin or cx > width - edge_margin:
                 continue
             conf = det.categories[0].score if det.categories else 0.0
-            if conf < 0.6:
+            if conf < 0.35: # Slightly more lenient
                 continue
             ratio = fw / fh if fh > 0 else 0
-            if ratio < 0.6 or ratio > 1.4:
+            if ratio < 0.4 or ratio > 2.0:
                 continue
 
             faces.append({"center_x": cx, "center_y": y + fh // 2, "width": fw, "height": fh})
 
         faces.sort(key=lambda f: f["center_x"])
 
-        # Merge faces that are too close together (same person detected twice)
+        # Merge faces that are too close together
         merged: List[Dict] = []
         for f in faces:
             if not merged or (f["center_x"] - merged[-1]["center_x"] > width * 0.10):
                 merged.append(f)
 
-        # Downgrade 2-face to 1 when one face is tiny (likely background)
         if len(merged) == 2:
             w1, w2 = merged[0]["width"], merged[1]["width"]
             if min(w1, w2) / max(w1, w2) < 0.30:
@@ -114,21 +131,76 @@ class VideoCropper:
 
         return merged
 
-    def detect_face_segments(self, video_path: str) -> List[Dict]:
+    def _detect_valid_torsos(self, pose_result, width: int, height: int) -> List[Dict]:
         """
-        Scan the video, sample every FACE_CHECK_INTERVAL_FRAMES frames,
-        and return a merged list of segments keyed by face_count with
-        representative face positions.
+        Extract torso/person centers from pose landmarks.
+        Uses shoulder midpoint (landmark 11 & 12) as proxy for 'head/chest' center.
         """
-        model_bytes = self._get_face_detection_model()
-        base_options = python.BaseOptions(model_asset_buffer=model_bytes)
-        vid_options  = vision.FaceDetectorOptions(
-            base_options=base_options,
-            running_mode=vision.RunningMode.VIDEO,
-            min_detection_confidence=0.5,
-            min_suppression_threshold=0.3,
-        )
-        detector = vision.FaceDetector.create_from_options(vid_options)
+        if not pose_result or not pose_result.pose_landmarks:
+            return []
+
+        torsos = []
+        edge_margin = int(width * 0.02)
+
+        for landmarks in pose_result.pose_landmarks:
+            # 11: Left Shoulder, 12: Right Shoulder
+            l_sh = landmarks[11]
+            r_sh = landmarks[12]
+            
+            # MediaPipe landmarks are normalized [0, 1]
+            if l_sh.visibility < 0.4 or r_sh.visibility < 0.4:
+                continue
+                
+            cx = int(((l_sh.x + r_sh.x) / 2) * width)
+            cy = int(((l_sh.y + r_sh.y) / 2) * height)
+            
+            # Estimate a 'width' for sorting and merging based on shoulder distance
+            sh_dist = abs(l_sh.x - r_sh.x) * width
+            tw = int(sh_dist * 2.5) # Approximate person width
+            th = int(height * 0.3)  # Dummy height
+
+            if cx < edge_margin or cx > width - edge_margin:
+                continue
+                
+            torsos.append({"center_x": cx, "center_y": cy, "width": tw, "height": th})
+
+        torsos.sort(key=lambda f: f["center_x"])
+
+        # Merge torsos that are too close together
+        merged: List[Dict] = []
+        for t in torsos:
+            if not merged or (t["center_x"] - merged[-1]["center_x"] > width * 0.15):
+                merged.append(t)
+        
+        return merged
+
+    def detect_segments(self, video_path: str, mode: str = "face") -> List[Dict]:
+        """
+        Scan the video and return a merged list of segments.
+        mode can be 'face' or 'torso'.
+        """
+        if mode == "torso":
+            model_bytes = self._get_pose_model()
+            base_options = python.BaseOptions(model_asset_buffer=model_bytes)
+            vid_options = vision.PoseLandmarkerOptions(
+                base_options=base_options,
+                running_mode=vision.RunningMode.VIDEO,
+                num_poses=5,
+                min_pose_detection_confidence=0.3,
+                min_pose_presence_confidence=0.3,
+                min_tracking_confidence=0.3,
+            )
+            detector = vision.PoseLandmarker.create_from_options(vid_options)
+        else:
+            model_bytes = self._get_face_detection_model()
+            base_options = python.BaseOptions(model_asset_buffer=model_bytes)
+            vid_options = vision.FaceDetectorOptions(
+                base_options=base_options,
+                running_mode=vision.RunningMode.VIDEO,
+                min_detection_confidence=0.3,
+                min_suppression_threshold=0.3,
+            )
+            detector = vision.FaceDetector.create_from_options(vid_options)
 
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
@@ -141,6 +213,10 @@ class VideoCropper:
 
         raw_segments: List[Dict] = []
         current: Dict | None     = None
+        
+        # Hysteresis variables for smoothing flickering detections
+        hysteresis_frames = 6 # ~0.2s at 30fps
+        consecutive_misses = 0
 
         for frame_idx in range(0, total_frames, FACE_CHECK_INTERVAL_FRAMES):
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -153,24 +229,46 @@ class VideoCropper:
             ts_ms = int((frame_idx / fps) * 1000)
             res  = detector.detect_for_video(img, ts_ms)
 
-            faces     = self._detect_valid_faces(res.detections, width, height)
-            fc        = len(faces)
+            if mode == "torso":
+                targets = self._detect_valid_torsos(res, width, height)
+            else:
+                targets = self._detect_valid_faces(res.detections, width, height)
+            
+            tc = len(targets)
             timestamp = frame_idx / fps
 
-            if current is None or current["face_count"] != fc:
+            # Apply stickiness: if we had targets and now we don't, wait a few frames
+            if current is not None and current["face_count"] > 0 and tc == 0:
+                consecutive_misses += 1
+                if consecutive_misses < hysteresis_frames:
+                    # Keep the previous targets for this frame
+                    # We don't advance the segment yet
+                    continue
+            
+            consecutive_misses = 0
+
+            if current is None or current["face_count"] != tc:
                 if current is not None:
                     current["end_time"]  = timestamp
                     current["end_frame"] = frame_idx
                     raw_segments.append(current)
                 current = {
-                    "face_count":  fc,
+                    "face_count":  tc, # Using face_count key for backward compatibility in Rules
                     "start_time":  timestamp,
                     "start_frame": frame_idx,
-                    "faces":       [faces] if faces else [],
+                    "faces":       [targets] if targets else [],
                 }
             else:
-                if faces:
-                    current["faces"].append(faces)
+                if targets:
+                    current["faces"].append(targets)
+
+        if current is not None:
+            current["end_time"]  = total_frames / fps
+            current["end_frame"] = total_frames
+            raw_segments.append(current)
+
+        cap.release()
+        return self._merge_segments(raw_segments)
 
         if current is not None:
             current["end_time"]  = total_frames / fps
@@ -214,19 +312,19 @@ class VideoCropper:
     # Public entry points
     # ──────────────────────────────────────────────────────────────────────────
 
-    def convert_to_reels(self, video_path: str, output_path: str = None, **kwargs) -> Dict:
-        """Convert video to 9:16 (1080×1920) using face-count rules."""
-        return self._process(video_path, output_path, ratio="9:16", out_w=1080, out_h=1920)
+    def convert_to_reels(self, video_path: str, output_path: str = None, mode: str = "face", **kwargs) -> Dict:
+        """Convert video to 9:16 (1080×1920) using face/torso rules."""
+        return self._process(video_path, output_path, ratio="9:16", out_w=1080, out_h=1920, mode=mode)
 
-    def crop_to_9x8(self, video_path: str, output_path: str = None) -> Dict:
-        """Convert video to 9:8 (1080×960) using face-count rules."""
-        return self._process(video_path, output_path, ratio="9:8",  out_w=1080, out_h=960)
+    def crop_to_9x8(self, video_path: str, output_path: str = None, mode: str = "face") -> Dict:
+        """Convert video to 9:8 (1080×960) using face/torso rules."""
+        return self._process(video_path, output_path, ratio="9:8",  out_w=1080, out_h=960, mode=mode)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Core processor
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _process(self, video_path: str, output_path: str | None, ratio: str, out_w: int, out_h: int) -> Dict:
+    def _process(self, video_path: str, output_path: str | None, ratio: str, out_w: int, out_h: int, mode: str = "face") -> Dict:
         v_path = Path(video_path)
         o_path = Path(output_path) if output_path else v_path.parent / f"{v_path.stem}_{ratio.replace(':','x')}.mp4"
 
@@ -245,7 +343,7 @@ class VideoCropper:
             crop_w = src_w
             crop_h = int(src_w * out_h / out_w)
 
-        segments = self.detect_face_segments(str(v_path))
+        segments = self.detect_segments(str(v_path), mode=mode)
         if not segments:
             segments = [{"face_count": 0, "start_time": 0.0, "end_time": 1e9, "faces": []}]
 

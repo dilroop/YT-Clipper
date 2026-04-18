@@ -48,19 +48,7 @@ export function useHomeMVI() {
     localStorage.setItem('ytc_ai_content_position', state.aiContentPosition);
   }, [state.selectedFormat, state.burnCaptions, state.aiStrategy, state.aiProvider, state.aiContentPosition]);
 
-  // ─── URL Auto-Fetch ────────────────────────────────────────────────────────
-  useEffect(() => {
-    const isValidUrl = state.url && (
-      state.url.includes('youtube.com') ||
-      state.url.includes('youtu.be') ||
-      state.url.includes('x.com') ||
-      state.url.includes('twitter.com')
-    );
-    if (isValidUrl && !state.videoInfo && state.infoStatus === 'idle') {
-      fetchVideoInfo(state.url);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.url, state.infoStatus, state.videoInfo]);
+  // URL Auto-Fetch removed - now handled manually by VideoInput via intents.fetchVideoInfo
 
   // ─── Intent Dispatchers ────────────────────────────────────────────────────
   const updateUrl = useCallback((url: string) => dispatch({ type: 'UPDATE_URL', payload: url }), []);

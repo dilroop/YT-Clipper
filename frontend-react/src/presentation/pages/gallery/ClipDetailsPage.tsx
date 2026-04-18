@@ -58,6 +58,7 @@ export const ClipDetailsPage: React.FC = () => {
   }, [mainPosition, watermarkText, watermarkSize, watermarkAlpha, watermarkTop, watermarkRight, fontFamily, textColor, textBgColor, textSize, textPosX, textPosY]);
   
   const [workflowStatus, setWorkflowStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
+  const [wfDetectionMode, setWfDetectionMode] = useState<'face' | 'torso'>(() => (localStorage.getItem('ytc_wf_detection_mode') as 'face' | 'torso') || 'face');
   const [logs, setLogs] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -120,7 +121,8 @@ export const ClipDetailsPage: React.FC = () => {
     localStorage.setItem('ytc_wf2_suffix1_color', wf2Suffix1Color);
     localStorage.setItem('ytc_wf2_suffix2_size', wf2Suffix2Size.toString());
     localStorage.setItem('ytc_wf2_suffix2_color', wf2Suffix2Color);
-  }, [wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color]);
+    localStorage.setItem('ytc_wf_detection_mode', wfDetectionMode);
+  }, [wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color, wfDetectionMode]);
 
   // Preload default header image
   useEffect(() => {
@@ -271,7 +273,8 @@ export const ClipDetailsPage: React.FC = () => {
         mediaItems.map(m => m.duration),
         mainPosition, text, watermarkText,
         watermarkSize, watermarkAlpha, watermarkTop, watermarkRight,
-        fontFamily, textColor, textBgColor, textSize, textPosX, textPosY
+        fontFamily, textColor, textBgColor, textSize, textPosX, textPosY,
+        wfDetectionMode
       );
     } catch (e: any) {
       setWorkflowStatus('error');
@@ -644,6 +647,13 @@ export const ClipDetailsPage: React.FC = () => {
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <span style={{ fontSize: '0.85rem' }}>Text Size:</span>
                   <input type="number" value={textSize} onChange={e => setTextSize(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem' }}>Tracking Focus:</span>
+                  <select value={wfDetectionMode} onChange={e => setWfDetectionMode(e.target.value as 'face' | 'torso')} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
+                    <option value="face">Face Tracking</option>
+                    <option value="torso">Torso Tracking</option>
+                  </select>
                 </label>
               </div>
 

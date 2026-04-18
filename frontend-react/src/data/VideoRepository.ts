@@ -238,8 +238,9 @@ export class VideoRepository {
     textColor: string,
     textBgColor: string,
     textSize: number,
-    textPosX: number,
-    textPosY: number
+    text_pos_x: number,
+    text_pos_y: number,
+    detectionMode: string = "face",
   ): Promise<any> {
     const formData = new FormData();
     formData.append('client_id', clientId);
@@ -258,8 +259,9 @@ export class VideoRepository {
     formData.append('text_color', textColor);
     formData.append('text_bg_color', textBgColor);
     formData.append('text_size', textSize.toString());
-    formData.append('text_pos_x', textPosX.toString());
-    formData.append('text_pos_y', textPosY.toString());
+    formData.append('text_pos_x', text_pos_x.toString());
+    formData.append('text_pos_y', text_pos_y.toString());
+    formData.append('detection_mode', detectionMode);
 
     const url = `${this.API_BASE}/workflow/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
     
@@ -318,7 +320,7 @@ export class VideoRepository {
     suffix1Size: number,
     suffix1Color: string,
     suffix2Size: number,
-    suffix2Color: string,
+    suffix2_color: string,
     fps: number,
   ): Promise<any> {
     const formData = new FormData();
@@ -338,7 +340,7 @@ export class VideoRepository {
     formData.append('suffix1_size', suffix1Size.toString());
     formData.append('suffix1_color', suffix1Color);
     formData.append('suffix2_size', suffix2Size.toString());
-    formData.append('suffix2_color', suffix2Color);
+    formData.append('suffix2_color', suffix2_color);
     formData.append('fps', fps.toString());
 
     const url = `${this.API_BASE}/workflow2/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;

@@ -56,7 +56,18 @@ export const VideoInput: React.FC<Props> = ({ state, intents }) => {
 
   const handleHistoryItemClick = (url: string) => {
     intents.updateUrl(url);
+    intents.fetchVideoInfo(url);
     setHistoryOpen(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const trimmed = state.url.trim();
+      if (trimmed) {
+        setHistoryOpen(false);
+        intents.fetchVideoInfo(trimmed);
+      }
+    }
   };
 
   const handleDeleteHistoryItem = async (e: React.MouseEvent, videoId: string) => {
@@ -92,6 +103,7 @@ export const VideoInput: React.FC<Props> = ({ state, intents }) => {
           onChange={e => intents.updateUrl(e.target.value)}
           onFocus={() => setHistoryOpen(true)}
           onClick={() => setHistoryOpen(true)}
+          onKeyDown={handleKeyDown}
         />
         {state.url && (
           <button className="clear-btn" aria-label="Clear input" onClick={intents.clearInput}>✕</button>

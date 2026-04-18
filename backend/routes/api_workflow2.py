@@ -60,7 +60,7 @@ async def execute_workflow2(
         from backend.videoprocessor.video_cropper import VideoCropper
         import asyncio as _asyncio
         cropper = VideoCropper()
-        await broadcast_log("> Cropping main video to 9:8 with face tracking...")
+        await broadcast_log(f"> Cropping main video to 9:8 with face tracking...")
         cropped_main_path = TEMP_DIR / f"{stem}_9x8_{timestamp}.mp4"
         loop = _asyncio.get_event_loop()
         crop_result = await loop.run_in_executor(None, cropper.crop_to_9x8, str(main_video_path), str(cropped_main_path))

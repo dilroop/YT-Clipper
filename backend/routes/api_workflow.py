@@ -139,6 +139,7 @@ async def execute_workflow(
     text_size: int,
     text_pos_x: float,
     text_pos_y: float,
+    detection_mode: str = "face",
 ):
     tmp_files_to_clean = list(second_media_paths)
 
@@ -169,7 +170,7 @@ async def execute_workflow(
         await broadcast_log("> Cropping main video to 9:8 with face tracking...")
         cropped_main_path = TEMP_DIR / f"{stem}_9x8_{timestamp}.mp4"
         loop = asyncio.get_event_loop()
-        crop_result = await loop.run_in_executor(None, cropper.crop_to_9x8, str(main_video_path), str(cropped_main_path))
+        crop_result = await loop.run_in_executor(None, lambda: cropper.crop_to_9x8(str(main_video_path), str(cropped_main_path), mode=detection_mode))
         if crop_result.get('success'):
             main_for_workflow = str(cropped_main_path)
             tmp_files_to_clean.append(main_for_workflow)
@@ -303,6 +304,7 @@ async def run_workflow(
     text_size: int = Form(70),
     text_pos_x: float = Form(50.0),
     text_pos_y: float = Form(50.0),
+    detection_mode: str = Form("face"),
 ):
     try:
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -329,7 +331,8 @@ async def run_workflow(
             main_position, text,
             watermark_text, watermark_size, watermark_alpha,
             watermark_top, watermark_right,
-            font_family, text_color, text_bg_color, text_size, text_pos_x, text_pos_y
+            font_family, text_color, text_bg_color, text_size, text_pos_x, text_pos_y,
+            detection_mode
         )
 
         return {"success": True, "message": f"Workflow started with {len(saved_paths)} secondary file(s)"}

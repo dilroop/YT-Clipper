@@ -346,6 +346,8 @@ def parse_args():
                         help="Override output duration in seconds.")
     parser.add_argument("--fps", type=int, default=30,
                         help="Output frames per second (default: 30).")
+    parser.add_argument("--detection-mode", choices=["face", "torso"], default="face",
+                        help="Tracking mode: 'face' or 'torso' (default: 'face').")
     return parser.parse_args()
 
 
@@ -404,6 +406,7 @@ def main():
         args.watermark_right = 40
         args.duration = None
         args.fps = 30
+        args.detection_mode = "face"
     else:
         args = parse_args()
 
@@ -445,7 +448,7 @@ def main():
         
         # We save it into the temp folder so it gets deleted automatically
         tmp_main_path = os.path.join(tmp_dir, "cropped_main_9x8.mp4")
-        crop_result = cropper.crop_to_9x8(args.main, output_path=tmp_main_path)
+        crop_result = cropper.crop_to_9x8(args.main, output_path=tmp_main_path, mode=args.detection_mode)
         
         if not crop_result['success']:
             print(f"[ERROR] Head tracking crop failed: {crop_result.get('error')}")

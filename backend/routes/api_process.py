@@ -333,7 +333,14 @@ async def _perform_video_processing(request: ProcessVideoRequest):
         if not processed_clips: raise Exception("All clipping operations failed.")
 
         await update_progress({'stage': 'organizing', 'percent': 90, 'message': 'Organizing files...'})
-        org_format = "reels" if request.format in ["reels", "vertical_9x16", "stacked_photo", "stacked_video"] else request.format
+        
+        # Standardize format for folder naming (Gallery scanner only looks for 'original' or 'reels')
+        standard_format = request.format.lower()
+        if any(x in standard_format for x in ["reels", "9x16", "stacked", "vertical"]):
+            org_format = "reels"
+        else:
+            org_format = "original"
+            
         file_mgr.organize_clips(processed_clips, project_folder, video_info, org_format)
         file_mgr.cleanup_temp_files(temp_files)
         # Final success broadcast
