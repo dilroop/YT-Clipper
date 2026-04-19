@@ -60,6 +60,9 @@ OUTPUT_HEIGHT = 1920
 SIDE_PADDING  = 48          # horizontal margin left / right for text blocks
 VIDEO_EXTS    = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
 
+from video_cropper import VideoCropper
+import tempfile
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Font helpers
@@ -578,6 +581,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--suffix2-size",  type=int,   default=44,          help="Suffix-2 font size (default: 44).")
     p.add_argument("--suffix2-color", default="#22DD66",               help="Suffix-2 hex color (default: #22DD66 green).")
 
+    p.add_argument("--detection-mode", choices=["face", "torso"], default="face",
+                        help="Tracking mode for the 9:8 main video crop (default: 'face').")
+
     return p.parse_args()
 
 
@@ -649,6 +655,7 @@ def main() -> None:
         suffix1_color   = _prompt_str("Suffix-1 color (#hex)", "#AAAAAA")
         suffix2_size    = _prompt_int("Suffix-2 font size", 44)
         suffix2_color   = _prompt_str("Suffix-2 color (#hex)", "#22DD66")
+        detection_mode  = _prompt_str("Detection mode [face/torso]", "face")
 
         print("\n── Output ──────────────────────────────")
         default_out   = str(Path(video).with_suffix("")) + "_story.mp4"
@@ -677,6 +684,7 @@ def main() -> None:
         suffix1_color   = args.suffix1_color
         suffix2_size    = args.suffix2_size
         suffix2_color   = args.suffix2_color
+        detection_mode  = args.detection_mode
 
     # ── Validate ──────────────────────────────────────────────────────────────
     for label, path in [("--video", video), ("--header-image", header_image)]:
@@ -688,27 +696,39 @@ def main() -> None:
         sys.exit(1)
 
     # ── Run ───────────────────────────────────────────────────────────────────
-    build_story_video(
-        video_path        = video,
-        header_image_path = header_image,
-        story_text        = story_text,
-        suffix_text1      = suffix_text1,
-        suffix_text2      = suffix_text2,
-        output_path       = output,
-        top_margin        = top_margin,
-        padding           = padding,
-        header_max_height = header_height,
-        bg_color          = bg_color,
-        font_name         = font if font and font != "Arial" else None,
-        story_size        = story_size,
-        story_color       = story_color,
-        highlight_color   = highlight_color,
-        suffix1_size      = suffix1_size,
-        suffix1_color     = suffix1_color,
-        suffix2_size      = suffix2_size,
-        suffix2_color     = suffix2_color,
-        fps               = fps,
-    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        print(f"[INFO] Cropping main video with head tracking (9:8 ratio)...")
+        cropper = VideoCropper()
+        tmp_cropped_path = os.path.join(tmp_dir, "cropped_main_9x8.mp4")
+        crop_res = cropper.crop_to_9x8(video, tmp_cropped_path, mode=detection_mode)
+        
+        if not crop_res['success']:
+            print(f"[ERROR] Head tracking crop failed: {crop_res.get('error')}")
+            sys.exit(1)
+            
+        final_video_input = crop_res['output_path']
+
+        build_story_video(
+            video_path        = final_video_input,
+            header_image_path = header_image,
+            story_text        = story_text,
+            suffix_text1      = suffix_text1,
+            suffix_text2      = suffix_text2,
+            output_path       = output,
+            top_margin        = top_margin,
+            padding           = padding,
+            header_max_height = header_height,
+            bg_color          = bg_color,
+            font_name         = font if font and font != "Arial" else None,
+            story_size        = story_size,
+            story_color       = story_color,
+            highlight_color   = highlight_color,
+            suffix1_size      = suffix1_size,
+            suffix1_color     = suffix1_color,
+            suffix2_size      = suffix2_size,
+            suffix2_color     = suffix2_color,
+            fps               = fps,
+        )
 
 
 if __name__ == "__main__":

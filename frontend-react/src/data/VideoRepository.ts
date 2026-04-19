@@ -368,4 +368,26 @@ export class VideoRepository {
     }
     return response.json();
   }
+
+  static async runWorkflow3(
+    project: string,
+    format: string,
+    filename: string,
+    clientId: string,
+    threshold: number,
+    keep: number,
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('client_id', clientId);
+    formData.append('min_silence_len', threshold.toString());
+    formData.append('keep_silence_len', keep.toString());
+
+    const url = `${this.API_BASE}/workflow3/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
+    const response = await fetch(url, { method: 'POST', body: formData });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to run Workflow 3');
+    }
+    return response.json();
+  }
 }

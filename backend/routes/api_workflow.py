@@ -164,20 +164,8 @@ async def execute_workflow(
         final_output_path = video_dir / final_filename
         temp_output_path = TEMP_DIR / final_filename
 
-        # ── Pre-process main video to 9:8 with face tracking ────────────────
-        from backend.videoprocessor.video_cropper import VideoCropper
-        cropper = VideoCropper()
-        await broadcast_log("> Cropping main video to 9:8 with face tracking...")
-        cropped_main_path = TEMP_DIR / f"{stem}_9x8_{timestamp}.mp4"
-        loop = asyncio.get_event_loop()
-        crop_result = await loop.run_in_executor(None, lambda: cropper.crop_to_9x8(str(main_video_path), str(cropped_main_path), mode=detection_mode))
-        if crop_result.get('success'):
-            main_for_workflow = str(cropped_main_path)
-            tmp_files_to_clean.append(main_for_workflow)
-            await broadcast_log("> 9:8 crop complete.")
-        else:
-            await broadcast_log(f"[WARN] Crop failed ({crop_result.get('error')}), using original video.")
-            main_for_workflow = str(main_video_path)
+        # ── Setup primary input ──────────────────────────────────────────────
+        main_for_workflow = str(main_video_path)
 
         # ── Assemble secondary media if multiple files ───────────────────────
         assembled_second = await assemble_secondary_media(
@@ -203,7 +191,8 @@ async def execute_workflow(
             "--font-size", str(text_size),
             "--text-x", str(text_pos_x),
             "--text-y", str(text_pos_y),
-            "--output", str(temp_output_path)
+            "--output", str(temp_output_path),
+            "--detection-mode", detection_mode
         ]
 
         await broadcast_log(f"> Starting workflow for {filename}...")

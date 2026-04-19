@@ -34,6 +34,7 @@ async def execute_workflow2(
     suffix2_size: int,
     suffix2_color: str,
     fps: int,
+    detection_mode: str,
 ):
     async def broadcast_log(line: str):
         print(f"[WORKFLOW2] {line}")
@@ -56,22 +57,8 @@ async def execute_workflow2(
         final_output_path = video_dir / final_filename
         temp_output_path = TEMP_DIR / final_filename
 
-        # ── Pre-process main video to 9:8 with face tracking ────────────────
-        from backend.videoprocessor.video_cropper import VideoCropper
-        import asyncio as _asyncio
-        cropper = VideoCropper()
-        await broadcast_log(f"> Cropping main video to 9:8 with face tracking...")
-        cropped_main_path = TEMP_DIR / f"{stem}_9x8_{timestamp}.mp4"
-        loop = _asyncio.get_event_loop()
-        crop_result = await loop.run_in_executor(None, cropper.crop_to_9x8, str(main_video_path), str(cropped_main_path))
-        cropped_main_to_clean = None
-        if crop_result.get('success'):
-            video_for_workflow = str(cropped_main_path)
-            cropped_main_to_clean = video_for_workflow
-            await broadcast_log("> 9:8 crop complete.")
-        else:
-            await broadcast_log(f"[WARN] Crop failed ({crop_result.get('error')}), using original video.")
-            video_for_workflow = str(main_video_path)
+        # ── Setup primary input ──────────────────────────────────────────────
+        video_for_workflow = str(main_video_path)
 
         cmd = [
             sys.executable, str(workflow_script),
@@ -93,6 +80,7 @@ async def execute_workflow2(
             "--suffix2-color",  suffix2_color,
             "--fps",            str(fps),
             "--output",         str(temp_output_path),
+            "--detection-mode", detection_mode,
         ]
 
         # Only pass --font if it's not the default Arial fallback
@@ -166,10 +154,10 @@ async def execute_workflow2(
                 os.remove(header_image_path)
         except OSError:
             pass
-        # Clean up cropped temp video
+        # Clean up the saved header image temp file
         try:
-            if cropped_main_to_clean and os.path.exists(cropped_main_to_clean):
-                os.remove(cropped_main_to_clean)
+            if os.path.exists(header_image_path):
+                os.remove(header_image_path)
         except OSError:
             pass
 
@@ -198,6 +186,7 @@ async def run_workflow2(
     suffix2_size: int      = Form(44),
     suffix2_color: str     = Form("#22DD66"),
     fps: int               = Form(30),
+    detection_mode: str    = Form("face"),
 ):
     try:
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -219,6 +208,7 @@ async def run_workflow2(
             suffix1_size, suffix1_color,
             suffix2_size, suffix2_color,
             fps,
+            detection_mode,
         )
 
         return {"success": True, "message": "Workflow 2 started"}

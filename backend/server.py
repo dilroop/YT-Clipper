@@ -44,6 +44,7 @@ from backend.routes import (
     api_upload,
     api_workflow,
     api_workflow2,
+    api_workflow3,
     api_generate_metadata,
     api_local_video,
     websocket
@@ -90,6 +91,7 @@ app.include_router(api_clips.router)
 app.include_router(api_upload.router)
 app.include_router(api_workflow.router)
 app.include_router(api_workflow2.router)
+app.include_router(api_workflow3.router)
 app.include_router(api_generate_metadata.router)
 app.include_router(api_local_video.router)
 app.include_router(websocket.router)

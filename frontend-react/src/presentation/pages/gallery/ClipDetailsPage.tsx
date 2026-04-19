@@ -96,6 +96,14 @@ export const ClipDetailsPage: React.FC = () => {
   const [wf2Logs, setWf2Logs] = useState<string[]>([]);
   const wf2LogsEndRef = useRef<HTMLDivElement>(null);
 
+  // ── Workflow 3 state ──────────────────────────────────────────────────────
+  const [isDialog3Open, setIsDialog3Open] = useState(false);
+  const [minSilenceLen, setMinSilenceLen] = useState(() => getStoredNumber('ytc_wf3_min_silence', 500));
+  const [keepSilenceLen, setKeepSilenceLen] = useState(() => getStoredNumber('ytc_wf3_keep_silence', 100));
+  const [wf3Status, setWf3Status] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
+  const [wf3Logs, setWf3Logs] = useState<string[]>([]);
+  const wf3LogsEndRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
@@ -103,6 +111,10 @@ export const ClipDetailsPage: React.FC = () => {
   useEffect(() => {
     if (wf2LogsEndRef.current) wf2LogsEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [wf2Logs]);
+
+  useEffect(() => {
+    if (wf3LogsEndRef.current) wf3LogsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [wf3Logs]);
 
   // Persist wf2 text/style prefs
   useEffect(() => {
@@ -122,7 +134,9 @@ export const ClipDetailsPage: React.FC = () => {
     localStorage.setItem('ytc_wf2_suffix2_size', wf2Suffix2Size.toString());
     localStorage.setItem('ytc_wf2_suffix2_color', wf2Suffix2Color);
     localStorage.setItem('ytc_wf_detection_mode', wfDetectionMode);
-  }, [wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color, wfDetectionMode]);
+    localStorage.setItem('ytc_wf3_min_silence', minSilenceLen.toString());
+    localStorage.setItem('ytc_wf3_keep_silence', keepSilenceLen.toString());
+  }, [wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color, wfDetectionMode, minSilenceLen, keepSilenceLen]);
 
   // Preload default header image
   useEffect(() => {
@@ -150,6 +164,7 @@ export const ClipDetailsPage: React.FC = () => {
         } else if (data.type === 'log') {
           setLogs(prev => [...prev, data.line]);
           setWf2Logs(prev => [...prev, data.line]);
+          setWf3Logs(prev => [...prev, data.line]);
           setRefineLogs(prev => [...prev, data.line]);
         } else if (data.type === 'progress') {
           // Update refine progress details
@@ -159,14 +174,17 @@ export const ClipDetailsPage: React.FC = () => {
           if (data.stage === 'complete') {
             setWorkflowStatus('complete');
             setWf2Status('complete');
+            setWf3Status('complete');
             setRefineProcessStatus('complete');
             setRefineProgress(null);
           } else if (data.stage === 'error') {
             setWorkflowStatus('error');
             setWf2Status('error');
+            setWf3Status('error');
             setRefineProcessStatus('error');
             setLogs(prev => [...prev, data.message]);
             setWf2Logs(prev => [...prev, data.message]);
+            setWf3Logs(prev => [...prev, data.message]);
             setRefineLogs(prev => [...prev, data.message]);
           }
         }
@@ -306,6 +324,27 @@ export const ClipDetailsPage: React.FC = () => {
     }
   };
 
+  const handleRunWorkflow3 = async () => {
+    if (!clientId) return;
+    setWf3Status('running');
+    setWf3Logs([]);
+    setLogs([]);
+
+    try {
+      await VideoRepository.runWorkflow3(
+        project!,
+        format!,
+        filename!,
+        clientId,
+        minSilenceLen,
+        keepSilenceLen
+      );
+    } catch (err: any) {
+      setWf3Status('error');
+      setWf3Logs(prev => [...prev, `[ERROR] Silence removal failed: ${err.message}`]);
+    }
+  };
+
   const handleDelete = async () => {
     if (window.confirm("Are you sure you want to delete this clip and its metadata? This action cannot be undone.")) {
       try {
@@ -442,9 +481,13 @@ export const ClipDetailsPage: React.FC = () => {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Download Clip
             </button>
-            <button onClick={() => setIsDialogOpen(true)} style={{ width: '100%', padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+            <button onClick={() => setIsDialog3Open(true)} style={{ width: '100%', padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+              Remove Silences
+            </button>
+            <button onClick={() => setIsDialogOpen(true)} style={{ width: '100%', padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-              Run Workflow
+              Run Workflow 1
             </button>
             <button onClick={() => setIsDialog2Open(true)} style={{ width: '100%', padding: '12px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
@@ -905,6 +948,96 @@ export const ClipDetailsPage: React.FC = () => {
             <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
               {wf2Logs.length === 0 ? <span style={{ color: '#555' }}>Logs will appear here during execution…</span> : wf2Logs.join('\n')}
               <div ref={wf2LogsEndRef} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Workflow 3 Dialog (Silence Removal) ── */}
+      {isDialog3Open && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#1e1e1e', width: '100%', maxWidth: '900px', height: '90vh', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'minmax(350px, 1.2fr) 2fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ padding: '24px', borderRight: '1px solid #333', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Remove Silences</h2>
+                <button onClick={() => setIsDialog3Open(false)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '4px' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+
+              <p style={{ color: '#aaa', fontSize: '0.9rem', margin: 0 }}>Detect and cut out silent pauses from your video to make it snappy and engaging.</p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '8px' }}>
+                {/* Threshold */}
+                <div style={{ background: '#252525', padding: '16px', borderRadius: '12px', border: '1px solid #333' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Silence Threshold</span>
+                    <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>{minSilenceLen}ms</span>
+                  </div>
+                  <input
+                    type="range" min="100" max="2000" step="50"
+                    value={minSilenceLen}
+                    onChange={e => setMinSilenceLen(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: '#3b82f6' }}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: '#777', margin: '8px 0 0' }}>Pauses longer than this will be removed.</p>
+                </div>
+
+                {/* Keep */}
+                <div style={{ background: '#252525', padding: '16px', borderRadius: '12px', border: '1px solid #333' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Silence to Keep</span>
+                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>{keepSilenceLen}ms</span>
+                  </div>
+                  <input
+                    type="range" min="0" max="500" step="10"
+                    value={keepSilenceLen}
+                    onChange={e => setKeepSilenceLen(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: '#10b981' }}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: '#777', margin: '8px 0 0' }}>Padding left between cuts for natural breathing room.</p>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: 'auto', paddingTop: '12px' }}>
+                <button onClick={() => { setIsDialog3Open(false); setWf3Status('idle'); setWf3Logs([]); }} style={{ flex: 1, padding: '14px', background: '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
+                <button
+                  onClick={handleRunWorkflow3}
+                  disabled={wf3Status === 'running'}
+                  style={{ flex: 2, padding: '14px', background: wf3Status === 'running' ? '#444' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '10px', cursor: wf3Status === 'running' ? 'not-allowed' : 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  {wf3Status === 'running' ? (
+                    <>
+                      <div style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                      Processing...
+                    </>
+                  ) : 'Start Removal'}
+                </button>
+              </div>
+
+              {wf3Status === 'complete' && <div style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '12px', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(16,185,129,0.3)', fontSize: '0.9rem' }}>✅ Success! Check the gallery.</div>}
+              {wf3Status === 'error' && <div style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '12px', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(239,68,68,0.3)', fontSize: '0.9rem' }}>❌ Error. Check logs.</div>}
+            </div>
+
+            {/* Logs panel */}
+            <div style={{ background: '#0e0e0e', display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution Logs</span>
+                {wf3Status === 'running' && <span style={{ fontSize: '0.75rem', color: '#3b82f6', animation: 'pulse 1.5s infinite' }}>● Running</span>}
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px', fontFamily: '"Fira Code", "JetBrains Mono", monospace', fontSize: '13px', color: '#888', lineHeight: 1.6 }}>
+                {wf3Logs.length === 0 ? (
+                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' }}>Waiting to start...</div>
+                ) : (
+                  wf3Logs.map((log, i) => (
+                    <div key={i} style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '4px', marginBottom: '4px', color: log.includes('[ERROR]') ? '#ef4444' : log.includes('[SUCCESS]') ? '#10b981' : log.startsWith('>') ? '#3b82f6' : '#888' }}>
+                      {log}
+                    </div>
+                  ))
+                )}
+                <div ref={wf3LogsEndRef} />
+              </div>
             </div>
           </div>
         </div>
