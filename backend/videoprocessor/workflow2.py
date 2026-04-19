@@ -60,8 +60,80 @@ OUTPUT_HEIGHT = 1920
 SIDE_PADDING  = 48          # horizontal margin left / right for text blocks
 VIDEO_EXTS    = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
 
+import unicodedata
+
+# --- Global Constants & Package Setup -----------------------------------------
+try:
+    from backend.core.constants import BASE_DIR
+except (ImportError, ModuleNotFoundError):
+    # Fallback for standalone script execution
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    sys.path.append(str(BASE_DIR))
+    from backend.core.constants import BASE_DIR
+
+# Sibling imports depend on being in the same package context or directory in sys.path
 from video_cropper import VideoCropper
 import tempfile
+import re
+
+EMOJI_RE = re.compile(
+    r'['
+    r'\U00002100-\U000027BF' # Symbols, arrows, dingbats
+    r'\U00002B00-\U00002BFF' # Misc symbols and arrows
+    r'\U0001F000-\U0001F6FF' # Emoticons, transport, symbols
+    r'\U0001F900-\U0001F9FF' # Supplemental symbols
+    r'\U0001FA70-\U0001FAFF' # Symbols-a
+    r'\U0000FE00-\U0000FE0F' # Variation selectors
+    r']', flags=re.UNICODE
+)
+
+def is_char_emoji(char: str) -> bool:
+    """Check if a character is likely an emoji or special symbol."""
+    if EMOJI_RE.search(char):
+        return True
+    cat = unicodedata.category(char)
+    # Catch Symbols (S*) and Symbols, Other (So), including some Punctuation (P*) that looks like emojis
+    if cat.startswith('S'):
+         return True
+    # Anything in the Private Use Area or highly special
+    if '\U0001F000' <= char <= '\U0001FFFF':
+        return True
+    return False
+
+_EMOJI_FONT_CACHE = {}
+# Known bitmap sizes supported by Apple Color Emoji on macOS
+_SUPPORTED_EMOJI_SIZES = [160, 96, 64, 52, 48, 40, 32, 20]
+
+def get_emoji_font(font_size: int) -> ImageFont.FreeTypeFont | None:
+    if font_size in _EMOJI_FONT_CACHE:
+        return _EMOJI_FONT_CACHE[font_size]
+        
+    # Priority 1: Custom Samsung or other font in assets
+    custom_path = BASE_DIR / "assets" / "fonts" / "custom_emoji.ttf"
+    # Priority 2: Mac standard
+    mac_path = Path("/System/Library/Fonts/Apple Color Emoji.ttc")
+    
+    for path in [custom_path, mac_path]:
+        if not path.exists():
+            continue
+            
+        # Strategy: Try the requested size first.
+        # If it fails (common with Apple's bitmap-only TTC), try supported fallback sizes.
+        try_sizes = [font_size]
+        if "Apple Color Emoji" in str(path):
+            # Sort fallbacks to find the closest one that is >= or just closest
+            # We prefer slightly larger to avoid pixelation, Pillow will scale it.
+            fallbacks = sorted(_SUPPORTED_EMOJI_SIZES, key=lambda s: abs(s - font_size))
+            try_sizes.extend(fallbacks)
+
+        for s in try_sizes:
+            try:
+                font = ImageFont.truetype(str(path), s)
+                _EMOJI_FONT_CACHE[font_size] = font
+                return font
+            except Exception:
+                continue
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -109,14 +181,32 @@ def hex_to_rgb(hex_code: str) -> tuple[int, int, int]:
 # Text utilities
 # ─────────────────────────────────────────────────────────────────────────────
 
-def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
+def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int, emoji_font: ImageFont.FreeTypeFont | None = None) -> str:
     """
     Word-wrap *text* so that no rendered line exceeds *max_width* pixels.
-    Existing newlines in the source text are preserved.
-    Returns the wrapped string with \\n separators.
+    Uses fallback emoji measurement if provided.
     """
     text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\\n", "\n")
     result_lines: list[str] = []
+    
+    dummy = Image.new("RGBA", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+
+    def _get_w(s: str) -> int:
+        total = 0
+        for char in s:
+            f = emoji_font if is_char_emoji(char) and emoji_font else font
+            try:
+                bbox = draw.textbbox((0, 0), char, font=f)
+                w = int(bbox[2] - bbox[0])
+                if w == 0 and is_char_emoji(char):
+                    w = int(f.size) # Fallback for zero-width emoji bboxes
+                total += w
+            except Exception:
+                w, _ = draw.textsize(char, font=f) # type: ignore
+                total += int(w)
+        return total
+
     for paragraph in text.split("\n"):
         words = paragraph.split()
         if not words:
@@ -125,14 +215,8 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
         current_line: list[str] = []
         for word in words:
             test_line = " ".join(current_line + [word])
-            dummy = Image.new("RGBA", (1, 1))
-            draw = ImageDraw.Draw(dummy)
-            try:
-                bbox = draw.textbbox((0, 0), test_line, font=font)
-                w = bbox[2] - bbox[0]
-            except AttributeError:
-                w, _ = draw.textsize(test_line, font=font)  # type: ignore[attr-defined]
-            if w <= max_width or not current_line:
+            line_w = _get_w(test_line)
+            if line_w <= max_width or not current_line:
                 current_line.append(word)
             else:
                 result_lines.append(" ".join(current_line))
@@ -140,6 +224,31 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
         if current_line:
             result_lines.append(" ".join(current_line))
     return "\n".join(result_lines)
+
+
+def _draw_text_with_fallback(draw, pos, text, font, fill, emoji_font=None, **kwargs):
+    """Draw text character by character, switching to emoji_font if needed."""
+    x, y = pos
+    for char in text:
+        use_font = font
+        is_emoji = is_char_emoji(char)
+        if is_emoji and emoji_font:
+            use_font = emoji_font
+            # embedded_color=True is required for color emojis on Mac/PIL
+            draw.text((int(x), int(y)), char, font=use_font, embedded_color=True, **kwargs)
+        else:
+            draw.text((int(x), int(y)), char, font=use_font, fill=fill, **kwargs)
+        
+        # Advance X
+        try:
+            bbox = draw.textbbox((x, y), char, font=use_font)
+            w = bbox[2] - bbox[0]
+            if w == 0 and is_emoji:
+                 w = use_font.size
+        except Exception:
+            w, _ = draw.textsize(char, font=use_font)  # type: ignore
+        x += w
+    return x
 
 
 def render_text_block(
@@ -153,40 +262,44 @@ def render_text_block(
     Render wrapped, centred text onto a transparent RGBA canvas.
     Returns a uint8 NumPy RGBA array exactly sized to the text content.
     """
-    wrapped = wrap_text(text, font, max_width)
+    emoji_font = get_emoji_font(font.size)
+    wrapped = wrap_text(text, font, max_width, emoji_font=emoji_font)
+    
+    # Calculate bounding box for the whole block line-by-line using fallback measurement
+    lines = wrapped.split("\n")
+    lh = int(font.size * 1.2)
+    line_widths = []
+    
     dummy = Image.new("RGBA", (1, 1))
-    draw = ImageDraw.Draw(dummy)
-    try:
-        bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align=align)
-    except AttributeError:
-        w, h = draw.multiline_textsize(wrapped, font=font)  # type: ignore
-        bbox = (0, 0, w, h)
+    draw_m = ImageDraw.Draw(dummy)
+    
+    def _measure_line(line: str) -> int:
+        lw = 0
+        for char in line:
+            f = emoji_font if EMOJI_RE.search(char) and emoji_font else font
+            bbox = draw_m.textbbox((0, 0), char, font=f)
+            lw += int(bbox[2] - bbox[0])
+        return lw
 
-    tw = int(bbox[2] - bbox[0])
-    th = int(bbox[3] - bbox[1])
-    off_x = int(bbox[0])
-    off_y = int(bbox[1])
-    img_w = max(1, tw)
-    img_h = max(1, th)
+    line_widths = [_measure_line(l) for l in lines]
+    img_w = max(line_widths) if line_widths else 1
+    img_h = len(lines) * lh
+    
+    v_pad = int(font.size * 0.15)
+    img_h += v_pad * 2
 
-    img = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+    img = Image.new("RGBA", (int(img_w), int(img_h)), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    r, g, b = color
-    try:
-        draw.multiline_text(
-            (-off_x, -off_y),
-            wrapped,
-            font=font,
-            fill=(r, g, b, 255),
-            align=align,
-        )
-    except TypeError:
-        draw.multiline_text(
-            (-off_x, -off_y),
-            wrapped,
-            font=font,
-            fill=(r, g, b, 255),
-        )
+    
+    for i, line in enumerate(lines):
+        lx = 0
+        if align == "center":
+            lx = (img_w - line_widths[i]) // 2
+        elif align == "right":
+            lx = img_w - line_widths[i]
+            
+        _draw_text_with_fallback(draw, (lx, i * lh + v_pad), line, font, (color[0], color[1], color[2], 255), emoji_font=emoji_font)
+        
     return np.array(img)
 
 
@@ -240,21 +353,34 @@ def render_text_block_highlighted(
     # Measure helpers
     dummy = Image.new("RGBA", (1, 1))
     draw_m = ImageDraw.Draw(dummy)
+    emoji_font = get_emoji_font(font.size)
 
     def _w(s: str) -> int:
-        try:
-            bbox = draw_m.textbbox((0, 0), s, font=font)
-            return int(bbox[2] - bbox[0])
-        except AttributeError:
-            w, _ = draw_m.textsize(s, font=font)  # type: ignore
-            return int(w)
+        # Sum character widths with fallback
+        total = 0
+        for char in s:
+            use_font = font
+            if is_char_emoji(char) and emoji_font:
+                use_font = emoji_font
+            try:
+                bbox = draw_m.textbbox((0, 0), char, font=use_font)
+                w = int(bbox[2] - bbox[0])
+                if w == 0 and is_char_emoji(char):
+                    w = int(use_font.size)
+                total += w
+            except Exception:
+                tw, _ = draw_m.textsize(char, font=use_font) # type: ignore
+                total += int(tw)
+        return total
 
     def _lh() -> int:
         try:
+            # Use 'Ag' to get a good span of ascenders and descenders
             bbox = draw_m.textbbox((0, 0), "Ag", font=font)
             return int(bbox[3] - bbox[1])
         except AttributeError:
-            _, h = draw_m.textsize("Ag", font=font)  # type: ignore
+            # Fallback for old Pillow
+            w, h = draw_m.textsize("Ag", font=font)  # type: ignore
             return int(h)
 
     space_w = _w(" ")
@@ -291,6 +417,10 @@ def render_text_block_highlighted(
 
     canvas_w = max((_line_w(ln) for ln in lines), default=10)
     canvas_h = len(lines) * lh + max(0, len(lines) - 1) * line_spacing
+    
+    # Add vertical padding to prevent descender clipping
+    v_pad = int(lh * 0.2)
+    canvas_h += v_pad * 2
 
     img = Image.new("RGBA", (max(1, canvas_w), max(1, canvas_h)), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -298,7 +428,7 @@ def render_text_block_highlighted(
     hr, hg, hb = highlight_color
 
     for li, ln in enumerate(lines):
-        y = li * (lh + line_spacing)
+        y = li * (lh + line_spacing) + v_pad
         lw = _line_w(ln)
         if align == "center":
             x = (canvas_w - lw) // 2
@@ -310,8 +440,7 @@ def render_text_block_highlighted(
             if i:
                 x += space_w
             fill = (hr, hg, hb, 255) if is_hl else (r, g, b, 255)
-            draw.text((x, y), wd, font=font, fill=fill)
-            x += _w(wd)
+            x = _draw_text_with_fallback(draw, (x, y), wd, font, fill, emoji_font=emoji_font)
 
     return np.array(img)
 
@@ -391,15 +520,28 @@ def build_story_video(
     # Export
     fps: int = 30,
     duration_override: float | None = None,
+    # New Features
+    auto_scale: bool = False,
+    preview: bool = False,
 ) -> str:
     """
     Build the story-card video and write it to *output_path*.
     Returns *output_path* on success, raises on failure.
     """
+    if preview:
+        import sys
+        sys._is_preview_mode = True # type: ignore
+
     print(f"[INFO] Loading main video: {video_path}")
     probe = VideoFileClip(video_path)
     duration = duration_override or probe.duration
     probe.close()
+    
+    # ── Scaling ───────────────────────────────────────────────────────────────
+    # If we are in preview mode, we only care about t=0, so duration is tiny
+    if getattr(sys, '_is_preview_mode', False):
+        duration = 0.5
+
     print(f"[INFO] Output duration: {duration:.2f}s  |  Canvas: {OUTPUT_WIDTH}×{OUTPUT_HEIGHT}")
 
     # ── fonts ─────────────────────────────────────────────────────────────────
@@ -427,49 +569,87 @@ def build_story_video(
     video_clip, video_h = load_and_fit_video(video_path, OUTPUT_WIDTH, duration)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Layout pass:  calculate Y positions for every element
+    # Layout pass:  calculate positions
     # ─────────────────────────────────────────────────────────────────────────
     def center_x(arr_width: int) -> int:
         return max(0, (OUTPUT_WIDTH - arr_width) // 2)
 
-    current_y = top_margin
-    positions: list[tuple[str, int, int]] = []  # (name, x, y)
+    # First pass: calculate "pure" content height (starting from 0)
+    # We ignore top_margin for now to find the actual block height
+    rel_y = 0
+    rel_positions: list[tuple[str, int, int, int]] = [] # (name, x, y, h)
 
-    # 1. Header image
+    # 1. Header
     h_arr_h, h_arr_w = header_arr.shape[:2]
-    positions.append(("header", center_x(h_arr_w), current_y))
-    current_y += h_arr_h + padding
+    rel_positions.append(("header", center_x(h_arr_w), rel_y, h_arr_h))
+    rel_y += h_arr_h + padding
 
-    # 2. Story text
+    # 2. Story
     s_arr_h, s_arr_w = story_arr.shape[:2]
-    positions.append(("story", center_x(s_arr_w), current_y))
-    current_y += s_arr_h + padding
+    rel_positions.append(("story", center_x(s_arr_w), rel_y, s_arr_h))
+    rel_y += s_arr_h + padding
 
     # 3. Video
-    positions.append(("video", 0, current_y))
-    current_y += video_h + padding
+    rel_positions.append(("video", 0, rel_y, video_h))
+    rel_y += video_h + padding
 
-    # 4. Suffix text 1
+    # 4. Suffix 1
     sf1_arr_h, sf1_arr_w = suffix1_arr.shape[:2]
-    positions.append(("suffix1", center_x(sf1_arr_w), current_y))
-    current_y += sf1_arr_h + padding
+    rel_positions.append(("suffix1", center_x(sf1_arr_w), rel_y, sf1_arr_h))
+    rel_y += sf1_arr_h + padding
 
-    # 5. Suffix text 2
+    # 5. Suffix 2
     sf2_arr_h, sf2_arr_w = suffix2_arr.shape[:2]
-    positions.append(("suffix2", center_x(sf2_arr_w), current_y))
-    current_y += sf2_arr_h
+    rel_positions.append(("suffix2", center_x(sf2_arr_w), rel_y, sf2_arr_h))
+    rel_y += sf2_arr_h
 
-    total_h = current_y
-    print(f"[INFO] Total stacked content height: {total_h}px  (canvas: {OUTPUT_HEIGHT}px)")
-    if total_h > OUTPUT_HEIGHT:
-        print(f"[WARNING] Content ({total_h}px) exceeds canvas height ({OUTPUT_HEIGHT}px). "
-              "Consider reducing padding, font size, or header height.")
+    content_h = rel_y
+    print(f"[INFO] Total pure content height: {content_h}px  (canvas: {OUTPUT_HEIGHT}px)")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Auto-scaling & Centering logic
+    # ─────────────────────────────────────────────────────────────────────────
+    global_scale = 1.0
+    start_y = top_margin
+
+    if auto_scale:
+        # Scale to fit if content is too tall
+        if content_h > OUTPUT_HEIGHT:
+            global_scale = OUTPUT_HEIGHT / content_h
+            print(f"[INFO] Auto-scale (fit) enabled. Scale factor: {global_scale:.3f}")
+        
+        # Calculate start_y for vertical centering
+        scaled_content_h = content_h * global_scale
+        start_y = int((OUTPUT_HEIGHT - scaled_content_h) / 2)
+        print(f"[INFO] Auto-scale (center) enabled. Vertical offset: {start_y}px")
+    else:
+        # If not auto-scaling, we still scale down ONLY if total height (inc margin) overflows
+        total_h_with_margin = top_margin + content_h
+        if total_h_with_margin > OUTPUT_HEIGHT:
+            global_scale = (OUTPUT_HEIGHT - top_margin) / content_h
+            print(f"[INFO] Overflow protection active. Scale factor: {global_scale:.3f}")
+
+    # Final positions pass
+    positions: list[tuple[str, int, int]] = []
+    for name, rx, ry, rh in rel_positions:
+        # If we have a global scale, we must also scale the relative Y and the center X
+        scaled_y = start_y + int(ry * global_scale)
+        scaled_x = rx # Usually already centered, but scaled images might need re-centering
+        # (add_layer handles image-level scaling and x-centering)
+        positions.append((name, scaled_x, scaled_y))
+
+    total_h = start_y + int(content_h * global_scale)
 
     # ─────────────────────────────────────────────────────────────────────────
     # MoviePy pass: build layers
     # ─────────────────────────────────────────────────────────────────────────
     bg_rgb = hex_to_rgb(bg_color)
-    canvas = ColorClip(size=(OUTPUT_WIDTH, OUTPUT_HEIGHT), color=bg_rgb, duration=duration)
+    
+    # SAFETY: To prevent MoviePy broadcast errors on off-screen clips,
+    # we create a composite that is at least as tall as the content, 
+    # then crop it back to the final 1080x1920.
+    composition_height = max(OUTPUT_HEIGHT, total_h + 100)
+    canvas = ColorClip(size=(OUTPUT_WIDTH, composition_height), color=bg_rgb, duration=duration)
 
     layers: list = [canvas]
 
@@ -479,44 +659,66 @@ def build_story_video(
                 return x, y
         raise KeyError(name)
 
+    def add_layer(clip, name, arr_w, arr_h):
+        cx, cy = pos_of(name)
+        
+        # Apply global scale if needed
+        if global_scale < 1.0:
+            clip = clip.resized(global_scale)
+            arr_w = int(arr_w * global_scale)
+            arr_h = int(arr_h * global_scale)
+            cx = (OUTPUT_WIDTH - arr_w) // 2
+
+        # Check if the clip is entirely off-screen to avoid MoviePy broadcast errors
+        # (Though we fixed the crash with the taller canvas, this is still good for logging)
+        if cy >= OUTPUT_HEIGHT:
+            print(f"[WARNING] Skipping {name}: Position ({cx}, {cy}) is off-screen.")
+        
+        layers.append(clip.with_position((cx, cy)))
+        print(f"[INFO] {name.capitalize():<12} → ({cx}, {cy})  {arr_w}×{arr_h}px")
+
     # Header
-    hx, hy = pos_of("header")
-    header_clip = ImageClip(header_arr).with_duration(duration).with_position((hx, hy))
-    layers.append(header_clip)
-    print(f"[INFO] Header image  → ({hx}, {hy})  {h_arr_w}×{h_arr_h}px")
+    h_arr_h, h_arr_w = header_arr.shape[:2]
+    header_clip = ImageClip(header_arr).with_duration(duration)
+    add_layer(header_clip, "header", h_arr_w, h_arr_h)
 
     # Story
-    sx, sy = pos_of("story")
-    story_clip = ImageClip(story_arr).with_duration(duration).with_position((sx, sy))
-    layers.append(story_clip)
-    print(f"[INFO] Story text    → ({sx}, {sy})  {s_arr_w}×{s_arr_h}px")
+    s_arr_h, s_arr_w = story_arr.shape[:2]
+    story_clip = ImageClip(story_arr).with_duration(duration)
+    add_layer(story_clip, "story", s_arr_w, s_arr_h)
 
     # Video
-    vx, vy = pos_of("video")
     # Capture audio reference BEFORE any further transformations
     raw_audio = video_clip.audio
-    video_clip = video_clip.with_position((vx, vy))
-    layers.append(video_clip)
-    print(f"[INFO] Main video    → ({vx}, {vy})  {OUTPUT_WIDTH}×{video_h}px")
+    add_layer(video_clip, "video", OUTPUT_WIDTH, video_h)
 
     # Suffix 1
-    sf1x, sf1y = pos_of("suffix1")
-    suffix1_clip = ImageClip(suffix1_arr).with_duration(duration).with_position((sf1x, sf1y))
-    layers.append(suffix1_clip)
-    print(f"[INFO] Suffix text1  → ({sf1x}, {sf1y})  {sf1_arr_w}×{sf1_arr_h}px")
+    sf1_arr_h, sf1_arr_w = suffix1_arr.shape[:2]
+    suffix1_clip = ImageClip(suffix1_arr).with_duration(duration)
+    add_layer(suffix1_clip, "suffix1", sf1_arr_w, sf1_arr_h)
 
     # Suffix 2
-    sf2x, sf2y = pos_of("suffix2")
-    suffix2_clip = ImageClip(suffix2_arr).with_duration(duration).with_position((sf2x, sf2y))
-    layers.append(suffix2_clip)
-    print(f"[INFO] Suffix text2  → ({sf2x}, {sf2y})  {sf2_arr_w}×{sf2_arr_h}px")
+    sf2_arr_h, sf2_arr_w = suffix2_arr.shape[:2]
+    suffix2_clip = ImageClip(suffix2_arr).with_duration(duration)
+    add_layer(suffix2_clip, "suffix2", sf2_arr_w, sf2_arr_h)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Composite & export
     # ─────────────────────────────────────────────────────────────────────────
     print("[INFO] Compositing final video...")
-    final = CompositeVideoClip(layers, size=(OUTPUT_WIDTH, OUTPUT_HEIGHT))
+    
+    final = CompositeVideoClip(layers, size=(OUTPUT_WIDTH, composition_height))
     final = final.with_duration(duration)
+
+    # Crop to final 9:16 aspect ratio
+    from moviepy.video.fx import Crop
+    final = Crop(x1=0, y1=0, x2=OUTPUT_WIDTH, y2=OUTPUT_HEIGHT).apply(final)
+
+    if getattr(sys, '_is_preview_mode', False):
+        print(f"[INFO] Writing preview frame → {output_path}")
+        final.save_frame(output_path, t=0)
+        print(f"\n[SUCCESS] Preview captured: {output_path}")
+        return output_path
 
     # Attach audio from the main video (reader is still open — do NOT close before write)
     if raw_audio is not None:
@@ -584,6 +786,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--detection-mode", choices=["face", "torso"], default="face",
                         help="Tracking mode for the 9:8 main video crop (default: 'face').")
 
+    p.add_argument("--preview", action="store_true", help="Generate a single frame PNG preview at t=0.")
+    p.add_argument("--auto-scale", action="store_true", help="Automatically scale content to fit within 1920px height.")
+
     return p.parse_args()
 
 
@@ -637,7 +842,7 @@ def main() -> None:
         video         = _prompt_path("Path to main 16:9 video: ")
         header_image  = _prompt_path("Path to header/profile image: ")
         story_text    = input("Story text (use \\n for line breaks): ").strip()
-        suffix_text1  = input("Suffix text 1 (e.g. 'Sorry story too long...'): ").strip()
+        suffix_text1  = input("Suffix text 1 (e.g. 'Wait till the end...'): ").strip()
         suffix_text2  = input("Suffix text 2 (e.g. 'Part 1'): ").strip()
 
         print("\n── Layout ──────────────────────────────")
@@ -656,6 +861,8 @@ def main() -> None:
         suffix2_size    = _prompt_int("Suffix-2 font size", 44)
         suffix2_color   = _prompt_str("Suffix-2 color (#hex)", "#22DD66")
         detection_mode  = _prompt_str("Detection mode [face/torso]", "face")
+        preview         = input("Preview mode? [y/N]: ").lower().startswith("y")
+        auto_scale      = input("Auto-scale to fit? [y/N]: ").lower().startswith("y")
 
         print("\n── Output ──────────────────────────────")
         default_out   = str(Path(video).with_suffix("")) + "_story.mp4"
@@ -685,6 +892,8 @@ def main() -> None:
         suffix2_size    = args.suffix2_size
         suffix2_color   = args.suffix2_color
         detection_mode  = args.detection_mode
+        preview         = args.preview
+        auto_scale      = args.auto_scale
 
     # ── Validate ──────────────────────────────────────────────────────────────
     for label, path in [("--video", video), ("--header-image", header_image)]:
@@ -700,7 +909,7 @@ def main() -> None:
         print(f"[INFO] Cropping main video with head tracking (9:8 ratio)...")
         cropper = VideoCropper()
         tmp_cropped_path = os.path.join(tmp_dir, "cropped_main_9x8.mp4")
-        crop_res = cropper.crop_to_9x8(video, tmp_cropped_path, mode=detection_mode)
+        crop_res = cropper.crop_to_9x8(video, tmp_cropped_path, mode=detection_mode, preview=preview)
         
         if not crop_res['success']:
             print(f"[ERROR] Head tracking crop failed: {crop_res.get('error')}")
@@ -728,6 +937,8 @@ def main() -> None:
             suffix2_size      = suffix2_size,
             suffix2_color     = suffix2_color,
             fps               = fps,
+            auto_scale        = auto_scale,
+            preview           = preview,
         )
 
 

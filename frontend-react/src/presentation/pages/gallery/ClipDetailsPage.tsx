@@ -95,6 +95,12 @@ export const ClipDetailsPage: React.FC = () => {
   const [wf2Status, setWf2Status] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [wf2Logs, setWf2Logs] = useState<string[]>([]);
   const wf2LogsEndRef = useRef<HTMLDivElement>(null);
+  
+  const [wf2AutoScale, setWf2AutoScale] = useState(() => localStorage.getItem('ytc_wf2_auto_scale') === 'true');
+  const [wf2PreviewUrl, setWf2PreviewUrl] = useState<string | null>(null);
+  const [isWf2PreviewLoading, setIsWf2PreviewLoading] = useState(false);
+  const [wf2Tab, setWf2Tab] = useState<'preview' | 'logs'>('preview');
+  const previewAbortControllerRef = useRef<AbortController | null>(null);
 
   // ── Workflow 3 state ──────────────────────────────────────────────────────
   const [isDialog3Open, setIsDialog3Open] = useState(false);
@@ -136,7 +142,8 @@ export const ClipDetailsPage: React.FC = () => {
     localStorage.setItem('ytc_wf_detection_mode', wfDetectionMode);
     localStorage.setItem('ytc_wf3_min_silence', minSilenceLen.toString());
     localStorage.setItem('ytc_wf3_keep_silence', keepSilenceLen.toString());
-  }, [wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color, wfDetectionMode, minSilenceLen, keepSilenceLen]);
+    localStorage.setItem('ytc_wf2_auto_scale', wf2AutoScale.toString());
+  }, [wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color, wfDetectionMode, minSilenceLen, keepSilenceLen, wf2AutoScale]);
 
   // Preload default header image
   useEffect(() => {
@@ -149,6 +156,48 @@ export const ClipDetailsPage: React.FC = () => {
       })
       .catch(err => console.error('Failed to preload default header image:', err));
   }, []);
+
+  const refreshWf2Preview = async () => {
+    if (!project || !format || !filename || !wf2HeaderImage) return;
+    
+    // Abort previous request if any
+    if (previewAbortControllerRef.current) previewAbortControllerRef.current.abort();
+    previewAbortControllerRef.current = new AbortController();
+
+    setIsWf2PreviewLoading(true);
+    try {
+      const resp = await VideoRepository.getWorkflow2Preview(
+        project, format, filename,
+        wf2HeaderImage,
+        wf2StoryText, wf2SuffixText1, wf2SuffixText2,
+        wf2TopMargin, wf2Padding, wf2HeaderHeight,
+        wf2BgColor, wf2FontName,
+        wf2StorySize, wf2StoryColor, wf2HighlightColor,
+        wf2Suffix1Size, wf2Suffix1Color,
+        wf2Suffix2Size, wf2Suffix2Color,
+        wf2AutoScale,
+        previewAbortControllerRef.current.signal
+      );
+      if (resp.success) {
+        setWf2PreviewUrl(`${resp.previewUrl}?t=${Date.now()}`);
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        console.error('Preview error:', err);
+      }
+    } finally {
+      setIsWf2PreviewLoading(false);
+    }
+  };
+
+  // Debounced auto-preview
+  useEffect(() => {
+    if (!isDialog2Open) return;
+    const timer = setTimeout(() => {
+      refreshWf2Preview();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [isDialog2Open, wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color, wf2AutoScale, wf2HeaderImage]);
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -317,7 +366,9 @@ export const ClipDetailsPage: React.FC = () => {
         wf2Suffix1Size, wf2Suffix1Color,
         wf2Suffix2Size, wf2Suffix2Color,
         30,
+        wf2AutoScale,
       );
+      setWf2Tab('logs'); // Switch to logs when rendering starts
     } catch (e: any) {
       setWf2Status('error');
       setWf2Logs(prev => [...prev, `[ERROR] ${e.message}`]);
@@ -800,7 +851,22 @@ export const ClipDetailsPage: React.FC = () => {
         <div className="responsive-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', gap: '24px', zIndex: 1000 }}>
           {/* Settings panel */}
           <div className="responsive-dialog" style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
-            <h2 style={{ margin: 0, color: '#a78bfa' }}>Workflow 2 — Story Card</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h2 style={{ margin: 0, color: '#a78bfa' }}>Workflow 2</h2>
+              <button
+                onClick={() => refreshWf2Preview()}
+                disabled={isWf2PreviewLoading}
+                style={{ 
+                  background: 'none', border: 'none', color: isWf2PreviewLoading ? '#555' : '#a78bfa', cursor: isWf2PreviewLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem'
+                }}
+              >
+                <svg className={isWf2PreviewLoading ? 'animate-spin' : ''} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+                {isWf2PreviewLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
 
             {/* Header image upload */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -927,6 +993,19 @@ export const ClipDetailsPage: React.FC = () => {
               </div>
             </div>
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#252525', padding: '12px', borderRadius: '8px', border: '1px solid #333', marginBottom: '8px' }}>
+              <input 
+                type="checkbox" 
+                id="wf2-auto-scale" 
+                checked={wf2AutoScale} 
+                onChange={e => setWf2AutoScale(e.target.checked)} 
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <label htmlFor="wf2-auto-scale" style={{ fontSize: '0.9rem', cursor: 'pointer', color: '#ccc' }}>
+                Auto-Scale to Fit (Ignore top margin to fit all)
+              </label>
+            </div>
+
             {/* Action buttons */}
             <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
               <button onClick={() => { setIsDialog2Open(false); setWf2Status('idle'); setWf2Logs([]); if (wf2HeaderPreview) { URL.revokeObjectURL(wf2HeaderPreview); setWf2HeaderPreview(null); } setWf2HeaderImage(null); }} style={{ flex: 1, padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
@@ -942,12 +1021,61 @@ export const ClipDetailsPage: React.FC = () => {
             {wf2Status === 'error' && <div style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444', padding: '12px', borderRadius: '8px', textAlign: 'center' }}>Workflow 2 failed. Check logs.</div>}
           </div>
 
-          {/* Logs panel */}
-          <div className="logs-view" style={{ background: '#121212', borderRadius: '12px', padding: '24px', flexDirection: 'column', border: '1px solid #333' }}>
-            <h3 style={{ margin: '0 0 16px 0', color: '#bbb' }}>Execution Logs</h3>
-            <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-              {wf2Logs.length === 0 ? <span style={{ color: '#555' }}>Logs will appear here during execution…</span> : wf2Logs.join('\n')}
-              <div ref={wf2LogsEndRef} />
+          {/* Preview / Logs panel */}
+          <div className="logs-view" style={{ background: '#121212', borderRadius: '12px', padding: '0', display: 'flex', flexDirection: 'column', border: '1px solid #333', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+              <button 
+                onClick={() => setWf2Tab('preview')}
+                style={{ 
+                  flex: 1, padding: '12px', background: wf2Tab === 'preview' ? '#252525' : 'transparent',
+                  color: wf2Tab === 'preview' ? '#a78bfa' : '#666', border: 'none', borderBottom: wf2Tab === 'preview' ? '2px solid #a78bfa' : 'none',
+                  cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem'
+                }}
+              >
+                PREVIEW
+              </button>
+              <button 
+                onClick={() => setWf2Tab('logs')}
+                style={{ 
+                  flex: 1, padding: '12px', background: wf2Tab === 'logs' ? '#252525' : 'transparent',
+                  color: wf2Tab === 'logs' ? '#a78bfa' : '#666', border: 'none', borderBottom: wf2Tab === 'logs' ? '2px solid #a78bfa' : 'none',
+                  cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem'
+                }}
+              >
+                LOGS
+              </button>
+            </div>
+
+            <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%' }}>
+              {wf2Tab === 'preview' ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#252525', padding: '10px', overflow: 'auto' }}>
+                  {wf2PreviewUrl ? (
+                    <img 
+                      src={wf2PreviewUrl} 
+                      alt="Preview" 
+                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 0 40px rgba(0,0,0,0.5)' }} 
+                    />
+                  ) : (
+                    <div style={{ color: '#444', textAlign: 'center' }}>
+                      <svg style={{ margin: '0 auto 12px', opacity: 0.2 }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <p>Enter story text to generate preview</p>
+                    </div>
+                  )}
+                  
+                  {isWf2PreviewLoading && (
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                      <div className="animate-spin" style={{ width: '32px', height: '32px', border: '3px solid transparent', borderTopColor: '#a78bfa', borderRadius: '50%' }} />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px' }}>
+                  <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {wf2Logs.length === 0 ? <span style={{ color: '#555' }}>Logs will appear here during execution…</span> : wf2Logs.join('\n')}
+                    <div ref={wf2LogsEndRef} />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

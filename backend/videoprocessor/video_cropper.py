@@ -174,10 +174,11 @@ class VideoCropper:
         
         return merged
 
-    def detect_segments(self, video_path: str, mode: str = "face") -> List[Dict]:
+    def detect_segments(self, video_path: str, mode: str = "face", max_frames: int = None) -> List[Dict]:
         """
         Scan the video and return a merged list of segments.
         mode can be 'face' or 'torso'.
+        max_frames can limit the scan (useful for previews).
         """
         if mode == "torso":
             model_bytes = self._get_pose_model()
@@ -218,7 +219,10 @@ class VideoCropper:
         hysteresis_frames = 6 # ~0.2s at 30fps
         consecutive_misses = 0
 
-        for frame_idx in range(0, total_frames, FACE_CHECK_INTERVAL_FRAMES):
+        # limit scan if max_frames is provided
+        scan_limit = min(total_frames, max_frames) if max_frames is not None else total_frames
+
+        for frame_idx in range(0, scan_limit, FACE_CHECK_INTERVAL_FRAMES):
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
             if not ret:
@@ -306,19 +310,19 @@ class VideoCropper:
     # Public entry points
     # ──────────────────────────────────────────────────────────────────────────
 
-    def convert_to_reels(self, video_path: str, output_path: str = None, mode: str = "face", **kwargs) -> Dict:
+    def convert_to_reels(self, video_path: str, output_path: str = None, mode: str = "face", preview: bool = False, **kwargs) -> Dict:
         """Convert video to 9:16 (1080×1920) using face/torso rules."""
-        return self._process(video_path, output_path, ratio="9:16", out_w=1080, out_h=1920, mode=mode)
+        return self._process(video_path, output_path, ratio="9:16", out_w=1080, out_h=1920, mode=mode, preview=preview)
 
-    def crop_to_9x8(self, video_path: str, output_path: str = None, mode: str = "face") -> Dict:
+    def crop_to_9x8(self, video_path: str, output_path: str = None, mode: str = "face", preview: bool = False) -> Dict:
         """Convert video to 9:8 (1080×960) using face/torso rules."""
-        return self._process(video_path, output_path, ratio="9:8",  out_w=1080, out_h=960, mode=mode)
+        return self._process(video_path, output_path, ratio="9:8",  out_w=1080, out_h=960, mode=mode, preview=preview)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Core processor
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _process(self, video_path: str, output_path: str | None, ratio: str, out_w: int, out_h: int, mode: str = "face") -> Dict:
+    def _process(self, video_path: str, output_path: str | None, ratio: str, out_w: int, out_h: int, mode: str = "face", preview: bool = False) -> Dict:
         v_path = Path(video_path)
         o_path = Path(output_path) if output_path else v_path.parent / f"{v_path.stem}_{ratio.replace(':','x')}.mp4"
 
@@ -337,7 +341,8 @@ class VideoCropper:
             crop_w = src_w
             crop_h = int(src_w * out_h / out_w)
 
-        segments = self.detect_segments(str(v_path), mode=mode)
+        # If previewing, only scan the first few frames
+        segments = self.detect_segments(str(v_path), mode=mode, max_frames=15 if preview else None)
         if not segments:
             segments = [{"face_count": 0, "start_time": 0.0, "end_time": 1e9, "faces": []}]
 
@@ -359,11 +364,19 @@ class VideoCropper:
                 proc_seg = t_dir / f"seg_{i}_proc.mp4"
 
                 # 1) Extract segment with sync preserved (both video and audio)
+                # If preview, we only need a tiny bit of the first segment
                 raw_cmd = [
                     "ffmpeg", "-i", str(v_path),
-                    "-ss", str(seg["start_time"]), "-to", str(seg["end_time"]),
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18"
+                    "-ss", str(seg["start_time"])
                 ]
+                if preview:
+                    raw_cmd.extend(["-t", "0.1"])
+                else:
+                    raw_cmd.extend(["-to", str(seg["end_time"])])
+                
+                raw_cmd.extend([
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18"
+                ])
                 if has_audio:
                     raw_cmd.extend(["-c:a", "aac"])
                 else:
@@ -392,6 +405,10 @@ class VideoCropper:
 
                 subprocess.run(proc_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 proc_files.append(proc_seg)
+
+                if preview:
+                    # After processing the first segment in preview mode, we are done
+                    break
 
             # -- Concatenate processed segments --
             # Both Audio and Video will be perfectly concatenated in sync

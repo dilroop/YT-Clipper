@@ -9,5 +9,8 @@ from . import api_clips
 from . import api_upload
 from . import api_workflow
 from . import api_workflow2
+from . import api_workflow2_preview
+from . import api_workflow3
 from . import api_generate_metadata
+from . import api_local_video
 from . import websocket

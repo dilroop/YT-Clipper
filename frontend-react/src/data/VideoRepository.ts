@@ -337,8 +337,9 @@ export class VideoRepository {
     suffix1Size: number,
     suffix1Color: string,
     suffix2Size: number,
-    suffix2_color: string,
+    suffix2Color: string,
     fps: number,
+    autoScale: boolean = false,
   ): Promise<any> {
     const formData = new FormData();
     formData.append('client_id', clientId);
@@ -357,14 +358,66 @@ export class VideoRepository {
     formData.append('suffix1_size', suffix1Size.toString());
     formData.append('suffix1_color', suffix1Color);
     formData.append('suffix2_size', suffix2Size.toString());
-    formData.append('suffix2_color', suffix2_color);
+    formData.append('suffix2_color', suffix2Color);
     formData.append('fps', fps.toString());
+    formData.append('auto_scale', autoScale.toString());
 
     const url = `${this.API_BASE}/workflow2/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
     const response = await fetch(url, { method: 'POST', body: formData });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.detail || 'Failed to run Workflow 2');
+    }
+    return response.json();
+  }
+
+  static async getWorkflow2Preview(
+    project: string,
+    format: string,
+    filename: string,
+    headerImage: File,
+    storyText: string,
+    suffixText1: string,
+    suffixText2: string,
+    topMargin: number,
+    padding: number,
+    headerHeight: number,
+    bgColor: string,
+    fontName: string,
+    storySize: number,
+    storyColor: string,
+    highlightColor: string,
+    suffix1Size: number,
+    suffix1Color: string,
+    suffix2Size: number,
+    suffix2Color: string,
+    autoScale: boolean = false,
+    signal?: AbortSignal,
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('header_image', headerImage);
+    formData.append('story_text', storyText);
+    formData.append('suffix_text1', suffixText1);
+    formData.append('suffix_text2', suffixText2);
+    formData.append('top_margin', topMargin.toString());
+    formData.append('padding', padding.toString());
+    formData.append('header_height', headerHeight.toString());
+    formData.append('bg_color', bgColor);
+    formData.append('font_name', fontName);
+    formData.append('story_size', storySize.toString());
+    formData.append('story_color', storyColor);
+    formData.append('highlight_color', highlightColor);
+    formData.append('suffix1_size', suffix1Size.toString());
+    formData.append('suffix1_color', suffix1Color);
+    formData.append('suffix2_size', suffix2Size.toString());
+    formData.append('suffix2_color', suffix2Color);
+    formData.append('auto_scale', autoScale.toString());
+
+    const url = `${this.API_BASE}/workflow2/preview/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
+    const response = await fetch(url, { method: 'POST', body: formData, signal });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to get preview');
     }
     return response.json();
   }
