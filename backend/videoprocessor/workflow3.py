@@ -98,8 +98,9 @@ def remove_silences(input_path: str, output_path: str, threshold_ms: int, keep_m
         last_end = end
         
     # Last segment after final silence
+    # We add a tiny buffer (0.1s) to the end to ensure MoviePy captures the final frames
     seg_start = max(0.0, last_end - keep_s / 2.0)
-    seg_end = total_duration
+    seg_end = total_duration 
     if seg_end > seg_start:
         keep_segments.append((seg_start, seg_end))
         

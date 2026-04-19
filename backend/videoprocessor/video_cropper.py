@@ -263,15 +263,9 @@ class VideoCropper:
                     current["faces"].append(targets)
 
         if current is not None:
-            current["end_time"]  = total_frames / fps
-            current["end_frame"] = total_frames
-            raw_segments.append(current)
-
-        cap.release()
-        return self._merge_segments(raw_segments)
-
-        if current is not None:
-            current["end_time"]  = total_frames / fps
+            # Use a very large number for the last segment to ensure we hit the true end of the file
+            # instead of relying on potentially inaccurate total_frames/fps calculations.
+            current["end_time"]  = 99999.0
             current["end_frame"] = total_frames
             raw_segments.append(current)
 

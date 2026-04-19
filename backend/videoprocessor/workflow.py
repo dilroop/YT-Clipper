@@ -462,7 +462,14 @@ def main():
         second_clip, is_second_video = load_media(args.second, "second")
 
         # ── Determine duration ────────────────────────────────────────────────────
-        duration = args.duration or main_clip.duration
+        # Use the max of video and audio duration to prevent clipping final words
+        if args.duration:
+            duration = args.duration
+        else:
+            duration = main_clip.duration
+            if main_clip.audio:
+                duration = max(duration, main_clip.audio.duration)
+        
         print(f"[INFO] Output duration: {duration:.2f}s")
 
         # ── Fit each clip to its 1080×960 slot ───────────────────────────────────
