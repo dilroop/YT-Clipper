@@ -288,8 +288,15 @@ const StoryCard: React.FC<StoryCardProps> = ({ content, style, cardRef, interact
   const { gradient } = style;
 
   // Parse hex color to RGBA so we can control opacity independently
-  const hexToRgb = (hex: string): [number, number, number] => {
-    const clean = hex.replace('#', '');
+  // Parse color (hex or rgba) to RGB components
+  const parseColorToRgb = (color: string): [number, number, number] => {
+    if (color.startsWith('rgba')) {
+      const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (match) {
+        return [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+      }
+    }
+    const clean = color.replace('#', '');
     const full = clean.length === 3
       ? clean.split('').map(c => c + c).join('')
       : clean;
@@ -300,7 +307,7 @@ const StoryCard: React.FC<StoryCardProps> = ({ content, style, cardRef, interact
     ];
   };
 
-  const [r, g, b] = hexToRgb(gradient.color);
+  const [r, g, b] = parseColorToRgb(gradient.color);
   const opacity = (gradient.opacity ?? 100) / 100;
   // feather is in px; convert to % relative to the card height
   const featherPx = gradient.feather ?? 40;
