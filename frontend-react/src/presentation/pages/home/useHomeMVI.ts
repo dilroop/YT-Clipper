@@ -39,6 +39,15 @@ export function useHomeMVI() {
     return () => { ws.close(); wsRef.current = null; };
   }, []);
 
+  // ─── Fetch Available Strategies ────────────────────────────────────────────
+  useEffect(() => {
+    VideoRepository.getStrategies()
+      .then(strategies => {
+        dispatch({ type: 'SET_AVAILABLE_STRATEGIES', payload: strategies });
+      })
+      .catch(err => console.error('Failed to fetch strategies', err));
+  }, []);
+
   // ─── Persistence ───────────────────────────────────────────────────────────
   useEffect(() => {
     localStorage.setItem('ytc_selected_format', state.selectedFormat);

@@ -39,7 +39,7 @@ Your task is to create reels where EACH REEL tells a complete story by combining
 2. **PARTS PER REEL:** Each reel MUST have 3-7 parts (segments)
 3. **PART SEPARATION:** Parts must be AT LEAST 5 seconds apart in the original video
 4. **PART DURATION:** Each individual part MUST be at least 1 second long, ideally 5-20 seconds
-5. **TOTAL REEL DURATION:** Sum of all parts should target {target_duration} seconds (but can be shorter for impactful multi-part reels)
+5. **TOTAL REEL DURATION:** Sum of all parts should ideally target {target_duration} seconds, but can be significantly longer if the narrative arc requires it.
 6. **CHRONOLOGICAL ORDER:** Parts MUST be in chronological order by timestamp (Part 1 start_time < Part 2 start_time < Part 3 start_time)
    - ❌ WRONG: Part 1 at 00:02:15, Part 2 at 00:01:14 (goes backwards in time)
    - ✅ CORRECT: Part 1 at 00:01:14, Part 2 at 00:02:15 (moves forward in time)

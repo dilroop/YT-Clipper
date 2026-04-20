@@ -289,17 +289,10 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
                     end = self._parse_timestamp(highlight['end_time'])
                     duration = end - start
 
-                    # Check duration requirements (with leniency buffer)
-                    if duration < (self.min_clip_duration - 5):
-                        print(f"\n⚠️  Skipping clip {i+1}: Duration {duration:.1f}s is too short (minimum: {self.min_clip_duration}s)")
-                        print(f"   Title: {highlight.get('title', 'N/A')}")
-                        print(f"   Time: {highlight['start_time']} - {highlight['end_time']}")
-                        continue
-                    elif duration > (self.max_clip_duration + 30):
-                        print(f"\n⚠️  Skipping clip {i+1}: Duration {duration:.1f}s is too long (maximum: {self.max_clip_duration}s)")
-                        print(f"   Title: {highlight.get('title', 'N/A')}")
-                        print(f"   Time: {highlight['start_time']} - {highlight['end_time']}")
-                        continue
+                    # Check duration requirements (REMOVED - allow all suggestions for UI validation)
+                    # if duration < (self.min_clip_duration - 5):
+                    #     print(f"\n⚠️  Skipping clip {i+1}: Duration {duration:.1f}s is too short (minimum: {self.min_clip_duration}s)")
+                    #     ...
 
                     # Convert to normalized format (1-part multi-part)
                     try:
@@ -568,27 +561,27 @@ Return JSON array with start_time, end_time, title, reason, keywords."""
             if prev_end is not None and (start - prev_end) < 5.0:
                 return f"Clip {clip_index}, Part {part_idx+1}: Parts must be at least 5 seconds apart (gap: {start - prev_end:.1f}s)"
 
-            # Check individual part duration (allow short segments for multi-part)
+            # Check individual part duration (REMOVED strict duration constraint - allow all for UI)
             duration = end - start
-            if duration < 1.0:  # Minimum 1s per part (multi-part clips capture specific moments)
-                return f"Clip {clip_index}, Part {part_idx+1}: Duration {duration:.1f}s is too short (minimum 1s per part)"
+            # if duration < 1.0:  # Minimum 1s per part (multi-part clips capture specific moments)
+            #     return f"Clip {clip_index}, Part {part_idx+1}: Duration {duration:.1f}s is too short (minimum 1s per part)"
 
-            if duration > (self.max_clip_duration + 30):  # Add 30s buffer
-                return f"Clip {clip_index}, Part {part_idx+1}: Duration {duration:.1f}s exceeds maximum ({self.max_clip_duration}s per part)"
+            # if duration > (self.max_clip_duration + 30):  # Add 30s buffer
+            #     return f"Clip {clip_index}, Part {part_idx+1}: Duration {duration:.1f}s exceeds maximum ({self.max_clip_duration}s per part)"
 
             total_duration += duration
             prev_end = end
 
-        # Validate total combined duration
+        # Validate total combined duration (REMOVED strict exclusion - allow all for UI)
         # For multi-part clips, use more flexible minimum (8s instead of configured min)
         # since they're meant to be shorter, focused narrative moments
-        multi_part_min = min(8.0, self.min_clip_duration)
+        # multi_part_min = min(8.0, self.min_clip_duration)
 
-        if total_duration < multi_part_min:
-            return f"Clip {clip_index}: Total duration {total_duration:.1f}s is too short (minimum: {multi_part_min:.0f}s for multi-part clips)"
+        # if total_duration < multi_part_min:
+        #     return f"Clip {clip_index}: Total duration {total_duration:.1f}s is too short (minimum: {multi_part_min:.0f}s for multi-part clips)"
 
-        if total_duration > (self.max_clip_duration + 30):
-            return f"Clip {clip_index}: Total duration {total_duration:.1f}s is too long (maximum: {self.max_clip_duration}s plus buffer)"
+        # if total_duration > (self.max_clip_duration + 30):
+        #     return f"Clip {clip_index}: Total duration {total_duration:.1f}s is too long (maximum: {self.max_clip_duration}s plus buffer)"
 
         return None  # Valid
 

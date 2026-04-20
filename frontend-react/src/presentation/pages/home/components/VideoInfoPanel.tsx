@@ -176,9 +176,11 @@ export const StrategySelector: React.FC<Props> = ({ state, intents }) => {
         </div>
       </div>
       <select className="strategy-dropdown" value={state.aiStrategy} onChange={e => intents.updateStrategy(e.target.value)}>
-        <option value="viral-moments">Viral Moments</option>
-        <option value="multi-part-narrative">Multi-Part Story Narrative</option>
-        <option value="educational-insights">Educational Highlights</option>
+        {state.availableStrategies.map(strategy => (
+          <option key={strategy} value={strategy}>
+            {strategy.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+          </option>
+        ))}
       </select>
       {showAdvanced && (
         <div className="extra-context-container">

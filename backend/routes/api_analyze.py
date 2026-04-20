@@ -177,6 +177,20 @@ async def analyze_video(request: AnalyzeVideoRequest):
                 text = clip.get('text', '')
                 words = clip.get('words', [])
 
+            # Validate duration against config
+            is_valid = True
+            validation_status = 'valid'
+            validation_message = 'No validation errors - clip is good to use'
+            
+            if total_duration > max_duration:
+                is_valid = False
+                validation_status = 'error'
+                validation_message = f'Clip is too long: {total_duration:.1f}s (Max: {max_duration}s)'
+            elif total_duration < min_duration:
+                is_valid = False
+                validation_status = 'error'
+                validation_message = f'Clip is too short: {total_duration:.1f}s (Min: {min_duration}s)'
+
             formatted_clips.append({
                 'id': str(i),
                 'index': i,
@@ -185,14 +199,16 @@ async def analyze_video(request: AnalyzeVideoRequest):
                 'duration': total_duration,
                 'title': clip.get('title', f'Clip {i+1}'),
                 'reason': clip.get('reason', ''),
+                'explanation': clip.get('reason', ''), # Frontend uses explanation
                 'text': text,
                 'youtube_link': f"{request.url}&t={int(start)}",
                 'keywords': clip.get('keywords', []),
                 'words': words,
                 'parts': clip.get('parts', []),
-                'is_valid': clip.get('is_valid', True),
-                'validation_warnings': clip.get('validation_warnings', []),
-                'validation_level': clip.get('validation_level', 'valid')
+                'is_valid': is_valid,
+                'validation_warnings': [],
+                'validation_status': validation_status,
+                'validation_message': validation_message
             })
 
         await update_progress({'stage': 'complete', 'percent': 100, 'message': 'Analysis complete!'})

@@ -202,6 +202,13 @@ export class VideoRepository {
     return data.config;
   }
 
+  static async getStrategies(): Promise<string[]> {
+    const response = await fetch(`${this.API_BASE}/strategies`);
+    if (!response.ok) throw new Error('Failed to fetch strategies');
+    const data = await response.json();
+    return data.strategies || [];
+  }
+
   // ─── Generated Clips (Gallery) ───────────────────────────────────────────
 
   static async getGeneratedClips(): Promise<any[]> {

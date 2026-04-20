@@ -45,6 +45,7 @@ export interface HomeState {
   fullTranscriptWords: any[] | null;
 
   // AI provider selection
+  availableStrategies: string[];
   aiProvider: 'openai' | 'deepseek';
 
   error: string | null;
@@ -66,6 +67,7 @@ export const initialHomeState: HomeState = {
   progress: null,
   clips: null,
   fullTranscriptWords: null,
+  availableStrategies: ['viral-moments', 'multi-part-narrative', 'educational-insights'],
   aiProvider: (localStorage.getItem('ytc_ai_provider') as 'openai' | 'deepseek') || 'openai',
   error: null,
   clientId: null,
@@ -83,6 +85,7 @@ export type HomeIntent =
   | { type: 'UPDATE_AI_PROVIDER'; payload: 'openai' | 'deepseek' }
   | { type: 'UPDATE_POSITION'; payload: 'top' | 'bottom' }
   | { type: 'UPDATE_AI_CONTENT_FILE'; payload: File | null }
+  | { type: 'SET_AVAILABLE_STRATEGIES'; payload: string[] }
   // WebSocket
   | { type: 'WS_CONNECTED'; payload: string }
   | { type: 'WS_PROGRESS'; payload: ProgressState }
@@ -138,6 +141,7 @@ export function homeReducer(state: HomeState, intent: HomeIntent): HomeState {
     case 'UPDATE_AI_PROVIDER':   return { ...state, aiProvider: intent.payload };
     case 'UPDATE_POSITION':      return { ...state, aiContentPosition: intent.payload };
     case 'UPDATE_AI_CONTENT_FILE':return { ...state, aiContentFile: intent.payload };
+    case 'SET_AVAILABLE_STRATEGIES': return { ...state, availableStrategies: intent.payload };
 
     // WebSocket
     case 'WS_CONNECTED': return { ...state, clientId: intent.payload };

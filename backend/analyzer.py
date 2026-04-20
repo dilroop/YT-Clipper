@@ -210,8 +210,8 @@ class SectionAnalyzer:
         clip['start'] = max(0, clip['start'] - padding)
         clip['end'] = clip['end'] + padding
 
-        # Ensure we don't exceed max duration
-        if clip['end'] - clip['start'] > self.max_clip_duration:
-            clip['end'] = clip['start'] + self.max_clip_duration
+        # Ensure we don't exceed max duration (REMOVED - allow long clips for UI validation)
+        # if clip['end'] - clip['start'] > self.max_clip_duration:
+        #     clip['end'] = clip['start'] + self.max_clip_duration
 
         return clip
