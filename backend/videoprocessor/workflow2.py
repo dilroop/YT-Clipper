@@ -528,18 +528,14 @@ def build_story_video(
     Build the story-card video and write it to *output_path*.
     Returns *output_path* on success, raises on failure.
     """
-    if preview:
-        import sys
-        sys._is_preview_mode = True # type: ignore
-
     print(f"[INFO] Loading main video: {video_path}")
     probe = VideoFileClip(video_path)
     duration = duration_override or probe.duration
     probe.close()
-    
+
     # ── Scaling ───────────────────────────────────────────────────────────────
     # If we are in preview mode, we only care about t=0, so duration is tiny
-    if getattr(sys, '_is_preview_mode', False):
+    if preview:
         duration = 0.5
 
     print(f"[INFO] Output duration: {duration:.2f}s  |  Canvas: {OUTPUT_WIDTH}×{OUTPUT_HEIGHT}")
@@ -714,7 +710,7 @@ def build_story_video(
     from moviepy.video.fx import Crop
     final = Crop(x1=0, y1=0, x2=OUTPUT_WIDTH, y2=OUTPUT_HEIGHT).apply(final)
 
-    if getattr(sys, '_is_preview_mode', False):
+    if preview:
         print(f"[INFO] Writing preview frame → {output_path}")
         final.save_frame(output_path, t=0)
         print(f"\n[SUCCESS] Preview captured: {output_path}")

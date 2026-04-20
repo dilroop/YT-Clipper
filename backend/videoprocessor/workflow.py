@@ -21,8 +21,10 @@ Requirements (install via requirements.txt):
 
 import argparse
 import os
+import re
 import sys
 import tempfile
+import unicodedata
 import numpy as np
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
@@ -37,6 +39,136 @@ OUTPUT_HEIGHT = 1920
 BOX_HEIGHT = OUTPUT_HEIGHT // 2  # 960  — each half of the 9:16 canvas
 
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+
+# --- Global Constants & Package Setup -----------------------------------------
+try:
+    from backend.core.constants import BASE_DIR
+except (ImportError, ModuleNotFoundError):
+    # Fallback for standalone script execution
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    sys.path.append(str(BASE_DIR))
+    from backend.core.constants import BASE_DIR
+
+# ─── Emoji Support ────────────────────────────────────────────────────────────
+EMOJI_RE = re.compile(
+    r'['
+    r'\U00002100-\U000027BF' # Symbols, arrows, dingbats
+    r'\U00002B00-\U00002BFF' # Misc symbols and arrows
+    r'\U0001F000-\U0001F6FF' # Emoticons, transport, symbols
+    r'\U0001F900-\U0001F9FF' # Supplemental symbols
+    r'\U0001FA70-\U0001FAFF' # Symbols-a
+    r'\U0000FE00-\U0000FE0F' # Variation selectors
+    r']', flags=re.UNICODE
+)
+
+def is_char_emoji(char: str) -> bool:
+    """Check if a character is likely an emoji or special symbol."""
+    if EMOJI_RE.search(char):
+        return True
+    cat = unicodedata.category(char)
+    if cat.startswith('S'):
+         return True
+    if '\U0001F000' <= char <= '\U0001FFFF':
+        return True
+    return False
+
+_EMOJI_FONT_CACHE = {}
+# Known bitmap sizes supported by Apple Color Emoji on macOS
+_SUPPORTED_EMOJI_SIZES = [160, 96, 64, 52, 48, 40, 32, 20]
+
+def get_emoji_font(font_size: int) -> ImageFont.FreeTypeFont | None:
+    if font_size in _EMOJI_FONT_CACHE:
+        return _EMOJI_FONT_CACHE[font_size]
+        
+    custom_path = BASE_DIR / "assets" / "fonts" / "custom_emoji.ttf"
+    mac_path = Path("/System/Library/Fonts/Apple Color Emoji.ttc")
+    
+    for path in [custom_path, mac_path]:
+        if not path.exists():
+            continue
+            
+        try_sizes = [font_size]
+        if "Apple Color Emoji" in str(path):
+            fallbacks = sorted(_SUPPORTED_EMOJI_SIZES, key=lambda s: abs(s - font_size))
+            try_sizes.extend(fallbacks)
+
+        for s in try_sizes:
+            try:
+                font = ImageFont.truetype(str(path), s)
+                _EMOJI_FONT_CACHE[font_size] = font
+                return font
+            except Exception:
+                continue
+    return None
+
+def _draw_text_with_fallback(draw, pos, text, font, fill, emoji_font=None, **kwargs):
+    """Draw text character by character, switching to emoji_font if needed."""
+    x, y = pos
+    for char in text:
+        use_font = font
+        is_emoji = is_char_emoji(char)
+        if is_emoji and emoji_font:
+            use_font = emoji_font
+            # Always use embedded_color=True for Apple Color Emoji
+            # Note: stroke_width is often ignored/unsupported for color emoji bitmaps
+            draw.text((int(x), int(y)), char, font=use_font, embedded_color=True, **kwargs)
+        else:
+            draw.text((int(x), int(y)), char, font=use_font, fill=fill, **kwargs)
+        
+        # Advance X
+        try:
+            bbox = draw.textbbox((x, y), char, font=use_font)
+            w = bbox[2] - bbox[0]
+            if w == 0 and is_emoji:
+                 w = use_font.size
+        except Exception:
+            try:
+                # Fallback for old Pillow or weird fonts
+                w, _ = draw.textsize(char, font=use_font) # type: ignore
+            except:
+                w = use_font.size
+        x += w
+    return x
+
+def _measure_text_with_fallback(text: str, font, emoji_font=None, **kwargs) -> tuple[int, int]:
+    """Measure text width and height with emoji fallback."""
+    dummy = Image.new("RGBA", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+    
+    lines = text.split('\n')
+    max_w = 0
+    
+    # Calculate line height based on 'Ag' to get a good vertical span
+    try:
+        bbox = draw.textbbox((0, 0), "Ag", font=font)
+        lh = int(bbox[3] - bbox[1])
+    except:
+        w, h = draw.textsize("Ag", font=font) # type: ignore
+        lh = int(h)
+    
+    for ln in lines:
+        cur_x = 0
+        for char in ln:
+            use_font = font
+            is_emoji = is_char_emoji(char)
+            if is_emoji and emoji_font:
+                use_font = emoji_font
+            
+            try:
+                bbox = draw.textbbox((cur_x, 0), char, font=use_font)
+                w = bbox[2] - bbox[0]
+                if w == 0 and is_emoji:
+                    w = use_font.size
+            except:
+                try:
+                    w, _ = draw.textsize(char, font=use_font) # type: ignore
+                except:
+                    w = use_font.size
+            cur_x += w
+        max_w = max(max_w, cur_x)
+    
+    total_h = len(lines) * lh + (len(lines) - 1) * 10 # 10 is default line spacing
+    return int(max_w), int(total_h)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -100,26 +232,9 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6,
     dummy = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
     draw = ImageDraw.Draw(dummy)
     
-    # Calculate exact text bounds
-    if hasattr(draw, 'multiline_textbbox'):
-        bbox = draw.multiline_textbbox((0, 0), text, font=font, stroke_width=outline_width, align="center")
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-        offset_x = bbox[0]
-        offset_y = bbox[1]
-    elif hasattr(draw, 'textbbox'):
-        bbox = draw.textbbox((0, 0), text, font=font, stroke_width=outline_width)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-        offset_x = bbox[0]
-        offset_y = bbox[1]
-    else:
-        # Fallback for old Pillow
-        text_w, text_h = draw.textsize(text, font=font)
-        text_w += outline_width * 2
-        text_h += outline_width * 2
-        offset_x = 0
-        offset_y = 0
+    emoji_font = get_emoji_font(font.size)
+    text_w, text_h = _measure_text_with_fallback(text, font, emoji_font=emoji_font, stroke_width=outline_width)
+    offset_x, offset_y = 0, 0
 
     img_w = int(text_w + padding_x * 2)
     img_h = int(text_h + padding_y * 2)
@@ -137,24 +252,23 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6,
     text_pos_x = padding_x - offset_x
     text_pos_y = padding_y - offset_y
 
-    if hasattr(draw, 'multiline_text'):
-        draw.multiline_text(
-            (text_pos_x, text_pos_y),
-            text,
-            font=font,
-            fill=text_color,
-            stroke_width=outline_width,
-            stroke_fill=(0, 0, 0, 255),
-            align="center",
-        )
-    else:
-        draw.text(
-            (text_pos_x, text_pos_y),
-            text,
-            font=font,
-            fill=text_color,
-            stroke_width=outline_width,
-            stroke_fill=(0, 0, 0, 255),
+    # Draw text centered line-by-line
+    lines = text.split('\n')
+    # Calculate line height
+    try:
+        bbox = draw.textbbox((0, 0), "Ag", font=font)
+        lh = int(bbox[3] - bbox[1])
+    except:
+        _, h = draw.textsize("Ag", font=font) # type: ignore
+        lh = int(h)
+    
+    for i, ln in enumerate(lines):
+        line_w, _ = _measure_text_with_fallback(ln, font, emoji_font=emoji_font, stroke_width=outline_width)
+        cur_x = padding_x + (text_w - line_w) // 2
+        cur_y = padding_y + i * (lh + 10)
+        _draw_text_with_fallback(
+            draw, (cur_x, cur_y), ln, font, text_color, 
+            emoji_font=emoji_font, stroke_width=outline_width, stroke_fill=(0, 0, 0, 255)
         )
     return np.array(img)
 
@@ -166,31 +280,20 @@ def render_watermark(text: str, font: ImageFont.FreeTypeFont, alpha_opacity: flo
     dummy = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
     draw = ImageDraw.Draw(dummy)
     
-    if hasattr(draw, 'textbbox'):
-        bbox = draw.textbbox((0, 0), text, font=font, stroke_width=outline_width)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-        offset_x = bbox[0]
-        offset_y = bbox[1]
-    else:
-        text_w, text_h = draw.textsize(text, font=font)
-        text_w += outline_width * 2
-        text_h += outline_width * 2
-        offset_x = 0
-        offset_y = 0
+    emoji_font = get_emoji_font(font.size)
+    text_w, text_h = _measure_text_with_fallback(text, font, emoji_font=emoji_font, stroke_width=outline_width)
+    offset_x, offset_y = 0, 0
 
     img = Image.new("RGBA", (int(text_w + 10), int(text_h + 10)), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     opacity_int = int(255 * max(0.0, min(1.0, alpha_opacity)))
     
-    draw.text(
-        (5 - offset_x, 5 - offset_y),
-        text,
-        font=font,
-        fill=(255, 255, 255, opacity_int),
-        stroke_width=outline_width,
-        stroke_fill=(0, 0, 0, opacity_int),
+    opacity_int = int(255 * max(0.0, min(1.0, alpha_opacity)))
+    
+    _draw_text_with_fallback(
+        draw, (5, 5), text, font, (255, 255, 255, opacity_int),
+        emoji_font=emoji_font, stroke_width=outline_width, stroke_fill=(0, 0, 0, opacity_int)
     )
     return np.array(img)
 
