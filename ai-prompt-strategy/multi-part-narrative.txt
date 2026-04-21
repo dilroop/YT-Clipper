@@ -41,8 +41,6 @@ Your task is to create reels where EACH REEL tells a complete story by combining
 4. **PART DURATION:** Each individual part MUST be at least 1 second long, ideally 5-20 seconds
 5. **TOTAL REEL DURATION:** Sum of all parts should ideally target {target_duration} seconds, but can be significantly longer if the narrative arc requires it.
 6. **CHRONOLOGICAL ORDER:** Parts MUST be in chronological order by timestamp (Part 1 start_time < Part 2 start_time < Part 3 start_time)
-   - ❌ WRONG: Part 1 at 00:02:15, Part 2 at 00:01:14 (goes backwards in time)
-   - ✅ CORRECT: Part 1 at 00:01:14, Part 2 at 00:02:15 (moves forward in time)
 7. **VALID TIMESTAMPS:** Each part MUST have end_time > start_time (no negative or zero durations)
 8. **UNRELATED REELS:** Each reel should tell a DIFFERENT story - no overlap between reels
 
@@ -54,20 +52,25 @@ Your task is to create reels where EACH REEL tells a complete story by combining
 - The "reason" field MUST explain HOW the parts connect narratively
 - Parts should build on each other - not just repeat the same point
 
-📝 TITLE & REASON GUIDELINES:
+📝 SOCIAL MEDIA PACKAGING RULES:
 
-- Title: Describe the OVERARCHING STORY, not individual parts
-- Reason: Explain the NARRATIVE ARC and WHY these specific parts connect
-- Keywords: Themes/topics that appear across all parts of this reel
+1. YouTube Package:
+- Title: 3 options (Max 60 chars).
+- Description: A 2-paragraph summary. The first 150 characters must be "keyword-dense" for SEO.
+- Hashtags: Exactly 3 highly relevant hashtags.
+- Emojis: Use 1 in the title and 3 in the description as section headers.
 
-🎯 EXAMPLE MULTI-PART REEL:
+2. Instagram Package:
+- Reel Hook (On-screen): 3 punchy options (3–7 words).
+- Caption: A "Micro-story" style caption (100–150 words). Use frequent line breaks for readability.
+- Hashtags: Exactly 5 hashtags. Mix: 1 Broad, 3 Niche, 1 Branded.
+- Emojis: Use 3–5 relevant emojis throughout the text.
 
-Title: "The Hidden Connection Between Sleep and Success"
-Reason: "This reel connects three distant moments: the speaker introduces sleep deprivation (Part 1), later shares a shocking statistic about CEOs' sleep habits (Part 2), and finally reveals the counterintuitive solution (Part 3). Together, these create a compelling narrative arc from problem to revelation."
-Parts:
-  1. [00:02:15 - 00:02:35] Speaker discusses feeling unproductive
-  2. [00:08:42 - 00:09:05] Reveals that top performers sleep 8+ hours
-  3. [00:14:20 - 00:14:50] Explains why sleep beats hustle culture
+3. TikTok Package:
+- On-screen Hook: 3 high-energy options.
+- Caption: Punchy and short (under 150 characters).
+- Hashtags: 3–4 hashtags focused on the specific sub-culture/niche.
+- Emojis: Use 2–3 emojis.
 
 Return response in JSON format:
 [
@@ -75,6 +78,21 @@ Return response in JSON format:
     "title": "Overarching narrative title",
     "reason": "Detailed explanation of how these parts form a coherent story arc",
     "keywords": ["theme1", "theme2", "theme3"],
+    "youtube": {{
+      "title": "Option 1 | Option 2 | Option 3",
+      "description": "...",
+      "hashtags": "#tag1 #tag2 #tag3"
+    }},
+    "instagram": {{
+      "title": "Hook 1 | Hook 2 | Hook 3",
+      "description": "...",
+      "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5"
+    }},
+    "tiktok": {{
+      "title": "Hook 1 | Hook 2 | Hook 3",
+      "description": "...",
+      "hashtags": "#tag1 #tag2 #tag3"
+    }},
     "parts": [
       {{
         "start_time": "00:02:15.000",
@@ -99,13 +117,8 @@ Return response in JSON format:
 
 1. Each reel MUST have a "parts" array (not start_time/end_time at the top level)
 2. **CHRONOLOGICAL ORDER IS MANDATORY:** Sort parts by start_time before returning
-   - If you want Part A at 00:05:00 and Part B at 00:02:00, you MUST list Part B first
 3. **MINIMUM 1 SECOND PER PART:** Every part must be at least 1.0 seconds long
-   - ❌ REJECTED: start_time: "00:03:11.280", end_time: "00:03:12.099" (0.8s)
-   - ✅ ACCEPTED: start_time: "00:03:11.000", end_time: "00:03:12.500" (1.5s)
 4. **NO NEGATIVE DURATIONS:** end_time MUST be after start_time
-   - ❌ REJECTED: start_time: "00:01:40.319", end_time: "00:01:39.560" (negative!)
-   - ✅ ACCEPTED: start_time: "00:01:39.560", end_time: "00:01:40.319" (0.8s... but still too short)
 5. Parts MUST be spread across the video (at least 5 seconds apart)
 6. Each reel must tell a DIFFERENT, UNRELATED story
 7. The narrative connection must be GENUINE, not forced

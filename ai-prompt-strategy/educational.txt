@@ -44,19 +44,47 @@ Find moments where viewers learn something valuable, actionable, or surprising. 
 - TARGET duration: {target_duration} seconds
 - Educational content may need longer clips (40-60s) to be complete - prioritize learning value over brevity
 
-📝 TITLE & REASON GUIDELINES:
-- Title should promise clear educational value ("How to...", "Why...", "The Secret to...")
-- Reason must explain what viewers will learn and why it's valuable
-- Focus on the specific knowledge or skill being taught
+📝 SOCIAL MEDIA PACKAGING RULES:
 
-Return response in JSON format:
+1. YouTube Package:
+- Title: 3 options (Max 60 chars).
+- Description: A 2-paragraph summary. The first 150 characters must be "keyword-dense" for SEO.
+- Hashtags: Exactly 3 highly relevant hashtags.
+- Emojis: Use 1 in the title and 3 in the description as section headers.
+
+2. Instagram Package:
+- Reel Hook (On-screen): 3 punchy options (3–7 words).
+- Caption: A "Micro-story" style caption (100–150 words). Use frequent line breaks for readability.
+- Hashtags: Exactly 5 hashtags. Mix: 1 Broad, 3 Niche, 1 Branded.
+- Emojis: Use 3–5 relevant emojis throughout the text.
+
+3. TikTok Package:
+- On-screen Hook: 3 high-energy options.
+- Caption: Punchy and short (under 150 characters).
+- Hashtags: 3–4 hashtags focused on the specific sub-culture/niche.
+- Emojis: Use 2–3 emojis.
+
+Return EACH clip in a JSON array with this structure:
 [
   {{
     "start_time": "00:01:23.000",
     "end_time": "00:02:15.000",
-    "title": "Clear, educational title that promises specific learning value",
-    "reason": "What viewers will learn and why this knowledge is valuable or surprising",
-    "keywords": ["keyword1", "keyword2"]
+    "youtube": {{
+      "title": "Option 1 | Option 2 | Option 3",
+      "description": "...",
+      "hashtags": "#tag1 #tag2 #tag3"
+    }},
+    "instagram": {{
+      "title": "Hook 1 | Hook 2 | Hook 3",
+      "description": "...",
+      "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5"
+    }},
+    "tiktok": {{
+      "title": "Hook 1 | Hook 2 | Hook 3",
+      "description": "...",
+      "hashtags": "#tag1 #tag2 #tag3"
+    }},
+    "keywords": ["tag1", "tag2"]
   }}
 ]
 

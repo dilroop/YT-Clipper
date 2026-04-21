@@ -63,6 +63,7 @@ export const ClipDetailsPage: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [metaGenStatus, setMetaGenStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [activePlatform, setActivePlatform] = useState<'youtube' | 'instagram' | 'tiktok'>('youtube');
 
   // ── Refine workflow state ──────────────────────────────────────────────────
   const [isRefineEditorOpen, setIsRefineEditorOpen] = useState(false);
@@ -434,10 +435,6 @@ export const ClipDetailsPage: React.FC = () => {
     return <div style={{ minHeight: '100vh', background: '#121212', color: '#fff', padding: '48px', textAlign: 'center' }}>Clip not found</div>;
   }
 
-  const title = clip.info_data?.clip?.title || clip.title || 'Untitled Clip';
-  const description = clip.info_data?.clip?.description || clip.info_text || 'No description available.';
-  const keywords = clip.info_data?.clip?.keywords?.join(', ') || 'None';
-
   return (
     <div className="page-container" style={{ minHeight: '100vh', background: '#121212', color: '#fff', fontFamily: '"Inter", sans-serif' }}>
       {/* Header */}
@@ -561,28 +558,100 @@ export const ClipDetailsPage: React.FC = () => {
         <div style={{ flex: '2 1 500px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', alignContent: 'start' }}>
           {/* Middle Column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '0.85rem', color: '#888', textTransform: 'uppercase', letterSpacing: '1px' }}>TITLE</h3>
-                <button style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }} onClick={() => navigator.clipboard.writeText(title)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            {/* Unified Metadata Card */}
+            <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', position: 'relative', overflow: 'hidden' }}>
+              {/* Platform Toggle Pills */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '10px', width: 'fit-content' }}>
+                {(['youtube', 'instagram', 'tiktok'] as const).map(p => {
+                  const isActive = activePlatform === p;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setActivePlatform(p)}
+                      style={{
+                        padding: '6px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: isActive ? '#3b82f6' : 'transparent',
+                        color: isActive ? '#fff' : '#888',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
               </div>
-              <p style={{ margin: 0, lineHeight: 1.5 }}>{title}</p>
-            </div>
 
-            <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '0.85rem', color: '#888', textTransform: 'uppercase', letterSpacing: '1px' }}>DESCRIPTION</h3>
-                <button style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }} onClick={() => navigator.clipboard.writeText(description)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+              {/* Title Section */}
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.75rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 800 }}>TITLE</h3>
+                  <button 
+                    style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: '4px' }} 
+                    onClick={() => {
+                      const t = clip?.info_data?.clip?.[activePlatform]?.title || (activePlatform === 'youtube' ? (clip?.info_data?.clip?.title || clip?.info_data?.title || '') : '');
+                      navigator.clipboard.writeText(t);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
+                <p style={{ margin: 0, lineHeight: 1.5, fontSize: '1.05rem', fontWeight: 500, color: '#efefef' }}>
+                  {clip?.info_data?.clip?.[activePlatform]?.title || (activePlatform === 'youtube' ? (clip?.info_data?.clip?.title || clip?.info_data?.title || 'No Title Generated') : `No ${activePlatform} title generated.`)}
+                </p>
               </div>
-              <p style={{ margin: 0, lineHeight: 1.5, color: '#ccc' }}>{description}</p>
-            </div>
 
-            <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '0.85rem', color: '#888', textTransform: 'uppercase', letterSpacing: '1px' }}>TAGS</h3>
-                <button style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }} onClick={() => navigator.clipboard.writeText(keywords)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+              {/* Description Section */}
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.75rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 800 }}>DESCRIPTION</h3>
+                  <button 
+                    style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: '4px' }} 
+                    onClick={() => {
+                      const d = clip?.info_data?.clip?.[activePlatform]?.description || (activePlatform === 'youtube' ? (clip?.info_data?.clip?.description || clip?.info_data?.description || '') : '');
+                      navigator.clipboard.writeText(d);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
+                <p style={{ margin: 0, lineHeight: 1.6, color: '#bbb', fontSize: '0.9rem', whiteSpace: 'pre-wrap' }}>
+                  {clip?.info_data?.clip?.[activePlatform]?.description || (activePlatform === 'youtube' ? (clip?.info_data?.clip?.description || clip?.info_data?.description || 'No Description Generated') : `No ${activePlatform} description generated.`)}
+                </p>
               </div>
-              <p style={{ margin: 0, lineHeight: 1.5 }}>{keywords}</p>
+
+              {/* Tags/Hashtags Section */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.75rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 800 }}>HASHTAGS & KEYWORDS</h3>
+                  <button 
+                    style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: '4px' }} 
+                    onClick={() => {
+                      const h = clip?.info_data?.clip?.[activePlatform]?.hashtags || clip?.info_data?.clip?.keywords?.join(', ') || '';
+                      navigator.clipboard.writeText(h);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {clip?.info_data?.clip?.[activePlatform]?.hashtags ? (
+                    clip.info_data.clip[activePlatform].hashtags.split(' ').map((tag: string, idx: number) => (
+                      <span key={idx} style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>{tag}</span>
+                    ))
+                  ) : (
+                    (clip?.info_data?.clip?.keywords || []).map((tag: string, idx: number) => (
+                      <span key={idx} style={{ background: 'rgba(255,255,255,0.05)', color: '#888', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem' }}>#{tag}</span>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
 
             <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px' }}>
@@ -613,7 +682,55 @@ export const ClipDetailsPage: React.FC = () => {
           </div>
 
           {/* Far Right Column: Metadata */}
-          <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {/* Transcript Card (Moved here) */}
+            <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold' }}>Transcript</h3>
+                <button 
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#888', cursor: 'pointer', padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }} 
+                  onClick={() => {
+                    const info = clip?.info_data;
+                    const parts = info?.clip?.parts;
+                    let text = "";
+                    if (parts && parts.length > 0) {
+                      text = parts.map((p: any) => p.text).join('\n');
+                    } else {
+                      text = info?.transcript || info?.clip?.transcript || info?.clip?.text || 
+                             (info?.clip?.words ? info.clip.words.map((w: any) => w.word).join(' ') : '') || 
+                             clip?.info_text || "";
+                    }
+                    navigator.clipboard.writeText(text.trim());
+                  }}
+                  title="Copy full transcript"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Copy
+                </button>
+              </div>
+              <div style={{ maxHeight: '300px', overflowY: 'auto', paddingRight: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '16px' }}>
+                {clip?.info_data?.clip?.parts && clip.info_data.clip.parts.length > 0 ? (
+                  clip.info_data.clip.parts.map((part: any, idx: number) => (
+                    <div key={idx} style={{ marginBottom: '16px' }}>
+                      {clip.info_data.clip.parts.length > 1 && (
+                        <div style={{ fontSize: '0.7rem', color: '#555', marginBottom: '4px', fontWeight: 'bold' }}>PART {idx + 1}</div>
+                      )}
+                      <p style={{ margin: 0, lineHeight: 1.6, color: '#bbb', fontSize: '0.95rem' }}>
+                        {part.text}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ margin: 0, lineHeight: 1.6, color: '#bbb', fontSize: '0.95rem', whiteSpace: 'pre-wrap' }}>
+                    {clip?.info_data?.transcript || clip?.info_data?.clip?.transcript || clip?.info_data?.clip?.text || 
+                     (clip?.info_data?.clip?.words ? clip.info_data.clip.words.map((w: any) => w.word).join(' ') : '') || 
+                     clip?.info_text || 'No transcript available for this clip.'}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', flex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold' }}>Metadata</h3>
               <button
@@ -637,6 +754,7 @@ export const ClipDetailsPage: React.FC = () => {
           </div>
         </div>
       </div>
+    </div>
 
       {/* Workflow Dialog */}
       {isDialogOpen && (
