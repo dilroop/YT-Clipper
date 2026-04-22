@@ -151,6 +151,8 @@ export const ClipSelectionSection: React.FC<Props> = ({ state, intents }) => {
         <ClipScriptEditorPage 
           clip={editorClip.clip} 
           fullTranscript={state.fullTranscriptWords || []}
+          videoId={state.videoInfo?.id}
+          project={state.videoInfo?.id}
           onSave={(updatedClip: Clip) => {
             intents.updateClip(editorClip.index, updatedClip);
             setEditorClip(null);

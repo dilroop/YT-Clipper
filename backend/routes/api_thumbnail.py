@@ -20,6 +20,7 @@ async def get_thumbnail(request: VideoURLRequest):
             if entry:
                 return {
                     "success": True,
+                    "id": entry["video_id"],
                     "video_id": entry["video_id"],
                     "title": entry["title"],
                     "channel": entry["channel"],
@@ -67,6 +68,7 @@ async def get_thumbnail(request: VideoURLRequest):
 
             return {
                 "success": True,
+                "id": video_id,
                 "video_id": video_id,
                 "title": title,
                 "channel": channel,

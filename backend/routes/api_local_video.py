@@ -94,6 +94,7 @@ async def upload_local_video(file: UploadFile = File(...)):
 
         return {
             "success": True,
+            "id": file_id,
             "video_id": file_id,
             "title": meta["title"],
             "channel": "Local File",

@@ -227,6 +227,7 @@ async def analyze_video(request: AnalyzeVideoRequest):
 
         return {
             "success": True,
+            "id": video_id,
             "video_id": video_id,
             "video_info": video_info,
             "clips": formatted_clips,

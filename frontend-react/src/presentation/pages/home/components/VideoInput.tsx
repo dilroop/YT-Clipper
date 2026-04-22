@@ -116,6 +116,7 @@ export const VideoInput: React.FC<Props> = ({ state, intents }) => {
           placeholder="Paste YouTube URL here..."
           aria-label="YouTube URL"
           value={state.url}
+          autoComplete="off"
           onChange={e => intents.updateUrl(e.target.value)}
           onFocus={() => setHistoryOpen(true)}
           onClick={() => setHistoryOpen(true)}
