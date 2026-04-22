@@ -1,8 +1,11 @@
 import json
 import re
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+import subprocess
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from backend.core.constants import BASE_DIR
+from backend.logger import app_logger
 
 router = APIRouter()
 
@@ -194,4 +197,114 @@ async def set_marker(project: str, format: str, filename: str, body: dict):
             marker_file.unlink()
         return {"success": True, "marker_color": color or None}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/audio-preview")
+async def get_audio_preview(
+    videoId: str = Query(None),
+    project: str = Query(None),
+    start: float = Query(...),
+    end: float = Query(...)
+):
+    """
+    Stream a cropped MP3 segment of the original video.
+    Priority: Downloads/{videoId}.mp4 > ToUpload/{project}/original/video.mp4
+    """
+    try:
+        # Sanitize inputs
+        if videoId: videoId = videoId.strip()
+        if project: project = project.strip()
+        
+        app_logger.api(f"Audio Preview Request: videoId='{videoId}', project='{project}', start={start}, end={end}")
+        
+        source_path = None
+        
+        # 1. Primary: Search in Downloads directory using videoId
+        if videoId:
+            download_dir = BASE_DIR / "Downloads"
+            # Try direct match for YouTube ID
+            p1 = download_dir / f"{videoId}.mp4"
+            if p1.exists():
+                source_path = p1
+                app_logger.success(f"Found source in Downloads: {source_path}")
+            else:
+                # Fuzzy search in Downloads if exact ID match fails
+                for ext in [".mp4", ".m4a", ".wav", ".mp3", ".mkv", ".webm"]:
+                    found = list(download_dir.glob(f"*{videoId}*{ext}"))
+                    if found:
+                        source_path = found[0]
+                        app_logger.success(f"Found fuzzy source in Downloads: {source_path}")
+                        break
+
+        # 2. Secondary: Search in ToUpload project folder
+        if not source_path and project:
+            upload_dir = BASE_DIR / "ToUpload"
+            project_dir = upload_dir / project
+            if project_dir.exists():
+                # Check original folder
+                original_dir = project_dir / "original"
+                if original_dir.exists():
+                    found = list(original_dir.glob("*.mp4"))
+                    if found:
+                        source_path = found[0]
+                        app_logger.success(f"Found source in project folder: {source_path}")
+
+        # 3. Final fallback: Match project name in Downloads
+        if not source_path and project:
+             download_dir = BASE_DIR / "Downloads"
+             # Match project name but avoid non-video files
+             found = [f for f in download_dir.glob(f"*{project}*") if f.suffix.lower() in [".mp4", ".mkv", ".webm", ".mp3"]]
+             if found: 
+                 source_path = found[0]
+                 app_logger.success(f"Found source in Downloads via project name: {source_path}")
+
+        if not source_path or not source_path.exists():
+            app_logger.logger.error(f"AUDIO SOURCE NOT FOUND: videoId='{videoId}', project='{project}'")
+            raise HTTPException(status_code=404, detail=f"Source video not found. Tried videoId: {videoId} and project: {project}")
+
+        # FFmpeg command to extract audio and stream as MP3
+        # Fast seeking (-ss before -i)
+        cmd = [
+            "ffmpeg",
+            "-ss", str(start),
+            "-to", str(end),
+            "-i", str(source_path.resolve()),
+            "-f", "mp3",
+            "-acodec", "libmp3lame",
+            "-b:a", "128k",
+            "-nostats",
+            "-loglevel", "info",
+            "-"
+        ]
+
+        def generate():
+            # Use subprocess to stream output
+            app_logger.api(f"Running FFmpeg: {' '.join(cmd)}")
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                while True:
+                    chunk = proc.stdout.read(8192)
+                    if not chunk:
+                        # Check for errors if no output produced
+                        if proc.poll() is not None:
+                            if proc.returncode != 0:
+                                err = proc.stderr.read().decode()
+                                app_logger.logger.error(f"FFmpeg error (code {proc.returncode}): {err}")
+                            else:
+                                app_logger.success("FFmpeg stream finished successfully")
+                        break
+                    yield chunk
+            except Exception as e:
+                app_logger.logger.error(f"Streaming error: {e}")
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                if proc.stdout: proc.stdout.close()
+                if proc.stderr: proc.stderr.close()
+                proc.wait()
+
+        return StreamingResponse(generate(), media_type="audio/mpeg")
+
+    except Exception as e:
+        app_logger.logger.error(f"Audio Preview Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

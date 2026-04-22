@@ -2609,6 +2609,27 @@ input[type="checkbox"]:checked + .toggle-slider::before {
   font-size: 1rem;
 }
 
+.cse-part-play {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #888);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.cse-part-play:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.cse-part-play--active {
+  color: #7c4dff !important;
+}
+
 .cse-part-delete {
   background: transparent;
   border: none;

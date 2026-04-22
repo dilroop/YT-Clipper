@@ -73,6 +73,8 @@ export const ClipDetailsPage: React.FC = () => {
   const [refineProcessStatus, setRefineProcessStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [refineLogs, setRefineLogs] = useState<string[]>([]);
   const [refineProgress, setRefineProgress] = useState<{ percent: number; message: string; stage: string } | null>(null);
+  const [refineVideoId, setRefineVideoId] = useState<string>("");
+  const [refineProject, setRefineProject] = useState<string>("");
 
   // ── Workflow 2 state ──────────────────────────────────────────────────────
   const [isDialog2Open, setIsDialog2Open] = useState(false);
@@ -315,6 +317,11 @@ export const ClipDetailsPage: React.FC = () => {
           words: clipData.words || [],
       };
       setReconstructedClip(reconstructed);
+      
+      // Pass videoId and project to the editor
+      setRefineVideoId(videoId);
+      setRefineProject(project || "");
+      
       setIsRefineEditorOpen(true);
     } catch (e: any) {
         alert("Could not load refine data: " + e.message);
@@ -1294,6 +1301,8 @@ export const ClipDetailsPage: React.FC = () => {
           <ClipScriptEditorPage
             clip={reconstructedClip}
             fullTranscript={refineFullTranscript}
+            videoId={refineVideoId}
+            project={refineProject}
             onClose={() => setIsRefineEditorOpen(false)}
             onSave={async (updatedClip: Clip) => {
               try {

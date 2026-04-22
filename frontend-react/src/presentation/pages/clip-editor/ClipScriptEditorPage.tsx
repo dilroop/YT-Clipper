@@ -1,4 +1,4 @@
-import React, { useReducer, useCallback } from 'react';
+import React, { useReducer, useCallback, useRef, useState } from 'react';
 import type { Clip, TranscriptWord } from '../../../domain/types';
 import {
   editorReducer,
@@ -10,12 +10,17 @@ import { TranscriptView } from './TranscriptView';
 interface Props {
   clip: Clip;
   fullTranscript: TranscriptWord[];
+  videoId?: string;
+  project?: string;
   onSave: (updatedClip: Clip) => void;
   onClose: () => void;
 }
 
-export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, onSave, onClose }) => {
-  const [editorState, dispatch] = useReducer(editorReducer, clip, (c) => buildInitialEditorState(c, fullTranscript));
+export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, videoId, project, onSave, onClose }) => {
+  const [editorState, dispatch] = useReducer(editorReducer, clip, (c) => buildInitialEditorState(c, fullTranscript, videoId, project));
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlayingIdx, setIsPlayingIdx] = useState<number | null>(null);
+  const currentPlayingRef = useRef<{ start: number; end: number } | null>(null);
 
   const formatTime = (secs: number) => {
     const h = Math.floor(secs / 3600);
@@ -32,6 +37,51 @@ export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, on
   const handleSave = () => {
     const updatedClip = serialiseEditorState(editorState);
     onSave(updatedClip);
+  };
+
+  const handlePlayPart = (idx: number) => {
+    const part = editorState.parts[idx];
+    if (!audioRef.current) return;
+
+    // Use videoId or project as reference
+    const vid = videoId || editorState.videoId || '';
+    const prj = project || editorState.project || '';
+    
+    const params = new URLSearchParams({
+      start: part.start.toString(),
+      end: part.end.toString()
+    });
+    if (vid) params.append('videoId', vid);
+    if (prj) params.append('project', prj);
+
+    const apiUrl = `/api/audio-preview?${params.toString()}`;
+    
+    // If already playing this part, stop it
+    if (isPlayingIdx === idx) {
+      audioRef.current.pause();
+      setIsPlayingIdx(null);
+      return;
+    }
+
+    audioRef.current.src = apiUrl;
+    currentPlayingRef.current = { start: part.start, end: part.end };
+    setIsPlayingIdx(idx);
+    audioRef.current.play().catch(err => {
+      console.error("Playback failed:", err);
+      alert("Playback failed: " + err.message);
+      setIsPlayingIdx(null);
+    });
+  };
+
+  const handleTimeUpdate = () => {
+    // Optional: could use this to stop playback exactly at 'end' if FFmpeg wasn't precise enough
+    // But since FFmpeg crops it, we'll let it play to the end of the stream.
+  };
+
+  const handleAudioError = (e: any) => {
+    console.error("Audio error:", e);
+    setIsPlayingIdx(null);
+    alert("Audio playback failed. Please check if the source video exists in Downloads.");
   };
 
   return (
@@ -89,8 +139,28 @@ export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, on
                   onClick={() => dispatch({ type: 'SELECT_PART', payload: idx })}
                 >
                   <div className="cse-part-card-header">
-                    {/* Drag handle */}
-                    <span className="cse-part-drag" style={{ cursor: 'grab' }}>≡</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {/* Drag handle */}
+                      <span className="cse-part-drag" style={{ cursor: 'grab' }}>≡</span>
+                      
+                      {/* Play button */}
+                      <button 
+                        className={`cse-part-play ${isPlayingIdx === idx ? 'cse-part-play--active' : ''}`}
+                        title={isPlayingIdx === idx ? "Stop" : "Play audio"}
+                        onClick={(e) => { e.stopPropagation(); handlePlayPart(idx); }}
+                      >
+                        {isPlayingIdx === idx ? (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="6" width="12" height="12" />
+                          </svg>
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+
                     {/* Delete (✕) */}
                     <button
                       className="cse-part-delete"
@@ -163,9 +233,24 @@ export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, on
 
       {/* ── Footer ── */}
       <div className="cse-footer">
+        {isPlayingIdx !== null && (
+          <div className="cse-playing-status">
+            <span className="cse-play-dot"></span>
+            Playing audio...
+          </div>
+        )}
         <button className="cse-cancel-btn" onClick={onClose}>Cancel</button>
         <button className="cse-save-btn" onClick={handleSave}>Save Changes</button>
       </div>
+
+      {/* Hidden audio element */}
+      <audio 
+        ref={audioRef} 
+        style={{ display: 'none' }} 
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={() => setIsPlayingIdx(null)}
+        onError={handleAudioError}
+      />
     </div>
   );
 };

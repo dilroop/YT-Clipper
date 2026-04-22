@@ -25,6 +25,8 @@ export interface EditorState {
   selectedPartIndex: number | null;
   isAddingNewPart: boolean;   // + button was clicked, next selection = new part
   isDirty: boolean;
+  videoId?: string;
+  project?: string;
 }
 
 export type EditorIntent =
@@ -161,7 +163,12 @@ export function editorReducer(state: EditorState, intent: EditorIntent): EditorS
 
 // ─── Initialiser ─────────────────────────────────────────────────────────────
 
-export function buildInitialEditorState(clip: Clip, fullTranscript: TranscriptWord[]): EditorState {
+export function buildInitialEditorState(
+  clip: Clip, 
+  fullTranscript: TranscriptWord[],
+  videoId?: string,
+  project?: string
+): EditorState {
   const { fullText, mappedWords } = buildWordMapping(fullTranscript);
 
   let parts: EditorPart[];
@@ -200,6 +207,8 @@ export function buildInitialEditorState(clip: Clip, fullTranscript: TranscriptWo
     selectedPartIndex: 0,
     isAddingNewPart: false,
     isDirty: false,
+    videoId,
+    project,
   };
 }
 
