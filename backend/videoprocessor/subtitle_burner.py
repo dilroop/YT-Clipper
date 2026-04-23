@@ -28,7 +28,10 @@ class SubtitleBurner:
             'font_family': 'Arial',
             'font_size': 80,
             'vertical_position': 80,  # Percentage from top
-            'text_color': '#FFFFFF'
+            'text_color': '#FFFFFF',
+            'outline_color': '#000000',
+            'outline_width': 3,
+            'outline_opacity': 100
         }
         print(f"[DEBUG] SubtitleBurner Initialized (Version 2.1 - PNG Fallback Enabled)")
 
@@ -67,6 +70,19 @@ class SubtitleBurner:
         # Calculate vertical position
         margin_v = int((100 - self.config.get('vertical_position', 80)) * video_height / 100)
 
+        # Parse colors and outline properties
+        text_color = self.config.get('text_color', '#FFFFFF')
+        outline_color = self.config.get('outline_color', '#000000')
+        outline_opacity = self.config.get('outline_opacity', 100)
+        outline_width = float(self.config.get('outline_width', 3))
+
+        # ASS format uses inverted alpha channel (00=opaque, FF=transparent)
+        alpha_val = int(255 * (100 - outline_opacity) / 100)
+        outline_alpha_hex = f"{alpha_val:02X}"
+
+        primary_color_ass = self._hex_to_ass_color(text_color, "00")
+        outline_color_ass = self._hex_to_ass_color(outline_color, outline_alpha_hex)
+
         # ASS file header — must include ScriptType, WrapStyle, ScaledBorderAndShadow for ffmpeg subtitles filter
         ass_content = f"""[Script Info]
 Title: YTClipper Captions
@@ -78,7 +94,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{self.config.get('font_family', 'Arial')},{self.config.get('font_size', 80)},{self._hex_to_ass_color(self.config.get('text_color', '#FFFFFF'))},&H000000FF,&H00000000,&H33000000,-1,0,0,0,100,100,0,0,3,0,0,2,10,10,{margin_v},1
+Style: Default,{self.config.get('font_family', 'Arial')},{self.config.get('font_size', 80)},{primary_color_ass},&H000000FF,{outline_color_ass},&H00000000,-1,0,0,0,100,100,0,0,1,{outline_width},0,2,10,10,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -309,6 +325,23 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         font_size = int(self.config.get('font_size', 48))
         v_pos_percent = int(self.config.get('vertical_position', 80))
 
+        # Parse text color
+        text_color_hex = self.config.get('text_color', '#FFFFFF').lstrip('#')
+        if len(text_color_hex) == 6:
+            text_rgba = (int(text_color_hex[:2], 16), int(text_color_hex[2:4], 16), int(text_color_hex[4:], 16), 255)
+        else:
+            text_rgba = (255, 255, 255, 255)
+
+        # Parse outline color
+        out_col_hex = self.config.get('outline_color', '#000000').lstrip('#')
+        out_opac = self.config.get('outline_opacity', 100)
+        out_width = float(self.config.get('outline_width', 3))
+        alpha = int(255 * (out_opac / 100))
+        if len(out_col_hex) == 6:
+            out_rgba = (int(out_col_hex[:2], 16), int(out_col_hex[2:4], 16), int(out_col_hex[4:], 16), alpha)
+        else:
+            out_rgba = (0, 0, 0, alpha)
+
         # Attempt to load font
         try:
             font_paths = [
@@ -326,8 +359,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         except:
             font = ImageFont.load_default()
 
-        # Calculate bounding box for background
-        bbox = draw.textbbox((0, 0), text, font=font)
+        # Calculate bounding box for text
+        bbox = draw.textbbox((0, 0), text, font=font, stroke_width=int(out_width))
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
 
@@ -335,15 +368,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         x = (width - text_w) // 2
         y = int(v_pos_percent * height / 100) - text_h
 
-        # Draw background box
-        padding = 15
-        draw.rectangle(
-            [x - padding, y - padding, x + text_w + padding, y + text_h + padding],
-            fill=(0, 0, 0, 160)  # Semi-transparent black
-        )
-
-        # Draw text
-        draw.text((x, y), text, fill=(255, 255, 255, 255), font=font)
+        # Draw text with stroke
+        draw.text((x, y), text, fill=text_rgba, font=font, stroke_width=int(out_width), stroke_fill=out_rgba)
 
         img.save(output_path)
 

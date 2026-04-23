@@ -134,8 +134,11 @@ async def analyze_video(request: AnalyzeVideoRequest):
         segments = transcript_result['segments']
 
         # Step 3: Find interesting clips using AI
-        if request.skip_ai:
-            await update_progress({'stage': 'analyzing', 'percent': 100, 'message': 'Skipping AI detection (Custom Workflow).'})
+        if request.skip_ai or not segments:
+            if not segments:
+                await update_progress({'stage': 'analyzing', 'percent': 100, 'message': 'No audio detected. Skipping AI.'})
+            else:
+                await update_progress({'stage': 'analyzing', 'percent': 100, 'message': 'Skipping AI detection (Custom Workflow).'})
             interesting_clips = []
         else:
             provider_name = getattr(analyzer, 'provider_name', 'Basic AI')

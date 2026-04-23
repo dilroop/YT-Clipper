@@ -25,6 +25,18 @@ class AudioTranscriber:
         self.model = whisper.load_model(model_name)
         print("Whisper model loaded successfully")
 
+    def get_video_duration(self, video_path: str) -> float:
+        """Helper to get video duration via ffprobe"""
+        probe_cmd = [
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', str(video_path)
+        ]
+        try:
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
+            return float(result.stdout.strip())
+        except Exception:
+            return 0.0
+
     def extract_audio(self, video_path: str, output_path: str = None) -> str:
         """
         Extract audio from video using ffmpeg
@@ -45,6 +57,16 @@ class AudioTranscriber:
             output_path = temp_dir / f"{video_path.stem}_audio.wav"
         else:
             output_path = Path(output_path)
+
+        # Check if the video actually contains an audio stream
+        probe_cmd = [
+            'ffprobe', '-v', 'error', '-select_streams', 'a',
+            '-show_entries', 'stream=codec_type', '-of', 'default=noprint_wrappers=1:nokey=1', str(video_path)
+        ]
+        probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+        if not probe_result.stdout.strip():
+            print(f"No audio streams found in {video_path}")
+            return None
 
         # Extract audio with ffmpeg
         cmd = [
@@ -110,58 +132,104 @@ class AudioTranscriber:
                 })
 
             audio_path = self.extract_audio(video_path)
-
-            # Transcribe with Whisper
-            if progress_callback:
-                progress_callback({
-                    'stage': 'transcribing',
-                    'percent': 20,
-                    'message': 'Transcribing audio...'
-                })
-
-            result = self.model.transcribe(
-                audio_path,
-                word_timestamps=True,
-                verbose=False
-            )
-
-            if progress_callback:
-                progress_callback({
-                    'stage': 'transcribing',
-                    'percent': 100,
-                    'message': 'Transcription complete!'
-                })
-
-            # Don't clean up audio file immediately - let caller handle cleanup
-            # This allows reusing the audio file if needed and ensures cleanup only on success
-
-            # Process segments with word-level timestamps
             segments = []
-            for segment in result['segments']:
-                segment_data = {
-                    'id': segment['id'],
-                    'start': segment['start'],
-                    'end': segment['end'],
-                    'text': segment['text'].strip(),
-                    'words': []
-                }
+            full_text = ""
+            language = "unknown"
 
-                # Extract word-level timestamps if available
-                if 'words' in segment:
-                    for word_info in segment['words']:
-                        segment_data['words'].append({
-                            'word': word_info['word'].strip(),
-                            'start': word_info['start'],
-                            'end': word_info['end']
+            if audio_path is None:
+                # Video has no audio track
+                if progress_callback:
+                    progress_callback({
+                        'stage': 'transcribing',
+                        'percent': 100,
+                        'message': 'No audio track detected. Generating visual transcript...'
+                    })
+            else:
+                # Transcribe with Whisper
+                if progress_callback:
+                    progress_callback({
+                        'stage': 'transcribing',
+                        'percent': 20,
+                        'message': 'Transcribing audio...'
+                    })
+
+                result = self.model.transcribe(
+                    audio_path,
+                    word_timestamps=True,
+                    verbose=False
+                )
+                
+                language = result.get('language', 'unknown')
+                full_text = result.get('text', '')
+
+                if progress_callback:
+                    progress_callback({
+                        'stage': 'transcribing',
+                        'percent': 100,
+                        'message': 'Transcription complete!'
+                    })
+
+                # Process segments with word-level timestamps
+                for segment in result.get('segments', []):
+                    segment_data = {
+                        'id': segment['id'],
+                        'start': segment['start'],
+                        'end': segment['end'],
+                        'text': segment['text'].strip(),
+                        'words': []
+                    }
+
+                    # Extract word-level timestamps if available
+                    if 'words' in segment:
+                        for word_info in segment['words']:
+                            segment_data['words'].append({
+                                'word': word_info['word'].strip(),
+                                'start': word_info['start'],
+                                'end': word_info['end']
+                            })
+
+                    segments.append(segment_data)
+
+            # If no speech was detected (or no audio track), generate a fake visual transcript based on duration
+            if not segments:
+                duration = self.get_video_duration(video_path)
+                import math
+                if duration > 0:
+                    words = []
+                    for i in range(int(math.ceil(duration))):
+                        m, s = divmod(i, 60)
+                        h, m = divmod(m, 60)
+                        if h > 0:
+                            word_text = f"[{h:02d}:{m:02d}:{s:02d}]"
+                        else:
+                            word_text = f"[{m:02d}:{s:02d}]"
+                            
+                        words.append({
+                            'word': word_text,
+                            'start': float(i),
+                            'end': min(float(i + 1), duration)
                         })
-
-                segments.append(segment_data)
+                    
+                    # Group words into 10-second segments so it's not one giant block
+                    for i in range(0, len(words), 10):
+                        chunk = words[i:i+10]
+                        if not chunk: break
+                        segments.append({
+                            'id': i // 10,
+                            'start': chunk[0]['start'],
+                            'end': chunk[-1]['end'],
+                            'text': ' '.join(w['word'] for w in chunk),
+                            'words': chunk
+                        })
+                    
+                    full_text = ' '.join(s['text'] for s in segments)
+                    language = 'visual'
 
             result_dict = {
                 'success': True,
-                'language': result.get('language', 'unknown'),
+                'language': language,
                 'segments': segments,
-                'full_text': result['text'],
+                'full_text': full_text,
                 'audio_path': audio_path  # Return audio path for cleanup by caller
             }
             

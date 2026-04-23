@@ -289,13 +289,17 @@ export const ClipDetailsPage: React.FC = () => {
     try {
       setRefineLoading(true);
       const url = clip.info_data.video.url;
-      let videoId = "";
-      if (url.includes("v=")) {
-        videoId = url.split("v=")[1].split("&")[0];
-      } else if (url.includes("youtu.be/")) {
-        videoId = url.split("youtu.be/")[1].split("?")[0];
-      } else {
-        videoId = url.split("/").pop() || "";
+      let videoId = clip.info_data.video.id || clip.info_data.video.video_id;
+      
+      // Fallback if the ID isn't easily accessible (shouldn't happen with our recent backend fixes)
+      if (!videoId) {
+        if (url.includes("v=")) {
+          videoId = url.split("v=")[1].split("&")[0];
+        } else if (url.includes("youtu.be/")) {
+          videoId = url.split("youtu.be/")[1].split("?")[0];
+        } else {
+          videoId = url.split("/").pop() || "";
+        }
       }
 
       let transcript = clipData.full_transcript_words || [];

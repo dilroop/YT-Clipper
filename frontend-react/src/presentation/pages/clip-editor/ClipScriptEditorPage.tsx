@@ -170,7 +170,10 @@ export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, vi
                   </div>
 
                   <div className="cse-part-time">
-                    {formatTime(part.start)} — {formatTime(part.end)}
+                    {formatTime(part.start)} — {formatTime(part.end)} 
+                    <span style={{ marginLeft: '6px', opacity: 0.6, fontSize: '0.9em', fontWeight: 500 }}>
+                      ({(part.end - part.start).toFixed(1)}s)
+                    </span>
                   </div>
                   <div className="cse-part-preview">{previewText}</div>
 

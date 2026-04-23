@@ -23,6 +23,10 @@ export interface CaptionSettings {
   font_family: string;
   font_size: number;
   vertical_position: number;
+  text_color?: string;
+  outline_color?: string;
+  outline_width?: number;
+  outline_opacity?: number;
 }
 
 export interface AIValidation {

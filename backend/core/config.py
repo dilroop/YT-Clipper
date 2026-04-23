@@ -34,10 +34,14 @@ def get_config_with_defaults() -> dict:
             "max_clip_duration": 60
         },
         "caption_settings": {
-            "font_size": 24,
-            "font_color": "&H00FFFFFF",
-            "outline_color": "&H00000000",
-            "outline_width": 1.5,
+            "words_per_caption": 2,
+            "font_family": "Arial",
+            "font_size": 80,
+            "vertical_position": 80,
+            "text_color": "#FFFFFF",
+            "outline_color": "#000000",
+            "outline_width": 3,
+            "outline_opacity": 100,
             "alignment": 2
         },
         "downloader_backend": "yt-dlp"

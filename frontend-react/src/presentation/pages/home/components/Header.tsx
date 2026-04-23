@@ -99,51 +99,163 @@ export const Header: React.FC<Props> = () => {
                 <h3 style={{ margin: '0 0 12px 0', fontSize: '1.1rem' }}>Caption Styling</h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px', fontStyle: 'italic' }}>Use the "Burn Captions" toggle on main screen to enable/disable</p>
                 
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Words Per Caption:</label>
-                  <select 
-                    style={{ width: '100%', padding: '12px', background: '#1e1e2e', border: '1px solid #333', borderRadius: '8px', color: '#fff', fontSize: '1rem' }}
-                    value={configDraft.caption_settings?.words_per_caption || 1}
-                    onChange={e => updateDraft('caption_settings', 'words_per_caption', parseInt(e.target.value))}
-                  >
-                    <option value="1">1 word</option>
-                    <option value="2">2 words</option>
-                    <option value="3">3 words</option>
-                    <option value="4">4 words</option>
-                  </select>
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Words Per Caption:</label>
+                    <select 
+                      style={{ width: '100%', padding: '12px', background: '#1e1e2e', border: '1px solid #333', borderRadius: '8px', color: '#fff', fontSize: '1rem' }}
+                      value={configDraft.caption_settings?.words_per_caption || 2}
+                      onChange={e => updateDraft('caption_settings', 'words_per_caption', parseInt(e.target.value))}
+                    >
+                      <option value="1">1 word</option>
+                      <option value="2">2 words</option>
+                      <option value="3">3 words</option>
+                      <option value="4">4 words</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Font Family:</label>
+                    <select 
+                      style={{ width: '100%', padding: '12px', background: '#1e1e2e', border: '1px solid #333', borderRadius: '8px', color: '#fff', fontSize: '1rem' }}
+                      value={configDraft.caption_settings?.font_family || 'Arial'}
+                      onChange={e => updateDraft('caption_settings', 'font_family', e.target.value)}
+                    >
+                      <option value="Montserrat-Bold">Montserrat Bold</option>
+                      <option value="Impact">Impact</option>
+                      <option value="Arial">Arial</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Font Family:</label>
-                  <select 
-                    style={{ width: '100%', padding: '12px', background: '#1e1e2e', border: '1px solid #333', borderRadius: '8px', color: '#fff', fontSize: '1rem' }}
-                    value={configDraft.caption_settings?.font_family || 'Montserrat-Bold'}
-                    onChange={e => updateDraft('caption_settings', 'font_family', e.target.value)}
-                  >
-                    <option value="Montserrat-Bold">Montserrat Bold</option>
-                    <option value="Impact">Impact</option>
-                    <option value="Arial">Arial</option>
-                  </select>
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Font Size: {configDraft.caption_settings?.font_size || 80}px</label>
+                    <input 
+                      type="range" min="30" max="150" step="1" 
+                      value={configDraft.caption_settings?.font_size || 80}
+                      onChange={e => updateDraft('caption_settings', 'font_size', parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: '#2196f3' }}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Vertical Position: {configDraft.caption_settings?.vertical_position || 80}%</label>
+                    <input 
+                      type="range" min="10" max="90" step="1" 
+                      value={configDraft.caption_settings?.vertical_position || 80}
+                      onChange={e => updateDraft('caption_settings', 'vertical_position', parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: '#2196f3' }}
+                    />
+                  </div>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: '24px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Font Size: {configDraft.caption_settings?.font_size || 80}px</label>
-                  <input 
-                    type="range" min="30" max="150" step="1" 
-                    value={configDraft.caption_settings?.font_size || 80}
-                    onChange={e => updateDraft('caption_settings', 'font_size', parseInt(e.target.value))}
-                    style={{ width: '100%', accentColor: '#2196f3' }}
-                  />
+                {/* New Colors and Opacity Row */}
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+                  <div className="form-group" style={{ flex: '1 1 120px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Text Color:</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input 
+                        type="color" 
+                        value={configDraft.caption_settings?.text_color || '#FFFFFF'}
+                        onChange={e => updateDraft('caption_settings', 'text_color', e.target.value)}
+                        style={{ width: '40px', height: '40px', cursor: 'pointer', padding: 0, border: 'none', borderRadius: '4px', background: 'transparent' }}
+                      />
+                      <span style={{ fontSize: '0.9rem', color: '#aaa', fontFamily: 'monospace' }}>{configDraft.caption_settings?.text_color || '#FFFFFF'}</span>
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ flex: '1 1 120px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Outline Color:</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input 
+                        type="color" 
+                        value={configDraft.caption_settings?.outline_color || '#000000'}
+                        onChange={e => updateDraft('caption_settings', 'outline_color', e.target.value)}
+                        style={{ width: '40px', height: '40px', cursor: 'pointer', padding: 0, border: 'none', borderRadius: '4px', background: 'transparent' }}
+                      />
+                      <span style={{ fontSize: '0.9rem', color: '#aaa', fontFamily: 'monospace' }}>{configDraft.caption_settings?.outline_color || '#000000'}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="form-group" style={{ flex: '1 1 120px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Outline Width: {configDraft.caption_settings?.outline_width ?? 3}px</label>
+                    <input 
+                      type="range" min="0" max="15" step="0.5" 
+                      value={configDraft.caption_settings?.outline_width ?? 3}
+                      onChange={e => updateDraft('caption_settings', 'outline_width', parseFloat(e.target.value))}
+                      style={{ width: '100%', accentColor: '#2196f3' }}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ flex: '1 1 150px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Outline Opacity: {configDraft.caption_settings?.outline_opacity ?? 100}%</label>
+                    <input 
+                      type="range" min="0" max="100" step="1" 
+                      value={configDraft.caption_settings?.outline_opacity ?? 100}
+                      onChange={e => updateDraft('caption_settings', 'outline_opacity', parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: '#2196f3' }}
+                    />
+                  </div>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>Vertical Position: {configDraft.caption_settings?.vertical_position || 76}%</label>
-                  <input 
-                    type="range" min="10" max="90" step="1" 
-                    value={configDraft.caption_settings?.vertical_position || 76}
-                    onChange={e => updateDraft('caption_settings', 'vertical_position', parseInt(e.target.value))}
-                    style={{ width: '100%', accentColor: '#2196f3' }}
-                  />
+                {/* Live Preview Box */}
+                <div style={{ background: '#2a2a3a', borderRadius: '8px', padding: '24px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '140px', position: 'relative', overflow: 'hidden' }}>
+                  
+                  {/* Checkerboard background for transparency preview */}
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.15, backgroundImage: 'linear-gradient(45deg, #808080 25%, transparent 25%), linear-gradient(-45deg, #808080 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #808080 75%), linear-gradient(-45deg, transparent 75%, #808080 75%)', backgroundSize: '20px 20px', backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px' }} />
+                  
+                  {/* Video-like background */}
+                  <div style={{ position: 'absolute', top: '10%', left: '10%', right: '10%', bottom: '10%', background: 'linear-gradient(135deg, #4ade8033, #3b82f633)', borderRadius: '8px', filter: 'blur(20px)', zIndex: 1 }} />
+                  
+                  {(() => {
+                    const c = configDraft.caption_settings || {};
+                    const tColor = c.text_color || '#FFFFFF';
+                    const oColor = c.outline_color || '#000000';
+                    const oWidth = c.outline_width ?? 3;
+                    const oOpac = c.outline_opacity ?? 100;
+                    
+                    // Convert hex to rgb to apply opacity
+                    const hexToRgb = (hex: string) => {
+                      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                      return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '0, 0, 0';
+                    };
+                    
+                    const rgbaOutline = `rgba(${hexToRgb(oColor)}, ${oOpac / 100})`;
+                    
+                    return (
+                      <div style={{ 
+                        zIndex: 2,
+                        fontFamily: c.font_family || 'Arial', 
+                        fontSize: `clamp(28px, ${c.font_size ? c.font_size * 0.6 : 48}px, 72px)`, // scaled roughly for preview
+                        fontWeight: 'bold',
+                        textAlign: 'center',
+                        textTransform: 'uppercase',
+                        padding: '10px',
+                        position: 'relative'
+                      }}>
+                        {/* Stroke Layer (Behind) */}
+                        <div style={{
+                          position: 'absolute',
+                          left: 0, right: 0, top: '10px', // matches padding
+                          color: 'transparent',
+                          WebkitTextStroke: `${oWidth * 2}px ${rgbaOutline}`,
+                          zIndex: 1
+                        }}>
+                          CAPTION PREVIEW
+                        </div>
+                        {/* Text Layer (Front) */}
+                        <div style={{
+                          position: 'relative',
+                          color: tColor,
+                          zIndex: 2,
+                          textShadow: `0px 2px 4px rgba(0,0,0, 0.4)`
+                        }}>
+                          CAPTION PREVIEW
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
