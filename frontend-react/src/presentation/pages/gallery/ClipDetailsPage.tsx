@@ -100,6 +100,7 @@ export const ClipDetailsPage: React.FC = () => {
   const wf2LogsEndRef = useRef<HTMLDivElement>(null);
   
   const [wf2AutoScale, setWf2AutoScale] = useState(() => localStorage.getItem('ytc_wf2_auto_scale') === 'true');
+  const [wf2CropMode, setWf2CropMode] = useState<'9:8' | 'original'>(() => (localStorage.getItem('ytc_wf2_crop_mode') as '9:8' | 'original') || '9:8');
   const [wf2PreviewUrl, setWf2PreviewUrl] = useState<string | null>(null);
   const [isWf2PreviewLoading, setIsWf2PreviewLoading] = useState(false);
   const [wf2Tab, setWf2Tab] = useState<'preview' | 'logs'>('preview');
@@ -178,6 +179,7 @@ export const ClipDetailsPage: React.FC = () => {
         wf2StorySize, wf2StoryColor, wf2HighlightColor,
         wf2Suffix1Size, wf2Suffix1Color,
         wf2Suffix2Size, wf2Suffix2Color,
+        wf2CropMode,
         wf2AutoScale,
         previewAbortControllerRef.current.signal
       );
@@ -200,7 +202,7 @@ export const ClipDetailsPage: React.FC = () => {
       refreshWf2Preview();
     }, 1000);
     return () => clearTimeout(timer);
-  }, [isDialog2Open, wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color, wf2AutoScale, wf2HeaderImage]);
+  }, [isDialog2Open, wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color, wf2AutoScale, wf2CropMode, wf2HeaderImage]);
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -378,6 +380,7 @@ export const ClipDetailsPage: React.FC = () => {
         wf2Suffix1Size, wf2Suffix1Color,
         wf2Suffix2Size, wf2Suffix2Color,
         30,
+        wf2CropMode,
         wf2AutoScale,
       );
       setWf2Tab('logs'); // Switch to logs when rendering starts
@@ -1122,17 +1125,36 @@ export const ClipDetailsPage: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#252525', padding: '12px', borderRadius: '8px', border: '1px solid #333', marginBottom: '8px' }}>
-              <input 
-                type="checkbox" 
-                id="wf2-auto-scale" 
-                checked={wf2AutoScale} 
-                onChange={e => setWf2AutoScale(e.target.checked)} 
-                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-              />
-              <label htmlFor="wf2-auto-scale" style={{ fontSize: '0.9rem', cursor: 'pointer', color: '#ccc' }}>
-                Auto-Scale to Fit (Ignore top margin to fit all)
-              </label>
+            {/* Render Settings */}
+            <div style={{ background: '#252525', padding: '14px', borderRadius: '8px', border: '1px solid #333', marginBottom: '8px' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc' }}>Rendering</h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Video Cropping</span>
+                  <select 
+                    value={wf2CropMode} 
+                    onChange={e => setWf2CropMode(e.target.value as '9:8' | 'original')}
+                    style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}
+                  >
+                    <option value="9:8">9:8 (Head Tracking)</option>
+                    <option value="original">Original (Fit Width)</option>
+                  </select>
+                </label>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <input 
+                    type="checkbox" 
+                    id="wf2-auto-scale" 
+                    checked={wf2AutoScale} 
+                    onChange={e => setWf2AutoScale(e.target.checked)} 
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="wf2-auto-scale" style={{ fontSize: '0.9rem', cursor: 'pointer', color: '#ccc' }}>
+                    Auto-Scale to Fit (Ignore top margin to fit all)
+                  </label>
+                </div>
+              </div>
             </div>
 
             {/* Action buttons */}

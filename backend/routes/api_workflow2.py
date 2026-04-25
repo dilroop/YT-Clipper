@@ -35,6 +35,7 @@ async def execute_workflow2(
     suffix2_color: str,
     fps: int,
     detection_mode: str,
+    crop_mode: str,
     auto_scale: bool,
 ):
     async def broadcast_log(line: str):
@@ -82,6 +83,7 @@ async def execute_workflow2(
             "--fps",            str(fps),
             "--output",         str(temp_output_path),
             "--detection-mode", detection_mode,
+            "--crop-mode",      crop_mode,
         ]
 
         if auto_scale:
@@ -191,6 +193,7 @@ async def run_workflow2(
     suffix2_color: str     = Form("#22DD66"),
     fps: int               = Form(30),
     detection_mode: str    = Form("face"),
+    crop_mode: str         = Form("9:8"),
     auto_scale: bool       = Form(False),
 ):
     try:
@@ -214,6 +217,7 @@ async def run_workflow2(
             suffix2_size, suffix2_color,
             fps,
             detection_mode,
+            crop_mode,
             auto_scale,
         )
 

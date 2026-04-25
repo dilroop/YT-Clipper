@@ -33,6 +33,7 @@ async def get_workflow2_preview(
     suffix2_color: str     = Form("#22DD66"),
     fps: int               = Form(30),
     detection_mode: str    = Form("face"),
+    crop_mode: str         = Form("9:8"),
     auto_scale: bool       = Form(False),
 ):
     try:
@@ -78,6 +79,7 @@ async def get_workflow2_preview(
             "--suffix1-color",  suffix1_color,
             "--suffix2-size",   str(suffix2_size),
             "--suffix2-color",  suffix2_color,
+            "--crop-mode",      crop_mode,
             # Feature flags
             "--preview",
             "--output",         str(preview_output_path),

@@ -781,6 +781,8 @@ def parse_args() -> argparse.Namespace:
 
     p.add_argument("--detection-mode", choices=["face", "torso"], default="face",
                         help="Tracking mode for the 9:8 main video crop (default: 'face').")
+    p.add_argument("--crop-mode", choices=["9:8", "original"], default="9:8",
+                        help="Crop the main video to 9:8 aspect ratio or keep original (default: '9:8').")
 
     p.add_argument("--preview", action="store_true", help="Generate a single frame PNG preview at t=0.")
     p.add_argument("--auto-scale", action="store_true", help="Automatically scale content to fit within 1920px height.")
@@ -888,6 +890,7 @@ def main() -> None:
         suffix2_size    = args.suffix2_size
         suffix2_color   = args.suffix2_color
         detection_mode  = args.detection_mode
+        crop_mode       = args.crop_mode
         preview         = args.preview
         auto_scale      = args.auto_scale
 
@@ -902,16 +905,22 @@ def main() -> None:
 
     # ── Run ───────────────────────────────────────────────────────────────────
     with tempfile.TemporaryDirectory() as tmp_dir:
-        print(f"[INFO] Cropping main video with head tracking (9:8 ratio)...")
-        cropper = VideoCropper()
-        tmp_cropped_path = os.path.join(tmp_dir, "cropped_main_9x8.mp4")
-        crop_res = cropper.crop_to_9x8(video, tmp_cropped_path, mode=detection_mode, preview=preview)
         
-        if not crop_res['success']:
-            print(f"[ERROR] Head tracking crop failed: {crop_res.get('error')}")
-            sys.exit(1)
+        # Decide if we need to crop the main video
+        if crop_mode == "9:8":
+            print(f"[INFO] Cropping main video with head tracking (9:8 ratio)...")
+            cropper = VideoCropper()
+            tmp_cropped_path = os.path.join(tmp_dir, "cropped_main_9x8.mp4")
+            crop_res = cropper.crop_to_9x8(video, tmp_cropped_path, mode=detection_mode, preview=preview)
             
-        final_video_input = crop_res['output_path']
+            if not crop_res['success']:
+                print(f"[ERROR] Head tracking crop failed: {crop_res.get('error')}")
+                sys.exit(1)
+                
+            final_video_input = crop_res['output_path']
+        else:
+            print(f"[INFO] Using original video aspect ratio (--crop-mode {crop_mode})")
+            final_video_input = video
 
         build_story_video(
             video_path        = final_video_input,

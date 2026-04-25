@@ -350,6 +350,7 @@ export class VideoRepository {
     suffix2Size: number,
     suffix2Color: string,
     fps: number,
+    cropMode: string = '9:8',
     autoScale: boolean = false,
   ): Promise<any> {
     const formData = new FormData();
@@ -371,6 +372,7 @@ export class VideoRepository {
     formData.append('suffix2_size', suffix2Size.toString());
     formData.append('suffix2_color', suffix2Color);
     formData.append('fps', fps.toString());
+    formData.append('crop_mode', cropMode);
     formData.append('auto_scale', autoScale.toString());
 
     const url = `${this.API_BASE}/workflow2/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
@@ -402,6 +404,7 @@ export class VideoRepository {
     suffix1Color: string,
     suffix2Size: number,
     suffix2Color: string,
+    cropMode: string = '9:8',
     autoScale: boolean = false,
     signal?: AbortSignal,
   ): Promise<any> {
@@ -422,6 +425,7 @@ export class VideoRepository {
     formData.append('suffix1_color', suffix1Color);
     formData.append('suffix2_size', suffix2Size.toString());
     formData.append('suffix2_color', suffix2Color);
+    formData.append('crop_mode', cropMode);
     formData.append('auto_scale', autoScale.toString());
 
     const url = `${this.API_BASE}/workflow2/preview/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
