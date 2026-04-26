@@ -310,17 +310,28 @@ def render_text_block(
 _BRACKET_RE = re.compile(r'\[([^\]]+)\]')
 
 
-def _parse_segments(text: str) -> list[tuple[str, bool]]:
-    """Split text into (segment, is_highlighted) pairs on [bracket] markers."""
-    result: list[tuple[str, bool]] = []
-    last = 0
-    for m in _BRACKET_RE.finditer(text):
-        if m.start() > last:
-            result.append((text[last:m.start()], False))
-        result.append((m.group(1), True))
-        last = m.end()
-    if last < len(text):
-        result.append((text[last:], False))
+def _parse_segments(text: str) -> list[tuple[str, bool, bool]]:
+    """Split text into (segment, is_highlighted, no_leading_space) triples.
+
+    The ``no_leading_space`` flag is ``True`` for punctuation that immediately
+    trails a closing bracket (e.g. the "." in "[word].") so the renderer does
+    *not* insert a word-gap space before it.
+    """
+    _SEGMENT_RE = re.compile(
+        r'\[([^\]]*)\]([^\s\[]*)'
+        r'|([^\[]+)'
+    )
+    result: list[tuple[str, bool, bool]] = []
+    for m in _SEGMENT_RE.finditer(text):
+        if m.group(1) is not None:
+            hl_text = m.group(1)
+            suffix = m.group(2)  # e.g. "." "," "!" that immediately follow ]
+            if hl_text:
+                result.append((hl_text, True, False))
+            if suffix:
+                result.append((suffix, False, True))  # glued punctuation
+        else:
+            result.append((m.group(3), False, False))
     return result
 
 
@@ -339,16 +350,22 @@ def render_text_block_highlighted(
     """
     text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\\n", "\n")
 
-    # Flatten segments into token list: (word, is_highlighted)  |  ('__NL__', False)
+    # Flatten segments into token list: (word, is_highlighted, no_leading_space)
+    # | ('__NL__', False, False)
     segments = _parse_segments(text)
-    tokens: list[tuple[str, bool]] = []
-    for seg, is_hl in segments:
+    tokens: list[tuple[str, bool, bool]] = []
+    for seg, is_hl, no_space in segments:
         parts = seg.split("\n")
         for i, part in enumerate(parts):
             if i > 0:
-                tokens.append(("__NL__", False))
-            for word in part.split():
-                tokens.append((word, is_hl))
+                tokens.append(("__NL__", False, False))
+            if no_space:
+                # Punctuation glued to previous token — emit as single no-space token
+                if part.strip():
+                    tokens.append((part.strip(), is_hl, True))
+            else:
+                for word in part.split():
+                    tokens.append((word, is_hl, False))
 
     # Measure helpers
     dummy = Image.new("RGBA", (1, 1))
@@ -386,31 +403,36 @@ def render_text_block_highlighted(
     space_w = _w(" ")
     lh = _lh()
 
-    # Word-wrap into lines: list[list[(word, is_hl)]]
-    lines: list[list[tuple[str, bool]]] = []
-    cur_line: list[tuple[str, bool]] = []
+    # Word-wrap into lines: list[list[(word, is_hl, no_leading_space)]]
+    lines: list[list[tuple[str, bool, bool]]] = []
+    cur_line: list[tuple[str, bool, bool]] = []
     cur_w = 0
-    for word, is_hl in tokens:
+    for word, is_hl, no_space in tokens:
         if word == "__NL__":
             lines.append(cur_line)
             cur_line = []
             cur_w = 0
             continue
         ww = _w(word)
-        needed = (space_w + ww) if cur_line else ww
-        if cur_line and cur_w + needed > max_width:
-            lines.append(cur_line)
-            cur_line = [(word, is_hl)]
-            cur_w = ww
+        if no_space:
+            # Glue to current line without space
+            cur_line.append((word, is_hl, True))
+            cur_w += ww
         else:
-            cur_line.append((word, is_hl))
-            cur_w += needed
+            needed = (space_w + ww) if cur_line else ww
+            if cur_line and cur_w + needed > max_width:
+                lines.append(cur_line)
+                cur_line = [(word, is_hl, False)]
+                cur_w = ww
+            else:
+                cur_line.append((word, is_hl, False))
+                cur_w += needed
     lines.append(cur_line)
 
-    def _line_w(ln: list[tuple[str, bool]]) -> int:
+    def _line_w(ln: list[tuple[str, bool, bool]]) -> int:
         total = 0
-        for i, (wd, _) in enumerate(ln):
-            if i:
+        for i, (wd, _, no_space) in enumerate(ln):
+            if i and not no_space:
                 total += space_w
             total += _w(wd)
         return total
@@ -436,8 +458,8 @@ def render_text_block_highlighted(
             x = canvas_w - lw
         else:
             x = 0
-        for i, (wd, is_hl) in enumerate(ln):
-            if i:
+        for i, (wd, is_hl, no_space) in enumerate(ln):
+            if i and not no_space:
                 x += space_w
             fill = (hr, hg, hb, 255) if is_hl else (r, g, b, 255)
             x = _draw_text_with_fallback(draw, (x, y), wd, font, fill, emoji_font=emoji_font)

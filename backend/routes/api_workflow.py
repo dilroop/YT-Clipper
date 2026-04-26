@@ -139,6 +139,7 @@ async def execute_workflow(
     text_size: int,
     text_pos_x: float,
     text_pos_y: float,
+    highlight_color: str = "#FFFF00",
     detection_mode: str = "face",
 ):
     tmp_files_to_clean = list(second_media_paths)
@@ -188,6 +189,7 @@ async def execute_workflow(
             "--font", font_family,
             "--font-color", text_color,
             "--bg-color", text_bg_color,
+            "--highlight-color", highlight_color,
             "--font-size", str(text_size),
             "--text-x", str(text_pos_x),
             "--text-y", str(text_pos_y),
@@ -293,6 +295,7 @@ async def run_workflow(
     text_size: int = Form(70),
     text_pos_x: float = Form(50.0),
     text_pos_y: float = Form(50.0),
+    highlight_color: str = Form("#FFFF00"),
     detection_mode: str = Form("face"),
 ):
     try:
@@ -321,6 +324,7 @@ async def run_workflow(
             watermark_text, watermark_size, watermark_alpha,
             watermark_top, watermark_right,
             font_family, text_color, text_bg_color, text_size, text_pos_x, text_pos_y,
+            highlight_color,
             detection_mode
         )
 

@@ -43,6 +43,7 @@ from backend.routes import (
     api_clips,
     api_upload,
     api_workflow,
+    api_workflow_preview,
     api_workflow2,
     api_workflow2_preview,
     api_workflow3,
@@ -91,6 +92,7 @@ app.include_router(api_logs.router)
 app.include_router(api_clips.router)
 app.include_router(api_upload.router)
 app.include_router(api_workflow.router)
+app.include_router(api_workflow_preview.router)
 app.include_router(api_workflow2.router)
 app.include_router(api_workflow2_preview.router)
 app.include_router(api_workflow3.router)

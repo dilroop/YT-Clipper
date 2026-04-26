@@ -268,6 +268,7 @@ export class VideoRepository {
     textSize: number,
     text_pos_x: number,
     text_pos_y: number,
+    highlightColor: string = '#FFFF00',
     detectionMode: string = "face",
   ): Promise<any> {
     const formData = new FormData();
@@ -289,6 +290,7 @@ export class VideoRepository {
     formData.append('text_size', textSize.toString());
     formData.append('text_pos_x', text_pos_x.toString());
     formData.append('text_pos_y', text_pos_y.toString());
+    formData.append('highlight_color', highlightColor);
     formData.append('detection_mode', detectionMode);
 
     const url = `${this.API_BASE}/workflow/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
@@ -303,6 +305,56 @@ export class VideoRepository {
       throw new Error(error.detail || 'Failed to run workflow');
     }
 
+    return response.json();
+  }
+
+  static async getWorkflowPreview(
+    project: string,
+    format: string,
+    filename: string,
+    secondMedia: File,
+    mainPosition: string,
+    text: string,
+    fontFamily: string,
+    textColor: string,
+    textBgColor: string,
+    highlightColor: string,
+    textSize: number,
+    textPosX: number,
+    textPosY: number,
+    outlineWidth: number,
+    watermarkText: string,
+    watermarkSize: number,
+    watermarkAlpha: number,
+    watermarkTop: number,
+    watermarkRight: number,
+    detectionMode: string,
+    signal?: AbortSignal,
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('second_media', secondMedia);
+    formData.append('main_position', mainPosition);
+    formData.append('text', text);
+    formData.append('font_family', fontFamily);
+    formData.append('text_color', textColor);
+    formData.append('text_bg_color', textBgColor);
+    formData.append('highlight_color', highlightColor);
+    formData.append('text_size', textSize.toString());
+    formData.append('text_pos_x', textPosX.toString());
+    formData.append('text_pos_y', textPosY.toString());
+    formData.append('outline_width', outlineWidth.toString());
+    formData.append('watermark_text', watermarkText);
+    formData.append('watermark_size', watermarkSize.toString());
+    formData.append('watermark_alpha', watermarkAlpha.toString());
+    formData.append('watermark_top', watermarkTop.toString());
+    formData.append('watermark_right', watermarkRight.toString());
+    formData.append('detection_mode', detectionMode);
+    const url = `${this.API_BASE}/workflow/preview/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
+    const response = await fetch(url, { method: 'POST', body: formData, signal });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to get workflow preview');
+    }
     return response.json();
   }
 

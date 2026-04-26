@@ -38,6 +38,7 @@ export const ClipDetailsPage: React.FC = () => {
   const [fontFamily, setFontFamily] = useState(() => localStorage.getItem('ytc_font_family') || 'Arial');
   const [textColor, setTextColor] = useState(() => localStorage.getItem('ytc_text_color') || '#ffffff');
   const [textBgColor, setTextBgColor] = useState(() => localStorage.getItem('ytc_text_bg_color') || '#000000');
+  const [highlightColor, setHighlightColor] = useState(() => localStorage.getItem('ytc_highlight_color') || '#FFFF00');
   const [textSize, setTextSize] = useState(() => getStoredNumber('ytc_text_size', 70));
   const [textPosX, setTextPosX] = useState(() => getStoredNumber('ytc_text_pos_x', 50));
   const [textPosY, setTextPosY] = useState(() => getStoredNumber('ytc_text_pos_y', 50));
@@ -52,13 +53,17 @@ export const ClipDetailsPage: React.FC = () => {
     localStorage.setItem('ytc_font_family', fontFamily);
     localStorage.setItem('ytc_text_color', textColor);
     localStorage.setItem('ytc_text_bg_color', textBgColor);
+    localStorage.setItem('ytc_highlight_color', highlightColor);
     localStorage.setItem('ytc_text_size', textSize.toString());
     localStorage.setItem('ytc_text_pos_x', textPosX.toString());
     localStorage.setItem('ytc_text_pos_y', textPosY.toString());
-  }, [mainPosition, watermarkText, watermarkSize, watermarkAlpha, watermarkTop, watermarkRight, fontFamily, textColor, textBgColor, textSize, textPosX, textPosY]);
+  }, [mainPosition, watermarkText, watermarkSize, watermarkAlpha, watermarkTop, watermarkRight, fontFamily, textColor, textBgColor, highlightColor, textSize, textPosX, textPosY]);
   
   const [workflowStatus, setWorkflowStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [wfDetectionMode, setWfDetectionMode] = useState<'face' | 'torso'>(() => (localStorage.getItem('ytc_wf_detection_mode') as 'face' | 'torso') || 'face');
+  const [wf1PreviewUrl, setWf1PreviewUrl] = useState<string | null>(null);
+  const [isWf1PreviewLoading, setIsWf1PreviewLoading] = useState(false);
+  const wf1PreviewAbortRef = useRef<AbortController | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -104,6 +109,7 @@ export const ClipDetailsPage: React.FC = () => {
   const [wf2PreviewUrl, setWf2PreviewUrl] = useState<string | null>(null);
   const [isWf2PreviewLoading, setIsWf2PreviewLoading] = useState(false);
   const [wf2Tab, setWf2Tab] = useState<'preview' | 'logs'>('preview');
+  const [wf1Tab, setWf1Tab] = useState<'preview' | 'logs'>('preview');
   const previewAbortControllerRef = useRef<AbortController | null>(null);
 
   // ── Workflow 3 state ──────────────────────────────────────────────────────
@@ -203,6 +209,13 @@ export const ClipDetailsPage: React.FC = () => {
     }, 1000);
     return () => clearTimeout(timer);
   }, [isDialog2Open, wf2StoryText, wf2SuffixText1, wf2SuffixText2, wf2TopMargin, wf2Padding, wf2HeaderHeight, wf2BgColor, wf2FontName, wf2StorySize, wf2StoryColor, wf2HighlightColor, wf2Suffix1Size, wf2Suffix1Color, wf2Suffix2Size, wf2Suffix2Color, wf2AutoScale, wf2CropMode, wf2HeaderImage]);
+
+  // WF1 debounced auto-preview
+  useEffect(() => {
+    if (!isDialogOpen || mediaItems.length === 0) return;
+    const timer = setTimeout(() => refreshWfPreview(), 1200);
+    return () => clearTimeout(timer);
+  }, [isDialogOpen, text, textColor, textBgColor, highlightColor, textSize, textPosX, textPosY, mainPosition, watermarkText, fontFamily, mediaItems]);
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -336,6 +349,31 @@ export const ClipDetailsPage: React.FC = () => {
     }
   };
 
+  const refreshWfPreview = async (mediaFile?: File) => {
+    const previewFile = mediaFile ?? mediaItems[0]?.file;
+    if (!project || !format || !filename || !previewFile) return;
+    if (wf1PreviewAbortRef.current) wf1PreviewAbortRef.current.abort();
+    wf1PreviewAbortRef.current = new AbortController();
+    setIsWf1PreviewLoading(true);
+    try {
+      const resp = await VideoRepository.getWorkflowPreview(
+        project, format, filename,
+        previewFile,
+        mainPosition, text,
+        fontFamily, textColor, textBgColor, highlightColor,
+        textSize, textPosX, textPosY, 6,
+        watermarkText, watermarkSize, watermarkAlpha, watermarkTop, watermarkRight,
+        wfDetectionMode,
+        wf1PreviewAbortRef.current.signal,
+      );
+      if (resp.success) setWf1PreviewUrl(`${resp.previewUrl}?t=${Date.now()}`);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.error('WF1 preview error:', err);
+    } finally {
+      setIsWf1PreviewLoading(false);
+    }
+  };
+
   const handleRunWorkflow = async () => {
     if (mediaItems.length === 0) {
       alert("Please upload at least one secondary media file.");
@@ -347,6 +385,7 @@ export const ClipDetailsPage: React.FC = () => {
     }
     try {
       setWorkflowStatus('running');
+      setWf1Tab('logs');
       setLogs([]);
       await VideoRepository.runWorkflow(
         project!, format!, filename!, clientId,
@@ -355,6 +394,7 @@ export const ClipDetailsPage: React.FC = () => {
         mainPosition, text, watermarkText,
         watermarkSize, watermarkAlpha, watermarkTop, watermarkRight,
         fontFamily, textColor, textBgColor, textSize, textPosX, textPosY,
+        highlightColor,
         wfDetectionMode
       );
     } catch (e: any) {
@@ -775,7 +815,22 @@ export const ClipDetailsPage: React.FC = () => {
         <div className="responsive-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', gap: '24px', zIndex: 1000 }}>
           {/* Dialog Form */}
           <div className="responsive-dialog" style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
-            <h2 style={{ margin: 0 }}>Workflow Settings</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h2 style={{ margin: 0 }}>Workflow Settings</h2>
+              <button
+                onClick={() => refreshWfPreview()}
+                disabled={isWf1PreviewLoading}
+                style={{ 
+                  background: 'none', border: 'none', color: isWf1PreviewLoading ? '#555' : '#a78bfa', cursor: isWf1PreviewLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem'
+                }}
+              >
+                <svg className={isWf1PreviewLoading ? 'animate-spin' : ''} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+                {isWf1PreviewLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -855,8 +910,8 @@ export const ClipDetailsPage: React.FC = () => {
               <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc' }}>Text Overlay Settings</h3>
               
               <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-                <span>Overlay Text:</span>
-                <textarea value={text} onChange={e => setText(e.target.value)} style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff', minHeight: '60px', fontFamily: 'inherit', resize: 'vertical' }} placeholder="Enter text (multiple lines allowed)" />
+                <span>Overlay Text: <span style={{ fontSize: '0.75rem', color: '#888', fontWeight: 400 }}>Use [brackets] to highlight words in yellow</span></span>
+                <textarea value={text} onChange={e => setText(e.target.value)} style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff', minHeight: '60px', fontFamily: 'inherit', resize: 'vertical' }} placeholder="e.g. This is [highlighted] text!" />
               </label>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
@@ -883,7 +938,7 @@ export const ClipDetailsPage: React.FC = () => {
                 </label>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <span style={{ fontSize: '0.85rem' }}>Text Color:</span>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -896,6 +951,13 @@ export const ClipDetailsPage: React.FC = () => {
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <input type="color" value={textBgColor} onChange={e => setTextBgColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
                     <span style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>{textBgColor}</span>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem' }}><span style={{ color: '#FFFF00' }}>[Highlight]</span> Color:</span>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="color" value={highlightColor} onChange={e => setHighlightColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
+                    <span style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>{highlightColor}</span>
                   </div>
                 </label>
               </div>
@@ -967,16 +1029,66 @@ export const ClipDetailsPage: React.FC = () => {
             )}
           </div>
 
-          {/* Logs View */}
-          <div className="logs-view" style={{ background: '#121212', borderRadius: '12px', padding: '24px', flexDirection: 'column', border: '1px solid #333' }}>
-            <h3 style={{ margin: '0 0 16px 0', color: '#bbb' }}>Execution Logs</h3>
-            <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-              {logs.length === 0 ? <span style={{ color: '#555' }}>Logs will appear here during execution...</span> : logs.join('\n')}
-              <div ref={logsEndRef} />
+          {/* Preview / Logs panel */}
+          <div className="logs-view" style={{ background: '#121212', borderRadius: '12px', padding: '0', display: 'flex', flexDirection: 'column', border: '1px solid #333', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+              <button 
+                onClick={() => setWf1Tab('preview')}
+                style={{ 
+                  flex: 1, padding: '12px', background: wf1Tab === 'preview' ? '#252525' : 'transparent',
+                  color: wf1Tab === 'preview' ? '#a78bfa' : '#666', border: 'none', borderBottom: wf1Tab === 'preview' ? '2px solid #a78bfa' : 'none',
+                  cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem'
+                }}
+              >
+                PREVIEW
+              </button>
+              <button 
+                onClick={() => setWf1Tab('logs')}
+                style={{ 
+                  flex: 1, padding: '12px', background: wf1Tab === 'logs' ? '#252525' : 'transparent',
+                  color: wf1Tab === 'logs' ? '#a78bfa' : '#666', border: 'none', borderBottom: wf1Tab === 'logs' ? '2px solid #a78bfa' : 'none',
+                  cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem'
+                }}
+              >
+                LOGS
+              </button>
+            </div>
+
+            <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%' }}>
+              {wf1Tab === 'preview' ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#252525', padding: '10px', overflow: 'auto' }}>
+                  {wf1PreviewUrl ? (
+                    <img 
+                      src={wf1PreviewUrl} 
+                      alt="Preview" 
+                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 0 40px rgba(0,0,0,0.5)' }} 
+                    />
+                  ) : (
+                    <div style={{ color: '#444', textAlign: 'center' }}>
+                      <svg style={{ margin: '0 auto 12px', opacity: 0.2 }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <p>Add secondary media to generate preview</p>
+                    </div>
+                  )}
+                  
+                  {isWf1PreviewLoading && (
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                      <div className="animate-spin" style={{ width: '32px', height: '32px', border: '3px solid transparent', borderTopColor: '#a78bfa', borderRadius: '50%' }} />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px' }}>
+                  <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {logs.length === 0 ? <span style={{ color: '#555' }}>Logs will appear here during execution…</span> : logs.join('\n')}
+                    <div ref={logsEndRef} />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
+
 
       {/* ── Workflow 2 Dialog ───────────────────────────────────────────────── */}
       {isDialog2Open && (

@@ -273,7 +273,145 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, outline_width: int = 6,
     return np.array(img)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Bracket-highlight text helpers (same logic as workflow2.py)
+# ──────────────────────────────────────────────────────────────────────────────
+_BRACKET_RE = re.compile(r'\[([^\]]+)\]')
+
+
+def _parse_segments(text: str) -> list[tuple[str, bool, bool]]:
+    """Split text into (segment, is_highlighted, no_leading_space) triples.
+
+    ``no_leading_space`` is True for punctuation that immediately trails a
+    closing bracket (e.g. the \".\" in \"[word].\") so the renderer doesn't insert
+    a gap before it.
+    """
+    _SEG_RE = re.compile(
+        r'\[([^\]]*)\]([^\s\[]*)'
+        r'|([^\[]+)'
+    )
+    result: list[tuple[str, bool, bool]] = []
+    for m in _SEG_RE.finditer(text):
+        if m.group(1) is not None:
+            if m.group(1):
+                result.append((m.group(1), True, False))
+            if m.group(2):
+                result.append((m.group(2), False, True))  # glued punctuation
+        else:
+            result.append((m.group(3), False, False))
+    return result
+
+
+def render_text_highlighted(
+    text: str,
+    font: 'ImageFont.FreeTypeFont',
+    outline_width: int = 6,
+    padding_x: int = 40,
+    padding_y: int = 25,
+    radius: int = 20,
+    bg_color=(0, 0, 0, 180),
+    text_color=(255, 255, 255, 255),
+    highlight_color=(255, 255, 0, 255),
+) -> np.ndarray:
+    """Like render_text but [bracketed] words use highlight_color."""
+    text = text.replace('\r\n', '\n').replace('\r', '\n').replace('\\n', '\n')
+
+    dummy = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+    draw_m = ImageDraw.Draw(dummy)
+    emoji_font = get_emoji_font(font.size)
+
+    def _cw(ch: str) -> int:
+        use_font = emoji_font if (is_char_emoji(ch) and emoji_font) else font
+        try:
+            bbox = draw_m.textbbox((0, 0), ch, font=use_font)
+            w = int(bbox[2] - bbox[0])
+            return w or int(use_font.size)
+        except Exception:
+            w, _ = draw_m.textsize(ch, font=use_font)  # type: ignore
+            return int(w)
+
+    def _sw(s: str) -> int:
+        return sum(_cw(c) for c in s)
+
+    try:
+        bbox = draw_m.textbbox((0, 0), "Ag", font=font)
+        lh = int(bbox[3] - bbox[1])
+    except Exception:
+        _, lh = draw_m.textsize("Ag", font=font)  # type: ignore
+        lh = int(lh)
+
+    space_w = _sw(" ")
+
+    # Tokenise
+    segments = _parse_segments(text)
+    tokens: list[tuple[str, bool, bool]] = []
+    for seg, is_hl, no_sp in segments:
+        for i, part in enumerate(seg.split('\n')):
+            if i > 0:
+                tokens.append(('__NL__', False, False))
+            if no_sp:
+                if part.strip():
+                    tokens.append((part.strip(), is_hl, True))
+            else:
+                for word in part.split():
+                    tokens.append((word, is_hl, False))
+
+    # Word-wrap into lines
+    line_chunks: list[list[tuple[str, bool, bool]]] = []
+    cur: list[tuple[str, bool, bool]] = []
+    cur_w = 0
+    for tok in tokens:
+        if tok[0] == '__NL__':
+            line_chunks.append(cur); cur = []; cur_w = 0; continue
+        ww = _sw(tok[0])
+        if tok[2]:  # no leading space – glue
+            cur.append(tok); cur_w += ww
+        else:
+            gap = space_w if cur else 0
+            cur.append(tok); cur_w += gap + ww
+    line_chunks.append(cur)
+
+    def _line_px(ln: list[tuple[str, bool, bool]]) -> int:
+        total = 0
+        for i, (wd, _, no_sp) in enumerate(ln):
+            if i and not no_sp:
+                total += space_w
+            total += _sw(wd)
+        return total
+
+    text_w = max((_line_px(ln) for ln in line_chunks), default=0)
+    text_h = len(line_chunks) * lh + max(0, len(line_chunks) - 1) * 10
+
+    img_w = text_w + padding_x * 2
+    img_h = text_h + padding_y * 2
+
+    img = Image.new("RGBA", (max(1, img_w), max(1, img_h)), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    if hasattr(draw, 'rounded_rectangle'):
+        draw.rounded_rectangle([0, 0, img_w, img_h], radius=radius, fill=bg_color)
+    else:
+        draw.rectangle([0, 0, img_w, img_h], fill=bg_color)
+
+    for li, line in enumerate(line_chunks):
+        lw = _line_px(line)
+        x = padding_x + (text_w - lw) // 2
+        y = padding_y + li * (lh + 10)
+        for i, (wd, is_hl, no_sp) in enumerate(line):
+            if i and not no_sp:
+                x += space_w
+            fill = highlight_color if is_hl else text_color
+            x = _draw_text_with_fallback(
+                draw, (x, y), wd, font, fill,
+                emoji_font=emoji_font,
+                stroke_width=outline_width,
+                stroke_fill=(0, 0, 0, 255),
+            )
+
+    return np.array(img)
+
+
 def render_watermark(text: str, font: ImageFont.FreeTypeFont, alpha_opacity: float = 0.6) -> np.ndarray:
+
     """Render watermark text with outline based on opacity."""
     outline_width = max(1, font.size // 15)
     
@@ -419,6 +557,8 @@ def parse_args():
                         help="Path to a .ttf font file, or a known system font name (Arial, Impact, etc.).")
     parser.add_argument("--font-color", default="#FFFFFF",
                         help="Hex color code for the text (e.g. #FFFFFF).")
+    parser.add_argument("--highlight-color", default="#FFFF00",
+                        help="Hex color for [bracketed] words in text (default: #FFFF00 yellow).")
     parser.add_argument("--bg-color", default="#000000",
                         help="Hex color code for the text background (e.g. #000000).")
     parser.add_argument("--font-size", type=int, default=70, metavar="N",
@@ -451,6 +591,8 @@ def parse_args():
                         help="Output frames per second (default: 30).")
     parser.add_argument("--detection-mode", choices=["face", "torso"], default="face",
                         help="Tracking mode: 'face' or 'torso' (default: 'face').")
+    parser.add_argument("--preview", action="store_true",
+                        help="Generate a single-frame PNG preview instead of a full video.")
     return parser.parse_args()
 
 
@@ -510,6 +652,8 @@ def main():
         args.duration = None
         args.fps = 30
         args.detection_mode = "face"
+        args.highlight_color = "#FFFF00"
+        args.preview = False
     else:
         args = parse_args()
 
@@ -551,7 +695,12 @@ def main():
         
         # We save it into the temp folder so it gets deleted automatically
         tmp_main_path = os.path.join(tmp_dir, "cropped_main_9x8.mp4")
-        crop_result = cropper.crop_to_9x8(args.main, output_path=tmp_main_path, mode=args.detection_mode)
+        crop_result = cropper.crop_to_9x8(
+            args.main, 
+            output_path=tmp_main_path, 
+            mode=args.detection_mode,
+            preview=getattr(args, 'preview', False)
+        )
         
         if not crop_result['success']:
             print(f"[ERROR] Head tracking crop failed: {crop_result.get('error')}")
@@ -600,10 +749,14 @@ def main():
         font = get_font(args.font, args.font_size)
         
         # We always enforce slight transparency on the background color for aesthetics
-        bg_rgba = hex_to_rgba(args.bg_color, alpha=180) 
+        bg_rgba = hex_to_rgba(args.bg_color, alpha=180)
         text_rgba = hex_to_rgba(args.font_color, alpha=255)
+        highlight_rgba = hex_to_rgba(getattr(args, 'highlight_color', '#FFFF00'), alpha=255)
         
-        text_arr = render_text(args.text, font, args.outline_width, bg_color=bg_rgba, text_color=text_rgba)
+        text_arr = render_text_highlighted(
+            args.text, font, args.outline_width,
+            bg_color=bg_rgba, text_color=text_rgba, highlight_color=highlight_rgba
+        )
         
         # Calculate dynamic position based on percentages
         import math
@@ -654,6 +807,40 @@ def main():
             circle_pos = (OUTPUT_WIDTH - csize - cmarg, OUTPUT_HEIGHT - csize - cmarg)
             circle = circle.with_position(circle_pos)
             layers.append(circle)
+
+        # ── Preview short-circuit ─────────────────────────────────────────────────
+        if getattr(args, 'preview', False):
+            print("[INFO] Preview mode: building single-frame PNG...")
+            import math as _math
+            # Composite single RGBA image in PIL
+            canvas = Image.new("RGBA", (OUTPUT_WIDTH, OUTPUT_HEIGHT), (0, 0, 0, 255))
+
+            # Grab frame 0 from main and second clips
+            def _pil_frame(clip) -> Image.Image:
+                fr = clip.get_frame(0)
+                return Image.fromarray(fr).convert("RGBA")
+
+            top_pil = _pil_frame(top_clip).resize((OUTPUT_WIDTH, BOX_HEIGHT))
+            bot_pil = _pil_frame(bot_clip).resize((OUTPUT_WIDTH, BOX_HEIGHT))
+            canvas.paste(top_pil, (0, 0))
+            canvas.paste(bot_pil, (0, BOX_HEIGHT))
+
+            # Paste text overlay
+            text_pil = Image.fromarray(text_arr)
+            canvas.paste(text_pil, (top_left_x, top_left_y), text_pil)
+
+            # Watermark
+            if getattr(args, 'watermark_text', None) and args.watermark_text.strip():
+                w_font = get_font(args.watermark_font, args.watermark_size)
+                w_arr = render_watermark(args.watermark_text.strip(), w_font, args.watermark_alpha)
+                w_pil = Image.fromarray(w_arr)
+                w_x = OUTPUT_WIDTH - args.watermark_right - w_pil.width
+                canvas.paste(w_pil, (max(0, w_x), max(0, args.watermark_top)), w_pil)
+
+            preview_path = args.output
+            canvas.convert("RGB").save(preview_path)
+            print(f"[SUCCESS] Preview saved to: {preview_path}")
+            return
 
         # ── Final composite ───────────────────────────────────────────────────────
         print("[INFO] Final composite...")
