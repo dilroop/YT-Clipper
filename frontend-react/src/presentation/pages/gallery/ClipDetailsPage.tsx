@@ -112,6 +112,58 @@ export const ClipDetailsPage: React.FC = () => {
   const [wf1Tab, setWf1Tab] = useState<'preview' | 'logs'>('preview');
   const previewAbortControllerRef = useRef<AbortController | null>(null);
 
+  // ── Workflow Transcriber state ────────────────────────────────────────────
+  const [isWftOpen, setIsWftOpen] = useState(false);
+  const [wftFontFamily, setWftFontFamily] = useState(() => localStorage.getItem('ytc_wft_font') || 'Arial');
+  const [wftFontSize, setWftFontSize] = useState(() => getStoredNumber('ytc_wft_size', 80));
+  const [wftVerticalPosition, setWftVerticalPosition] = useState(() => getStoredNumber('ytc_wft_pos', 80));
+  const [wftWordsPerCaption, setWftWordsPerCaption] = useState(() => getStoredNumber('ytc_wft_words', 3));
+  const [wftSpokenWordColor, setWftSpokenWordColor] = useState(() => localStorage.getItem('ytc_wft_spoken_color') || '#FFFF00');
+  const [wftOtherWordsColor, setWftOtherWordsColor] = useState(() => localStorage.getItem('ytc_wft_other_color') || '#FFFFFF');
+  const [wftBgColor, setWftBgColor] = useState(() => localStorage.getItem('ytc_wft_bg_color') || '#000000');
+  const [wftUseBgBox, setWftUseBgBox] = useState(() => localStorage.getItem('ytc_wft_use_box') === 'true');
+  const [wftOutlineColor, setWftOutlineColor] = useState(() => localStorage.getItem('ytc_wft_outline_color') || '#000000');
+  const [wftOutlineWidth, setWftOutlineWidth] = useState(() => getStoredNumber('ytc_wft_outline_width', 3));
+  
+  const [wftStatus, setWftStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
+  const [wftLogs, setWftLogs] = useState<string[]>([]);
+  const [wftTab, setWftTab] = useState<'preview' | 'logs'>('preview');
+  const [wftPreviewUrl, setWftPreviewUrl] = useState<string | null>(null);
+  const [isWftPreviewLoading, setIsWftPreviewLoading] = useState(false);
+  const wftLogsEndRef = useRef<HTMLDivElement>(null);
+  const wftPreviewAbortControllerRef = useRef<AbortController | null>(null);
+
+  // ── Workflow 4 state ──────────────────────────────────────────────────────
+  const [isW4DialogOpen, setIsW4DialogOpen] = useState(false);
+  const [w4Status, setW4Status] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
+  const [w4Logs, setW4Logs] = useState<string[]>([]);
+  const w4LogsEndRef = useRef<HTMLDivElement>(null);
+  const [w4Tab, setW4Tab] = useState<'preview' | 'logs'>('preview');
+  const [isW4PreviewLoading, setIsW4PreviewLoading] = useState(false);
+  const [w4PreviewUrl, setW4PreviewUrl] = useState<string | null>(null);
+  const w4PreviewAbortControllerRef = useRef<AbortController | null>(null);
+
+  const [w4TextInput, setW4TextInput] = useState('');
+  const [w4UseTts, setW4UseTts] = useState(true);
+  const [w4AudioFile, setW4AudioFile] = useState<File | null>(null);
+  const [w4TtsVoice, setW4TtsVoice] = useState('am_echo');
+  const [w4TtsSpeed, setW4TtsSpeed] = useState(1.0);
+  const [w4BgFramePercent, setW4BgFramePercent] = useState(0);
+  const [w4BgBlur, setW4BgBlur] = useState(0);
+  const [w4MediaItems, setW4MediaItems] = useState<any[]>([]);
+  const [w4FillScreen, setW4FillScreen] = useState(true);
+  const [w4GlobalScale, setW4GlobalScale] = useState(1.0);
+  const [w4Sticker, setW4Sticker] = useState<File | null>(null);
+  const [w4StickerX, setW4StickerX] = useState(50);
+  const [w4StickerY, setW4StickerY] = useState(50);
+  const [w4StickerScale, setW4StickerScale] = useState(1.0);
+  const [w4BurnCaptions, setW4BurnCaptions] = useState(true);
+  
+  // Voices for W4
+  const KOKORO_VOICES = [
+    "af_heart", "af_alloy", "af_aoede", "af_bella", "af_jessica", "af_kore", "af_nicole", "af_nova", "af_river", "af_sky", "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael", "am_onyx", "am_puck", "am_santa", "bf_alice", "bf_emma", "bf_isabella", "bf_lily", "bm_daniel", "bm_fable", "bm_george", "bm_lewis"
+  ];
+
   // ── Workflow 3 state ──────────────────────────────────────────────────────
   const [isDialog3Open, setIsDialog3Open] = useState(false);
   const [minSilenceLen, setMinSilenceLen] = useState(() => getStoredNumber('ytc_wf3_min_silence', 500));
@@ -119,6 +171,28 @@ export const ClipDetailsPage: React.FC = () => {
   const [wf3Status, setWf3Status] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [wf3Logs, setWf3Logs] = useState<string[]>([]);
   const wf3LogsEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (wftLogsEndRef.current) wftLogsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [wftLogs]);
+
+  // Persist wft style prefs
+  useEffect(() => {
+    localStorage.setItem('ytc_wft_font', wftFontFamily);
+    localStorage.setItem('ytc_wft_size', wftFontSize.toString());
+    localStorage.setItem('ytc_wft_pos', wftVerticalPosition.toString());
+    localStorage.setItem('ytc_wft_words', wftWordsPerCaption.toString());
+    localStorage.setItem('ytc_wft_spoken_color', wftSpokenWordColor);
+    localStorage.setItem('ytc_wft_other_color', wftOtherWordsColor);
+    localStorage.setItem('ytc_wft_bg_color', wftBgColor);
+    localStorage.setItem('ytc_wft_use_box', wftUseBgBox.toString());
+    localStorage.setItem('ytc_wft_outline_color', wftOutlineColor);
+    localStorage.setItem('ytc_wft_outline_width', wftOutlineWidth.toString());
+  }, [
+    wftFontFamily, wftFontSize, wftVerticalPosition, wftWordsPerCaption, 
+    wftSpokenWordColor, wftOtherWordsColor, wftBgColor, wftUseBgBox, 
+    wftOutlineColor, wftOutlineWidth
+  ]);
 
   useEffect(() => {
     if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -218,6 +292,54 @@ export const ClipDetailsPage: React.FC = () => {
   }, [isDialogOpen, text, textColor, textBgColor, highlightColor, textSize, textPosX, textPosY, mainPosition, watermarkText, fontFamily, mediaItems]);
 
   useEffect(() => {
+    if (!isW4DialogOpen) return;
+    const timer = setTimeout(() => {
+      refreshW4Preview();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [isW4DialogOpen, w4TextInput, w4UseTts, w4BgFramePercent, w4MediaItems, w4GlobalScale, w4Sticker, w4StickerX, w4StickerY, w4StickerScale, w4BurnCaptions, wftFontFamily, wftFontSize, wftVerticalPosition, wftSpokenWordColor, wftOtherWordsColor]);
+
+  // W4 Persistence
+  useEffect(() => {
+    const saved = localStorage.getItem('yt_clipper_w4_settings');
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            if (parsed.textInput) setW4TextInput(parsed.textInput);
+            if (parsed.useTts !== undefined) setW4UseTts(parsed.useTts);
+            if (parsed.ttsVoice) setW4TtsVoice(parsed.ttsVoice);
+            if (parsed.ttsSpeed) setW4TtsSpeed(parsed.ttsSpeed);
+            if (parsed.bgFramePercent) setW4BgFramePercent(parsed.bgFramePercent);
+            if (parsed.bgBlur) setW4BgBlur(parsed.bgBlur);
+            if (parsed.fillScreen !== undefined) setW4FillScreen(parsed.fillScreen);
+            if (parsed.globalScale) setW4GlobalScale(parsed.globalScale);
+            if (parsed.stickerX) setW4StickerX(parsed.stickerX);
+            if (parsed.stickerY) setW4StickerY(parsed.stickerY);
+            if (parsed.stickerScale) setW4StickerScale(parsed.stickerScale);
+            if (parsed.burnCaptions !== undefined) setW4BurnCaptions(parsed.burnCaptions);
+        } catch(e) {}
+    }
+  }, []);
+
+  useEffect(() => {
+    const settings = {
+        textInput: w4TextInput,
+        useTts: w4UseTts,
+        ttsVoice: w4TtsVoice,
+        ttsSpeed: w4TtsSpeed,
+        bgFramePercent: w4BgFramePercent,
+        bgBlur: w4BgBlur,
+        fillScreen: w4FillScreen,
+        globalScale: w4GlobalScale,
+        stickerX: w4StickerX,
+        stickerY: w4StickerY,
+        stickerScale: w4StickerScale,
+        burnCaptions: w4BurnCaptions
+    };
+    localStorage.setItem('yt_clipper_w4_settings', JSON.stringify(settings));
+  }, [w4TextInput, w4UseTts, w4TtsVoice, w4TtsSpeed, w4BgFramePercent, w4BgBlur, w4FillScreen, w4GlobalScale, w4StickerX, w4StickerY, w4StickerScale, w4BurnCaptions]);
+
+  useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     const ws = new WebSocket(wsUrl);
@@ -229,30 +351,44 @@ export const ClipDetailsPage: React.FC = () => {
         if (data.type === 'connection' && data.client_id) {
           setClientId(data.client_id);
         } else if (data.type === 'log') {
-          setLogs(prev => [...prev, data.line]);
-          setWf2Logs(prev => [...prev, data.line]);
-          setWf3Logs(prev => [...prev, data.line]);
-          setRefineLogs(prev => [...prev, data.line]);
-        } else if (data.type === 'progress') {
-          // Update refine progress details
-          if (data.stage !== 'complete' && data.stage !== 'error') {
-            setRefineProgress({ percent: data.percent || 0, message: data.message || '', stage: data.stage || '' });
+          // Direct logs legacy
+          setLogs(prev => [...prev, data.line || data.message]);
+          
+          // Workflow specific logs
+          if (data.workflow === 'w4') {
+            setW4Logs(prev => [...prev, data.message]);
+          } else if (data.workflow === 'transcriber') {
+            setWftLogs(prev => [...prev, data.message]);
+          } else {
+            setWf2Logs(prev => [...prev, data.line]);
+            setWf3Logs(prev => [...prev, data.line]);
+            setRefineLogs(prev => [...prev, data.line]);
           }
+        } else if (data.type === 'progress') {
           if (data.stage === 'complete') {
             setWorkflowStatus('complete');
             setWf2Status('complete');
             setWf3Status('complete');
+            setWftStatus('complete');
+            setW4Status('complete');
             setRefineProcessStatus('complete');
             setRefineProgress(null);
           } else if (data.stage === 'error') {
             setWorkflowStatus('error');
             setWf2Status('error');
             setWf3Status('error');
+            setWftStatus('error');
+            setW4Status('error');
             setRefineProcessStatus('error');
             setLogs(prev => [...prev, data.message]);
-            setWf2Logs(prev => [...prev, data.message]);
-            setWf3Logs(prev => [...prev, data.message]);
-            setRefineLogs(prev => [...prev, data.message]);
+          } else {
+            // General progress
+            if (data.workflow === 'w4') {
+                // can add w4 specific progress if needed
+            }
+            if (data.stage !== 'complete' && data.stage !== 'error') {
+                setRefineProgress({ percent: data.percent || 0, message: data.message || '', stage: data.stage || '' });
+            }
           }
         }
       } catch (e) {
@@ -400,6 +536,137 @@ export const ClipDetailsPage: React.FC = () => {
     } catch (e: any) {
       setWorkflowStatus('error');
       setLogs(prev => [...prev, `[ERROR] ${e.message}`]);
+    }
+  };
+
+  const refreshWftPreview = async () => {
+    if (!project || !format || !filename) return;
+    if (wftPreviewAbortControllerRef.current) wftPreviewAbortControllerRef.current.abort();
+    wftPreviewAbortControllerRef.current = new AbortController();
+    setIsWftPreviewLoading(true);
+    try {
+      const resp = await VideoRepository.getTranscriberPreview(
+        project, format, filename,
+        wftFontFamily, wftFontSize, wftVerticalPosition, wftWordsPerCaption,
+        wftSpokenWordColor, wftOtherWordsColor, wftBgColor, wftUseBgBox,
+        wftOutlineColor, wftOutlineWidth,
+        wftPreviewAbortControllerRef.current.signal
+      );
+      if (resp.success && resp.preview_url) setWftPreviewUrl(`${resp.preview_url}?t=${Date.now()}`);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.error('Wft preview error:', err);
+    } finally {
+      setIsWftPreviewLoading(false);
+    }
+  };
+
+  const handleRunTranscriber = async () => {
+    if (!clientId) {
+      alert("Still connecting to server, please wait a moment.");
+      return;
+    }
+    try {
+      setWftStatus('running');
+      setWftTab('logs');
+      setWftLogs([]);
+      await VideoRepository.runTranscriber(
+        project!, format!, filename!, clientId,
+        wftFontFamily, wftFontSize, wftVerticalPosition, wftWordsPerCaption,
+        wftSpokenWordColor, wftOtherWordsColor, wftBgColor, wftUseBgBox,
+        wftOutlineColor, wftOutlineWidth
+      );
+    } catch (e: any) {
+      setWftStatus('error');
+      setWftLogs(prev => [...prev, `[ERROR] ${e.message}`]);
+    }
+  };
+
+  const refreshW4Preview = async () => {
+    if (!project || !format || !filename) return;
+    if (w4PreviewAbortControllerRef.current) w4PreviewAbortControllerRef.current.abort();
+    w4PreviewAbortControllerRef.current = new AbortController();
+    setIsW4PreviewLoading(true);
+    
+    try {
+      // Caption config derived from wft or specific w4 state if we had it.
+      // Reusing wft style states for simplicity as requested "other will be exactly like transcriber.py"
+      const captionConfig = {
+        font_family: wftFontFamily,
+        font_size: wftFontSize,
+        vertical_position: wftVerticalPosition,
+        words_per_caption: wftWordsPerCaption,
+        spoken_word_color: wftSpokenWordColor,
+        other_words_color: wftOtherWordsColor,
+        bg_color: wftBgColor,
+        use_background_box: wftUseBgBox,
+        outline_color: wftOutlineColor,
+        outline_width: wftOutlineWidth
+      };
+
+      const url = await VideoRepository.getWorkflow4Preview(
+        project, format, filename,
+        w4TextInput, w4UseTts, w4BgFramePercent, w4BgBlur,
+        w4MediaItems, w4FillScreen, w4GlobalScale, w4Sticker,
+        w4StickerX, w4StickerY, w4StickerScale, w4BurnCaptions,
+        captionConfig,
+        w4PreviewAbortControllerRef.current.signal
+      );
+      setW4PreviewUrl(url);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.error('W4 preview error:', err);
+    } finally {
+      setIsW4PreviewLoading(false);
+    }
+  };
+
+  const handleRunWorkflow4 = async (generateSeparately: boolean = false) => {
+    if (!clientId) {
+      alert("Still connecting to server, please wait a moment.");
+      return;
+    }
+    
+    setW4Status('running');
+    setW4Tab('logs');
+    setW4Logs([]);
+    
+    try {
+      const captionConfig = {
+        font_family: wftFontFamily,
+        font_size: wftFontSize,
+        vertical_position: wftVerticalPosition,
+        words_per_caption: wftWordsPerCaption,
+        spoken_word_color: wftSpokenWordColor,
+        other_words_color: wftOtherWordsColor,
+        bg_color: wftBgColor,
+        use_background_box: wftUseBgBox,
+        outline_color: wftOutlineColor,
+        outline_width: wftOutlineWidth
+      };
+
+      await VideoRepository.runWorkflow4(
+        project!, format!, filename!, clientId,
+        w4TextInput, w4AudioFile, w4UseTts, w4TtsVoice, w4TtsSpeed,
+        w4BgFramePercent, w4BgBlur, w4MediaItems, w4FillScreen, w4GlobalScale,
+        w4Sticker, w4StickerX, w4StickerY, w4StickerScale, w4BurnCaptions,
+        captionConfig, generateSeparately
+      );
+    } catch (e: any) {
+      setW4Status('error');
+      setW4Logs(prev => [...prev, `[ERROR] ${e.message}`]);
+    }
+  };
+
+  const playTtsSample = async () => {
+    if (!w4TextInput.trim()) {
+        alert("Please enter some text for the sample.");
+        return;
+    }
+    try {
+        const url = await VideoRepository.getTtsSample(w4TextInput, w4TtsVoice, w4TtsSpeed);
+        const audio = new Audio(url);
+        audio.play();
+    } catch (e: any) {
+        alert("TTS Sample failed: " + e.message);
     }
   };
 
@@ -589,11 +856,19 @@ export const ClipDetailsPage: React.FC = () => {
             </button>
             <button onClick={() => setIsDialogOpen(true)} style={{ width: '100%', padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-              Run Workflow 1
+              Run W1 - 2 Sections
             </button>
             <button onClick={() => setIsDialog2Open(true)} style={{ width: '100%', padding: '12px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-              Run Workflow 2
+              Run W2 - Header + Video
+            </button>
+            <button onClick={() => setIsWftOpen(true)} style={{ width: '100%', padding: '12px', background: '#ea580c', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2A10 10 0 1 0 22 12 10 10 0 0 0 12 2Zm-1 11a1 1 0 0 1 2 0v2a1 1 0 0 1-2 0Zm1-4a1 1 0 1 1-1-1 1 1 0 0 1 1 1Z"/></svg>
+              Run - Transcriber
+            </button>
+            <button onClick={() => setIsW4DialogOpen(true)} style={{ width: '100%', padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              Run W4 - TTS Hook
             </button>
             {clip.info_data?.clip?.parts?.length > 0 && (
               <button onClick={handleRefine} disabled={refineLoading} style={{ width: '100%', padding: '12px', background: 'rgba(251, 191, 36, 0.2)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.5)', borderRadius: '8px', cursor: refineLoading ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginTop: '16px' }}>
@@ -1344,6 +1619,168 @@ export const ClipDetailsPage: React.FC = () => {
         </div>
       )}
 
+      {/* ── Workflow Transcriber Dialog ── */}
+      {isWftOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '90%', height: '90%', background: '#1e1e1e', borderRadius: '12px', border: '1px solid #333', display: 'flex', overflow: 'hidden' }}>
+            
+            {/* Left Column: Settings */}
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', background: '#121212', flex: '0 0 320px', borderRight: '1px solid #333', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#fff' }}>Run Transcriber</h3>
+                <button onClick={() => setIsWftOpen(false)} style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}>&times;</button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <button
+                  onClick={refreshWftPreview}
+                  disabled={isWftPreviewLoading}
+                  style={{ flex: 1, padding: '8px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: isWftPreviewLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                >
+                  {isWftPreviewLoading ? 'Refreshing...' : '🔄 Refresh Preview'}
+                </button>
+              </div>
+
+              {/* TIKTOK STYLE SETTINGS */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#1a1a1a', padding: '16px', borderRadius: '8px' }}>
+                <h4 style={{ margin: 0, color: '#aaa', fontSize: '0.85rem', textTransform: 'uppercase' }}>Text Style</h4>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc' }}>
+                  Font Family
+                  <input type="text" value={wftFontFamily} onChange={e => setWftFontFamily(e.target.value)} onBlur={refreshWftPreview} onKeyDown={(e) => e.key==='Enter' && refreshWftPreview()} style={{ padding: '8px', background: '#2D2D2D', border: '1px solid #444', borderRadius: '4px', color: '#fff', width: '100%' }} />
+                </label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc', flex: 1 }}>
+                    Size ({wftFontSize})
+                    <input type="range" min="30" max="150" value={wftFontSize} onChange={e => setWftFontSize(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc', flex: 1 }}>
+                    Vert Position ({wftVerticalPosition}%)
+                    <input type="range" min="10" max="95" value={wftVerticalPosition} onChange={e => setWftVerticalPosition(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc', flex: 1 }}>
+                    Words/Caption ({wftWordsPerCaption})
+                    <input type="range" min="1" max="8" value={wftWordsPerCaption} onChange={e => setWftWordsPerCaption(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#1a1a1a', padding: '16px', borderRadius: '8px' }}>
+                <h4 style={{ margin: 0, color: '#aaa', fontSize: '0.85rem', textTransform: 'uppercase' }}>Colors</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Spoken Word</span>
+                  <input type="color" value={wftSpokenWordColor} onChange={e => setWftSpokenWordColor(e.target.value)} onBlur={refreshWftPreview} style={{ width: '40px', height: '30px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Other Words</span>
+                  <input type="color" value={wftOtherWordsColor} onChange={e => setWftOtherWordsColor(e.target.value)} onBlur={refreshWftPreview} style={{ width: '40px', height: '30px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }} />
+                </div>
+                <div style={{ borderTop: '1px solid #333', margin: '8px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Bg Color</span>
+                  <input type="color" value={wftBgColor} onChange={e => setWftBgColor(e.target.value)} onBlur={refreshWftPreview} style={{ width: '40px', height: '30px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }} />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#ccc', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={wftUseBgBox} onChange={e => setWftUseBgBox(e.target.checked)} onBlur={refreshWftPreview} />
+                  Fill Solid Box (Border=3)
+                </label>
+                <div style={{ borderTop: '1px solid #333', margin: '8px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Outline Color</span>
+                  <input type="color" value={wftOutlineColor} onChange={e => setWftOutlineColor(e.target.value)} onBlur={refreshWftPreview} style={{ width: '40px', height: '30px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }} />
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', marginTop: 4 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc', flex: 1 }}>
+                    Outline Width ({wftOutlineWidth})
+                    <input type="range" min="0" max="10" step="0.5" value={wftOutlineWidth} onChange={e => setWftOutlineWidth(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ flex: 1 }} />
+
+              <button
+                onClick={handleRunTranscriber}
+                disabled={wftStatus === 'running'}
+                style={{ width: '100%', padding: '16px', background: wftStatus === 'running' ? '#444' : '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: wftStatus === 'running' ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}
+              >
+                {wftStatus === 'running' ? 'Processing...' : 'Generate Subtitles 🚀'}
+              </button>
+            </div>
+
+            {/* Right Column: Dynamic Content (Preview vs Logs) */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0a0a0a', position: 'relative' }}>
+              
+              {/* Tabs */}
+              <div style={{ display: 'flex', background: '#121212', borderBottom: '1px solid #333' }}>
+                <button
+                  onClick={() => setWftTab('preview')}
+                  style={{ flex: 1, padding: '16px', background: wftTab === 'preview' ? '#1a1a1a' : 'transparent', color: wftTab === 'preview' ? '#fff' : '#888', border: 'none', borderBottom: wftTab === 'preview' ? '2px solid #3b82f6' : '2px solid transparent', cursor: 'pointer', fontWeight: wftTab === 'preview' ? 'bold' : 'normal', transition: 'all 0.2s' }}
+                >
+                  👁️ Live Preview
+                </button>
+                <button
+                  onClick={() => setWftTab('logs')}
+                  style={{ flex: 1, padding: '16px', background: wftTab === 'logs' ? '#1a1a1a' : 'transparent', color: wftTab === 'logs' ? '#fff' : '#888', border: 'none', borderBottom: wftTab === 'logs' ? '2px solid #10b981' : '2px solid transparent', cursor: 'pointer', fontWeight: wftTab === 'logs' ? 'bold' : 'normal', transition: 'all 0.2s' }}
+                >
+                  📝 View Logs
+                </button>
+              </div>
+
+              {/* Tab Content */}
+              {wftTab === 'preview' ? (
+                <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', overflow: 'hidden' }}>
+                  {isWftPreviewLoading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', color: '#3b82f6' }}>
+                      <div className="spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                      <span style={{ fontWeight: 600 }}>Generating Preview...</span>
+                    </div>
+                  ) : wftPreviewUrl ? (
+                    <img 
+                      src={`http://${window.location.hostname}:5000${wftPreviewUrl}`} 
+                      alt="Transcriber Preview" 
+                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                    />
+                  ) : (
+                    <div style={{ color: '#555', textAlign: 'center' }}>
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ marginBottom: '12px', opacity: 0.5 }}>
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                      </svg>
+                      <p>Click Refresh to generate a preview</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ padding: '16px 24px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution Logs</span>
+                    {wftStatus === 'running' && <span style={{ fontSize: '0.75rem', color: '#10b981', animation: 'pulse 1.5s infinite' }}>● Running</span>}
+                    {wftStatus === 'error' && <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>❌ Error</span>}
+                    {wftStatus === 'complete' && <span style={{ fontSize: '0.75rem', color: '#4ade80' }}>✅ Complete</span>}
+                  </div>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '20px', fontFamily: '"Fira Code", "JetBrains Mono", monospace', fontSize: '13px', color: '#888', lineHeight: 1.6 }}>
+                    {wftLogs.length === 0 ? (
+                      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' }}>Waiting to start...</div>
+                    ) : (
+                      wftLogs.map((log, i) => (
+                        <div key={i} style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '4px', marginBottom: '4px', color: log.includes('[ERROR]') ? '#ef4444' : log.includes('SUCCESS') ? '#10b981' : log.includes('[Whisper]') ? '#8b5cf6' : '#888' }}>
+                          {log}
+                        </div>
+                      ))
+                    )}
+                    <div ref={wftLogsEndRef} />
+                  </div>
+                </div>
+              )}
+            </div>
+            
+          </div>
+        </div>
+      )}
+
       {/* ── Workflow 3 Dialog (Silence Removal) ── */}
       {isDialog3Open && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -1433,6 +1870,250 @@ export const ClipDetailsPage: React.FC = () => {
           </div>
         </div>
       )}
+      
+      {/* ── Workflow 4 Dialog (TTS Hook) ── */}
+      {isW4DialogOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#1e1e1e', width: '100%', maxWidth: '1000px', height: 'min(900px, 92vh)', borderRadius: '16px', display: 'grid', gridTemplateColumns: '1.2fr 1fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            
+            {/* Left Column: Settings */}
+            <div style={{ borderRight: '1px solid #333', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minHeight: 0 }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>TTS Hook Overlay</h2>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => refreshW4Preview()} disabled={isW4PreviewLoading} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}>
+                          <svg className={isW4PreviewLoading ? 'animate-spin' : ''} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                          Refresh
+                      </button>
+                      <button onClick={() => setIsW4DialogOpen(false)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '4px' }}>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                  </div>
+                </div>
+
+                {/* SECTION: Audio / TTS */}
+                <div style={{ background: '#252525', borderRadius: '12px', border: '1px solid #333', padding: '16px' }}>
+                  <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', borderBottom: '1px solid #333', paddingBottom: '8px' }}>
+                      <button onClick={() => setW4UseTts(true)} style={{ background: 'none', border: 'none', color: w4UseTts ? '#3b82f6' : '#666', fontWeight: 'bold', cursor: 'pointer', borderBottom: w4UseTts ? '2px solid #3b82f6' : 'none', paddingBottom: '4px' }}>Text to Speech</button>
+                      <button onClick={() => setW4UseTts(false)} style={{ background: 'none', border: 'none', color: !w4UseTts ? '#3b82f6' : '#666', fontWeight: 'bold', cursor: 'pointer', borderBottom: !w4UseTts ? '2px solid #3b82f6' : 'none', paddingBottom: '4px' }}>Audio Upload</button>
+                  </div>
+
+                  {w4UseTts ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <textarea 
+                              value={w4TextInput} 
+                              onChange={e => setW4TextInput(e.target.value)} 
+                              style={{ width: '100%', minHeight: '80px', background: '#1a1a1a', border: '1px solid #444', borderRadius: '8px', color: '#fff', padding: '10px', fontSize: '0.9rem', outline: 'none' }} 
+                              placeholder="Enter hook text here..."
+                          />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Voice</span>
+                                  <select value={w4TtsVoice} onChange={e => setW4TtsVoice(e.target.value)} style={{ padding: '8px', background: '#1a1a1a', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
+                                      {KOKORO_VOICES.map(v => <option key={v} value={v}>{v}</option>)}
+                                  </select>
+                              </label>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Speed ({w4TtsSpeed}x)</span>
+                                  <input type="range" min="0.5" max="2.0" step="0.1" value={w4TtsSpeed} onChange={e => setW4TtsSpeed(Number(e.target.value))} style={{ width: '100%' }} />
+                              </label>
+                          </div>
+                      </div>
+                  ) : (
+                      <div style={{ padding: '10px', background: '#1a1a1a', borderRadius: '8px', border: '1px dashed #444', textAlign: 'center' }}>
+                          <input type="file" accept="audio/*" onChange={e => setW4AudioFile(e.target.files?.[0] || null)} />
+                          {w4AudioFile && <p style={{ fontSize: '0.8rem', color: '#4ade80', margin: '8px 0 0' }}>Selected: {w4AudioFile.name}</p>}
+                      </div>
+                  )}
+                  {w4UseTts && (
+                      <button onClick={playTtsSample} style={{ marginTop: '12px', width: '100%', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>Play Sample</button>
+                  )}
+                </div>
+
+                {/* SECTION: Captions Style */}
+                <div style={{ background: '#252525', borderRadius: '12px', border: '1px solid #333', padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#ccc' }}>🔥 Burn Captions</h3>
+                      <input type="checkbox" checked={w4BurnCaptions} onChange={e => setW4BurnCaptions(e.target.checked)} />
+                  </div>
+                  {w4BurnCaptions && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.8rem' }}>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span style={{ color: '#888' }}>Font</span>
+                              <select value={wftFontFamily} onChange={e => setWftFontFamily(e.target.value)} style={{ padding: '6px', background: '#1a1a1a', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
+                                  <option value="Arial">Arial</option><option value="Impact">Impact</option><option value="Bold">Bold</option>
+                              </select>
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span style={{ color: '#888' }}>Vertical Pos ({wftVerticalPosition}%)</span>
+                              <input type="range" min="0" max="100" value={wftVerticalPosition} onChange={e => setWftVerticalPosition(Number(e.target.value))} />
+                          </label>
+                      </div>
+                  )}
+                </div>
+
+                {/* SECTION: Media Overlays */}
+                <div style={{ background: '#252525', borderRadius: '12px', border: '1px solid #333', padding: '16px' }}>
+                  <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc' }}>Media Swaps / Slideshow</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                          <label style={{ flex: 1, padding: '8px', background: '#1a1a1a', border: '1px dashed #444', borderRadius: '8px', textAlign: 'center', cursor: 'pointer', fontSize: '0.85rem' }}>
+                              + Add Images/Videos
+                              <input type="file" multiple accept="image/*,video/*" style={{ display: 'none' }} onChange={e => {
+                                  const files = Array.from(e.target.files || []);
+                                  const newItems = files.map(f => ({
+                                      id: URL.createObjectURL(f), 
+                                      file: f, isVideo: f.type.startsWith('video/'), scale: 1.0, duration: 3.0 
+                                  }));
+                                  setW4MediaItems(prev => [...prev, ...newItems]);
+                              }} />
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                              <input type="checkbox" checked={w4FillScreen} onChange={e => setW4FillScreen(e.target.checked)} />
+                              Fill Screen
+                          </label>
+                      </div>
+
+                      {w4MediaItems.length > 0 && (
+                          <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {w4MediaItems.map((m, idx) => (
+                                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#1a1a1a', padding: '8px', borderRadius: '8px', border: '1px solid #333' }}>
+                                      <div style={{ width: '40px', height: '40px', background: '#000', borderRadius: '4px', overflow: 'hidden' }}>
+                                          {!m.isVideo && <img src={m.id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                                          {m.isVideo && <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎬</div>}
+                                      </div>
+                                      <div style={{ flex: 1, fontSize: '0.8rem', overflow: 'hidden' }}>
+                                          <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.file.name}</div>
+                                          {!m.isVideo && (
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                                                  <span>Duration:</span>
+                                                  <input type="number" step="0.5" value={m.duration} onChange={e => {
+                                                      const val = Number(e.target.value);
+                                                      setW4MediaItems(prev => prev.map((it, i) => i === idx ? { ...it, duration: val } : it));
+                                                  }} style={{ width: '45px', background: '#252525', border: '1px solid #444', color: '#fff', borderRadius: '4px', padding: '2px 4px' }} />
+                                              </div>
+                                          )}
+                                      </div>
+                                      <button onClick={() => setW4MediaItems(prev => prev.filter((_, i) => i !== idx))} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>Global Scale ({w4GlobalScale}x)</span>
+                          <input type="range" min="0.1" max="10.0" step="0.1" value={w4GlobalScale} onChange={e => setW4GlobalScale(Number(e.target.value))} />
+                      </label>
+                  </div>
+                </div>
+
+                {/* SECTION: Background & Sticker */}
+                <div style={{ background: '#252525', borderRadius: '12px', border: '1px solid #333', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Background Frame Position ({w4BgFramePercent}%)</span>
+                      <input type="range" min="0" max="100" step="1" value={w4BgFramePercent} onChange={e => setW4BgFramePercent(Number(e.target.value))} />
+                  </label>
+
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Background Blur ({w4BgBlur})</span>
+                      <input type="range" min="0" max="25" step="1" value={w4BgBlur} onChange={e => setW4BgBlur(Number(e.target.value))} />
+                  </label>
+
+                  <div style={{ padding: '12px', background: '#1a1a1a', borderRadius: '8px', border: '1px solid #333' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: '#888', textTransform: 'uppercase' }}>Sticker (Headshot)</h4>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
+                          <input type="file" accept="image/*" onChange={e => setW4Sticker(e.target.files?.[0] || null)} style={{ fontSize: '0.75rem', flex: 1 }} />
+                          {w4Sticker && (
+                              <button onClick={() => setW4Sticker(null)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '12px' }}>✕</button>
+                          )}
+                      </div>
+                      {w4Sticker && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#888' }}>
+                                      <span>X Pos</span>
+                                      <span>{w4StickerX}%</span>
+                                  </div>
+                                  <input type="range" min="0" max="100" value={w4StickerX} onChange={e => setW4StickerX(Number(e.target.value))} />
+                              </label>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#888' }}>
+                                      <span>Y Pos</span>
+                                      <span>{w4StickerY}%</span>
+                                  </div>
+                                  <input type="range" min="0" max="100" value={w4StickerY} onChange={e => setW4StickerY(Number(e.target.value))} />
+                              </label>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#888' }}>
+                                      <span>Sticker Scale</span>
+                                      <span>{w4StickerScale}x</span>
+                                  </div>
+                                  <input type="range" min="0.1" max="5.0" step="0.1" value={w4StickerScale} onChange={e => setW4StickerScale(Number(e.target.value))} />
+                              </label>
+                          </div>
+                      )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ACTION BUTTONS: Sticky Footer */}
+              <div style={{ padding: '20px 24px', borderTop: '1px solid #333', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#1e1e1e' }}>
+                <button 
+                    onClick={() => handleRunWorkflow4(true)} 
+                    disabled={w4Status === 'running'}
+                    style={{ padding: '14px', background: '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}
+                >
+                    Generate Separately
+                </button>
+                <button 
+                    onClick={() => handleRunWorkflow4(false)} 
+                    disabled={w4Status === 'running'}
+                    style={{ padding: '14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}
+                >
+                    {w4Status === 'running' ? 'Processing...' : 'Generate & Prepend'}
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: Preview / Logs */}
+            <div style={{ background: '#0e0e0e', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+                <div style={{ display: 'flex', background: '#1a1a1a' }}>
+                    <button onClick={() => setW4Tab('preview')} style={{ flex: 1, padding: '12px', background: w4Tab === 'preview' ? '#252525' : 'transparent', color: w4Tab === 'preview' ? '#fff' : '#666', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Preview</button>
+                    <button onClick={() => setW4Tab('logs')} style={{ flex: 1, padding: '12px', background: w4Tab === 'logs' ? '#252525' : 'transparent', color: w4Tab === 'logs' ? '#fff' : '#666', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Logs</button>
+                </div>
+
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', overflow: 'hidden' }}>
+                    {w4Tab === 'preview' ? (
+                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', borderRadius: '8px', border: '1px solid #222', position: 'relative' }}>
+                             {isW4PreviewLoading && (
+                                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <div className="spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                </div>
+                             )}
+                             {w4PreviewUrl ? (
+                                <img src={w4PreviewUrl} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt="W4 Preview" />
+                             ) : (
+                                <div style={{ color: '#444', textAlign: 'center' }}>
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ marginBottom: '12px', opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                    <p>Preview will update automatically</p>
+                                </div>
+                             )}
+                        </div>
+                    ) : (
+                        <div style={{ width: '100%', height: '100%', overflowY: 'auto', padding: '20px', fontFamily: 'monospace', fontSize: '13px', color: '#888', textAlign: 'left' }}>
+                            {w4Logs.length === 0 ? "Waiting for activity..." : w4Logs.map((log, i) => (
+                                <div key={i} style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '4px', marginBottom: '4px', color: log.includes('[ERROR]') ? '#ef4444' : log.includes('SUCCESS') ? '#10b981' : '#888' }}>{log}</div>
+                            ))}
+                            <div ref={w4LogsEndRef} />
+                        </div>
+                    )}
+                </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Refine Editor Overlay */}
       {isRefineEditorOpen && reconstructedClip && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#121212', zIndex: 1100, overflow: 'auto' }}>
@@ -1441,6 +2122,8 @@ export const ClipDetailsPage: React.FC = () => {
             fullTranscript={refineFullTranscript}
             videoId={refineVideoId}
             project={refineProject}
+            showBurnCaptionsToggle={true}
+            initialBurnCaptions={clip.info_data?.clip?.burn_captions !== false}
             onClose={() => setIsRefineEditorOpen(false)}
             onSave={async (updatedClip: Clip) => {
               try {
@@ -1453,7 +2136,9 @@ export const ClipDetailsPage: React.FC = () => {
                 
                 const url = clip.info_data.video.url;
                 const format = clip.info_data.clip.format || 'original';
-                const burnCaptions = clip.info_data.clip.burn_captions !== undefined ? clip.info_data.clip.burn_captions : true;
+                
+                const anyClip = updatedClip as any;
+                const burnCaptions = anyClip.info_data?.clip?.burn_captions ?? (clip.info_data.clip.burn_captions !== false);
                 
                 updatedClip.id = 'refine-target';
                 

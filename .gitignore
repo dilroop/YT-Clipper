@@ -10,16 +10,16 @@
 *.mpg
 *.mpeg
 
-# Allow test samples
-!tests/*.mp4
-tests/results/
-
 # Audio files
 *.mp3
 *.wav
 *.aac
 *.flac
 *.m4a
+
+# AI Models
+kokoro_models/
+*.onnx
 
 # Generated clips and uploads
 ToUpload/

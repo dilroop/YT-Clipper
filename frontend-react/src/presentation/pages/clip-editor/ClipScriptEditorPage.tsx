@@ -14,13 +14,16 @@ interface Props {
   project?: string;
   onSave: (updatedClip: Clip) => void;
   onClose: () => void;
+  showBurnCaptionsToggle?: boolean;
+  initialBurnCaptions?: boolean;
 }
 
-export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, videoId, project, onSave, onClose }) => {
+export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, videoId, project, onSave, onClose, showBurnCaptionsToggle, initialBurnCaptions }) => {
   const [editorState, dispatch] = useReducer(editorReducer, clip, (c) => buildInitialEditorState(c, fullTranscript, videoId, project));
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlayingIdx, setIsPlayingIdx] = useState<number | null>(null);
   const currentPlayingRef = useRef<{ start: number; end: number } | null>(null);
+  const [burnCaptions, setBurnCaptions] = useState(initialBurnCaptions ?? true);
 
   const formatTime = (secs: number) => {
     const h = Math.floor(secs / 3600);
@@ -36,6 +39,12 @@ export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, vi
 
   const handleSave = () => {
     const updatedClip = serialiseEditorState(editorState);
+    if (showBurnCaptionsToggle) {
+      const anyClip = updatedClip as any;
+      if (!anyClip.info_data) anyClip.info_data = {};
+      if (!anyClip.info_data.clip) anyClip.info_data.clip = {};
+      anyClip.info_data.clip.burn_captions = burnCaptions;
+    }
     onSave(updatedClip);
   };
 
@@ -241,6 +250,18 @@ export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, vi
             <span className="cse-play-dot"></span>
             Playing audio...
           </div>
+        )}
+        <div style={{ flex: 1 }} />
+        {showBurnCaptionsToggle && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '0.9rem', cursor: 'pointer', marginRight: '16px' }}>
+            <input 
+              type="checkbox" 
+              checked={burnCaptions} 
+              onChange={e => setBurnCaptions(e.target.checked)} 
+              style={{ width: '16px', height: '16px', accentColor: '#3b82f6' }}
+            />
+            🔥 Burn Captions
+          </label>
         )}
         <button className="cse-cancel-btn" onClick={onClose}>Cancel</button>
         <button className="cse-save-btn" onClick={handleSave}>Save Changes</button>

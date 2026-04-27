@@ -47,9 +47,12 @@ from backend.routes import (
     api_workflow2,
     api_workflow2_preview,
     api_workflow3,
+    api_workflow3,
     api_generate_metadata,
     api_local_video,
-    websocket
+    websocket,
+    api_workflow_transcriber,
+    api_workflow_transcriber_preview
 )
 
 # Initialize logging (redirects stdout/stderr)
@@ -98,6 +101,11 @@ app.include_router(api_workflow2_preview.router)
 app.include_router(api_workflow3.router)
 app.include_router(api_generate_metadata.router)
 app.include_router(api_local_video.router)
+app.include_router(api_workflow_transcriber.router)
+app.include_router(api_workflow_transcriber_preview.router)
+from backend.routes import api_workflow4, api_workflow4_preview
+app.include_router(api_workflow4.router)
+app.include_router(api_workflow4_preview.router)
 app.include_router(websocket.router)
 
 @app.on_event("shutdown")

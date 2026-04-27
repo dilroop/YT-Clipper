@@ -15,3 +15,7 @@ from . import api_workflow3
 from . import api_generate_metadata
 from . import api_local_video
 from . import websocket
+from . import api_workflow_transcriber
+from . import api_workflow_transcriber_preview
+from . import api_workflow4
+from . import api_workflow4_preview

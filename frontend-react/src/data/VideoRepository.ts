@@ -357,6 +357,186 @@ export class VideoRepository {
     }
     return response.json();
   }
+  static async getTranscriberPreview(
+    project: string,
+    format: string,
+    filename: string,
+    fontFamily: string,
+    fontSize: number,
+    verticalPosition: number,
+    wordsPerCaption: number,
+    spokenWordColor: string,
+    otherWordsColor: string,
+    bgColor: string,
+    useBgBox: boolean,
+    outlineColor: string,
+    outlineWidth: number,
+    signal?: AbortSignal
+  ): Promise<{ success: boolean; preview_url?: string; error?: string }> {
+    const formData = new FormData();
+    formData.append('font_family', fontFamily);
+    formData.append('font_size', fontSize.toString());
+    formData.append('vertical_position', verticalPosition.toString());
+    formData.append('words_per_caption', wordsPerCaption.toString());
+    formData.append('spoken_word_color', spokenWordColor);
+    formData.append('other_words_color', otherWordsColor);
+    formData.append('bg_color', bgColor);
+    formData.append('use_background_box', useBgBox ? 'true' : 'false');
+    formData.append('outline_color', outlineColor);
+    formData.append('outline_width', outlineWidth.toString());
+
+    const url = `${this.API_BASE}/workflow/transcriber/preview/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
+    const response = await fetch(url, { method: 'POST', body: formData, signal });
+    
+    if (!response.ok) {
+      throw new Error(`Transcriber Preview failed: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  }
+
+  static async runTranscriber(
+    project: string,
+    format: string,
+    filename: string,
+    clientId: string,
+    fontFamily: string,
+    fontSize: number,
+    verticalPosition: number,
+    wordsPerCaption: number,
+     spokenWordColor: string,
+    otherWordsColor: string,
+    bgColor: string,
+    useBgBox: boolean,
+    outlineColor: string,
+    outlineWidth: number
+  ): Promise<{ success: boolean; message: string }> {
+    const formData = new FormData();
+    formData.append('client_id', clientId);
+    formData.append('font_family', fontFamily);
+    formData.append('font_size', fontSize.toString());
+    formData.append('vertical_position', verticalPosition.toString());
+    formData.append('words_per_caption', wordsPerCaption.toString());
+    formData.append('spoken_word_color', spokenWordColor);
+    formData.append('other_words_color', otherWordsColor);
+    formData.append('bg_color', bgColor);
+    formData.append('use_background_box', useBgBox ? 'true' : 'false');
+    formData.append('outline_color', outlineColor);
+    formData.append('outline_width', outlineWidth.toString());
+
+    const url = `${this.API_BASE}/workflow/transcriber/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
+    const response = await fetch(url, { method: 'POST', body: formData });
+
+    if (!response.ok) {
+      throw new Error(`Network response was not ok: ${response.statusText}`);
+    }
+
+    return await response.json();
+  }
+
+
+  static async getTtsSample(text: string, voice: string, speed: number): Promise<string> {
+    const formData = new FormData();
+    formData.append('text', text);
+    formData.append('voice', voice);
+    formData.append('speed', speed.toString());
+    
+    const response = await fetch(`${this.API_BASE}/workflow4/tts-sample`, { method: 'POST', body: formData });
+    if (!response.ok) {
+      throw new Error(`TTS Sample failed: ${response.statusText}`);
+    }
+    
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  }
+
+  static async getWorkflow4Preview(
+    project: string, format: string, filename: string,
+    textInput: string, useTts: boolean, bgFramePercent: number, bgBlur: number,
+    mediaList: any[], fillScreen: boolean, globalScale: number, sticker: File | null,
+    stickerX: number, stickerY: number, stickerScale: number, burnCaptions: boolean,
+    captionConfig: any, signal?: AbortSignal
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('text_input', textInput);
+    formData.append('use_tts', useTts ? 'true' : 'false');
+    formData.append('bg_frame_percent', bgFramePercent.toString());
+    formData.append('bg_blur', bgBlur.toString());
+    formData.append('media_list', JSON.stringify(mediaList.map(m => ({
+        path: m.id, // using the actual cached path stored in id
+        scale: m.scale || 1.0,
+        duration: m.duration || 3.0,
+        isVideo: m.isVideo
+    }))));
+    formData.append('fill_screen', fillScreen ? 'true' : 'false');
+    formData.append('global_scale', globalScale.toString());
+    if (sticker) formData.append('sticker', sticker);
+    formData.append('sticker_x', stickerX.toString());
+    formData.append('sticker_y', stickerY.toString());
+    formData.append('sticker_scale', stickerScale.toString());
+    formData.append('burn_captions', burnCaptions ? 'true' : 'false');
+    
+    Object.entries(captionConfig).forEach(([k, v]) => {
+        formData.append(k, typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v));
+    });
+
+    // Append all media files with matching indices
+    mediaList.forEach((m, idx) => {
+        if (m.file) formData.append(`media_${idx}`, m.file);
+    });
+
+    const url = `${this.API_BASE}/workflow4/preview/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
+    const response = await fetch(url, { method: 'POST', body: formData, signal });
+    if (!response.ok) throw new Error("Workflow4 Preview failed");
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  }
+
+  static async runWorkflow4(
+    project: string, format: string, filename: string, clientId: string,
+    textInput: string, audioFile: File | null, useTts: boolean, ttsVoice: string, ttsSpeed: number,
+    bgFramePercent: number, bgBlur: number, mediaList: any[], fillScreen: boolean, globalScale: number,
+    sticker: File | null, stickerX: number, stickerY: number, stickerScale: number, burnCaptions: boolean,
+    captionConfig: any, generateSeparately: boolean
+  ): Promise<{ success: boolean; message: string }> {
+    const formData = new FormData();
+    formData.append('client_id', clientId);
+    formData.append('text_input', textInput);
+    if (audioFile) formData.append('audio_file', audioFile);
+    formData.append('use_tts', useTts ? 'true' : 'false');
+    formData.append('tts_voice', ttsVoice);
+    formData.append('tts_speed', ttsSpeed.toString());
+    formData.append('bg_frame_percent', bgFramePercent.toString());
+    formData.append('bg_blur', bgBlur.toString());
+    formData.append('media_list', JSON.stringify(mediaList.map(m => ({
+        path: m.id,
+        scale: m.scale || 1.0,
+        duration: m.duration || 3.0,
+        isVideo: m.isVideo
+    }))));
+    formData.append('fill_screen', fillScreen ? 'true' : 'false');
+    formData.append('global_scale', globalScale.toString());
+    if (sticker) formData.append('sticker', sticker);
+    formData.append('sticker_x', stickerX.toString());
+    formData.append('sticker_y', stickerY.toString());
+    formData.append('sticker_scale', stickerScale.toString());
+    formData.append('burn_captions', burnCaptions ? 'true' : 'false');
+    formData.append('generate_separately', generateSeparately ? 'true' : 'false');
+    
+    // Append all media files with matching indices
+    mediaList.forEach((m, idx) => {
+        if (m.file) formData.append(`media_${idx}`, m.file);
+    });
+
+    Object.entries(captionConfig).forEach(([k, v]) => {
+        formData.append(k, typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v));
+    });
+
+    const url = `${this.API_BASE}/workflow4/run/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`;
+    const response = await fetch(url, { method: 'POST', body: formData });
+    if (!response.ok) throw new Error("Workflow4 run failed");
+    return await response.json();
+  }
 
   static async deleteClip(project: string, format: string, filename: string): Promise<{success: boolean, message: string}> {
     const res = await fetch(`${this.API_BASE}/clips/${encodeURIComponent(project)}/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`, {

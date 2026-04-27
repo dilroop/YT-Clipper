@@ -15,6 +15,14 @@ DOWNLOAD_DIR.mkdir(exist_ok=True)
 THUMBNAILS_DIR = BASE_DIR / "thumbnails"
 THUMBNAILS_DIR.mkdir(exist_ok=True)
 
+# Clips directory
+CLIPS_DIR = BASE_DIR / "clips"
+CLIPS_DIR.mkdir(exist_ok=True)
+
+# Upload directory
+UPLOAD_DIR = BASE_DIR / "ToUpload"
+UPLOAD_DIR.mkdir(exist_ok=True)
+
 # Log file path
 LOG_FILE = BASE_DIR / "logs" / "ytclipper.log"
 LOG_FILE.parent.mkdir(exist_ok=True)

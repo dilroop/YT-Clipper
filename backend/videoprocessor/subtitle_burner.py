@@ -70,18 +70,40 @@ class SubtitleBurner:
         # Calculate vertical position
         margin_v = int((100 - self.config.get('vertical_position', 80)) * video_height / 100)
 
-        # Parse colors and outline properties
+        # Setup dynamic colors for TikTok style captions
+        # If spoken_word_color is provided, it means we do dynamic word-by-word highlights.
+        is_dynamic = 'spoken_word_color' in self.config
         text_color = self.config.get('text_color', '#FFFFFF')
+        
+        # When dynamic, text_color is used as the fallback if other_words_color isn't specified
+        other_color = self.config.get('other_words_color', text_color)
+        spoken_color = self.config.get('spoken_word_color', '#FFFF00')
+        
         outline_color = self.config.get('outline_color', '#000000')
         outline_opacity = self.config.get('outline_opacity', 100)
         outline_width = float(self.config.get('outline_width', 3))
 
-        # ASS format uses inverted alpha channel (00=opaque, FF=transparent)
+        # Background box settings
+        use_bg_box = self.config.get('use_background_box', False)
+        border_style = 3 if use_bg_box else 1
+        
+        # In ASS, 00=opaque, FF=transparent
         alpha_val = int(255 * (100 - outline_opacity) / 100)
         outline_alpha_hex = f"{alpha_val:02X}"
-
-        primary_color_ass = self._hex_to_ass_color(text_color, "00")
+        
+        bg_color = self.config.get('bg_color', '#000000')
+        # If using a background box, usually we want some transparency (like 50% = 127 = 7F)
+        # We can map standard alpha logic here. Hardcoded to somewhat transparent box or solid if stroke.
+        bg_alpha_hex = outline_alpha_hex if not use_bg_box else "40" # Slight transparency for box
+        
+        # Base primary color (used when not dynamically overriding)
+        primary_color_ass = self._hex_to_ass_color(other_color if is_dynamic else text_color, "00")
         outline_color_ass = self._hex_to_ass_color(outline_color, outline_alpha_hex)
+        back_color_ass = self._hex_to_ass_color(bg_color, bg_alpha_hex)
+        
+        # For ASS overrides within the text
+        other_ass_override = self._hex_to_ass_color(other_color, "00").replace('&H00', '&H') # {\c&HBBGGRR&}
+        spoken_ass_override = self._hex_to_ass_color(spoken_color, "00").replace('&H00', '&H')
 
         # ASS file header — must include ScriptType, WrapStyle, ScaledBorderAndShadow for ffmpeg subtitles filter
         ass_content = f"""[Script Info]
@@ -94,7 +116,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{self.config.get('font_family', 'Arial')},{self.config.get('font_size', 80)},{primary_color_ass},&H000000FF,{outline_color_ass},&H00000000,-1,0,0,0,100,100,0,0,1,{outline_width},0,2,10,10,{margin_v},1
+Style: Default,{self.config.get('font_family', 'Arial')},{self.config.get('font_size', 80)},{primary_color_ass},&H000000FF,{outline_color_ass},{back_color_ass},-1,0,0,0,100,100,0,0,{border_style},{outline_width},0,2,10,10,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -111,17 +133,40 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             start_time = word_group[0]['start'] - clip_start_time
             end_time = word_group[-1]['end'] - clip_start_time
 
-            # Combine words into caption text
-            text = ' '.join([w['word'].strip() for w in word_group])
-
-            # Format timing for ASS
-            start_str = self._format_ass_time(max(0, start_time))
-            end_str = self._format_ass_time(end_time)
-
-            # Make text uppercase and bold for emphasis
-            text = text.upper()
-
-            captions.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{text}")
+            # Dynamically format text block if dynamic styling is enabled
+            if is_dynamic:
+                # We emit one ASS Dialog event per word, changing the highlighted word.
+                for j, target_word_obj in enumerate(word_group):
+                    # Timing for this specific word to be highlighted
+                    target_start = target_word_obj['start'] - clip_start_time
+                    target_end = target_word_obj['end'] - clip_start_time
+                    
+                    # If the word time is somehow completely outside, skip its highlight
+                    if target_start < 0: target_start = 0
+                    
+                    word_start_str = self._format_ass_time(target_start)
+                    word_end_str = self._format_ass_time(target_end)
+                    
+                    # Build the text string with inline ASS color overrides
+                    line_parts = []
+                    for k, w_obj in enumerate(word_group):
+                        raw_w = w_obj['word'].strip().upper()
+                        if k == j:
+                            # Highlighted word
+                            line_parts.append(f"{{\\c{spoken_ass_override}}}{raw_w}{{\\c{other_ass_override}}}")
+                        else:
+                            # Normal word
+                            line_parts.append(raw_w)
+                            
+                    full_text = ' '.join(line_parts)
+                    captions.append(f"Dialogue: 0,{word_start_str},{word_end_str},Default,,0,0,0,,{full_text}")
+            else:
+                # Static format: display the entire block for the whole duration
+                text = ' '.join([w['word'].strip() for w in word_group])
+                start_str = self._format_ass_time(max(0, start_time))
+                end_str = self._format_ass_time(end_time)
+                text = text.upper()
+                captions.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{text}")
 
         # Combine all captions
         ass_content += '\n'.join(captions)

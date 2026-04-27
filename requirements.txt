@@ -16,3 +16,6 @@ scipy
 requests
 python-multipart
 Pillow
+
+kokoro-onnx
+soundfile
