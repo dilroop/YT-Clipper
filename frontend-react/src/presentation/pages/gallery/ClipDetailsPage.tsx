@@ -321,7 +321,7 @@ export const ClipDetailsPage: React.FC = () => {
       refreshW4Preview();
     }, 2000);
     return () => clearTimeout(timer);
-  }, [isW4DialogOpen, w4TextInput, w4UseTts, w4BgFramePercent, w4MediaItems, w4GlobalScale, w4Sticker, w4StickerX, w4StickerY, w4StickerScale, w4BurnCaptions, wftFontFamily, wftFontSize, wftVerticalPosition, wftSpokenWordColor, wftOtherWordsColor]);
+  }, [isW4DialogOpen, w4TextInput, w4UseTts, w4BgFramePercent, w4MediaItems, w4GlobalScale, w4Sticker, w4StickerX, w4StickerY, w4StickerScale, w4BurnCaptions, wftFontFamily, wftFontSize, wftVerticalPosition, wftWordsPerCaption, wftSpokenWordColor, wftOtherWordsColor, wftBgColor, wftUseBgBox, wftOutlineColor, wftOutlineWidth]);
 
   // W4 Persistence
   useEffect(() => {
@@ -1097,7 +1097,7 @@ export const ClipDetailsPage: React.FC = () => {
                 ) : metaGenStatus === 'done' ? (
                   <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg> Updated</>
                 ) : (
-                  <>✨ Generate AI Metadata</>
+                  <>Generate AI Metadata</>
                 )}
               </button>
             </div>
@@ -1111,555 +1111,507 @@ export const ClipDetailsPage: React.FC = () => {
 
       {/* Workflow Dialog */}
       {isDialogOpen && (
-        <div className="responsive-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', gap: '24px', zIndex: 1000 }}>
-          {/* Dialog Form */}
-          <div className="responsive-dialog" style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '8px', gap: '12px' }}>
-              <button 
-                onClick={() => setIsDialogOpen(false)} 
-                style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
-                title="Cancel"
-              >✕</button>
-              <h2 style={{ margin: 0 }}>Workflow Settings</h2>
-              <button
-                onClick={() => refreshWfPreview()}
-                disabled={isWf1PreviewLoading}
-                style={{ 
-                  background: 'none', border: 'none', color: isWf1PreviewLoading ? '#555' : '#a78bfa', cursor: isWf1PreviewLoading ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem'
-                }}
-              >
-                <svg className={isWf1PreviewLoading ? 'animate-spin' : ''} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                </svg>
-                {isWf1PreviewLoading ? 'Refreshing...' : 'Refresh'}
-              </button>
-            </div>
+        <div className="responsive-dialog-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          {/* Dialog Container */}
+          <div style={{ background: '#1e1e1e', width: '96%', height: '94%', borderRadius: '16px', display: 'grid', gridTemplateColumns: '420px 1fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 600 }}>Secondary Media:</span>
-                <span style={{ fontSize: '0.75rem', color: '#888' }}>Images cycle 2s each · Videos play in full</span>
-              </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: '#252525', border: '1px dashed #555', borderRadius: '8px', cursor: 'pointer', color: '#aaa', fontSize: '0.9rem' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Add images or videos…
-                <input
-                  type="file"
-                  multiple
-                  accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp,video/mp4,video/quicktime,video/x-matroska,video/webm,video/avi,.mp4,.mov,.mkv,.avi,.webm,.png,.jpg,.jpeg,.webp,.gif,.bmp"
-                  style={{ display: 'none' }}
-                  onChange={e => {
-                    const addedFiles = Array.from(e.target.files || []);
-                    const newItems: MediaItem[] = addedFiles.map(file => {
-                      const isVideo = file.type.startsWith('video/');
-                      const pUrl = !isVideo ? URL.createObjectURL(file) : null;
-                      return {
-                        id: Math.random().toString(36).substring(2, 9),
-                        file: file,
-                        previewUrl: pUrl,
-                        isVideo: isVideo,
-                        duration: 2, // default 2s for images
-                      };
-                    });
-                    setMediaItems(prev => [...prev, ...newItems]);
-                    e.target.value = '';
+            {/* Left Column: Settings */}
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', borderRight: '1px solid #333', background: '#121212' }}>
+              <div style={{ padding: '24px 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button 
+                    onClick={() => setIsDialogOpen(false)} 
+                    style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                    title="Cancel"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>Workflow 1</h2>
+                </div>
+                
+                <button
+                  onClick={() => refreshWfPreview()}
+                  disabled={isWf1PreviewLoading}
+                  style={{ 
+                    background: 'rgba(167, 139, 250, 0.1)', border: '1px solid rgba(167, 139, 250, 0.3)', color: isWf1PreviewLoading ? '#555' : '#a78bfa', 
+                    cursor: isWf1PreviewLoading ? 'not-allowed' : 'pointer', borderRadius: '8px', padding: '8px', display: 'flex', alignItems: 'center'
                   }}
-                />
-              </label>
-              {mediaItems.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
-                  {mediaItems.map((item) => (
-                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#1a1a1a', borderRadius: '6px', padding: '6px 10px', fontSize: '0.82rem' }}>
-                      <div style={{ width: '40px', height: '40px', background: '#000', borderRadius: '4px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {item.previewUrl ? <img src={item.previewUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '20px' }}>🎬</span>}
-                      </div>
-                      
-                      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ color: '#ccc', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>{item.file.name}</span>
-                        <span style={{ color: '#666', fontSize: '0.75rem' }}>{formatSize(item.file.size)}</span>
-                      </div>
-
-                      {!item.isVideo && (
-                        <div style={{ display: 'flex', alignItems: 'center', background: '#252525', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}>
-                          <button onClick={() => setMediaItems(prev => prev.map(m => m.id === item.id ? { ...m, duration: Math.max(1, m.duration - 1) } : m))} style={{ background: '#333', color: '#fff', border: 'none', padding: '4px 8px', cursor: 'pointer', fontWeight: 'bold' }}>-</button>
-                          <div style={{ padding: '0 8px', color: '#fff', fontSize: '0.85rem', width: '20px', textAlign: 'center' }}>{item.duration}s</div>
-                          <button onClick={() => setMediaItems(prev => prev.map(m => m.id === item.id ? { ...m, duration: m.duration + 1 } : m))} style={{ background: '#333', color: '#fff', border: 'none', padding: '4px 8px', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={() => {
-                          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-                          setMediaItems(prev => prev.filter(m => m.id !== item.id));
-                        }}
-                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        title="Remove"
-                      >✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <span>Main Video Position:</span>
-              <select value={mainPosition} onChange={e => setMainPosition(e.target.value)} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
-                <option value="top">Top</option>
-                <option value="bottom">Bottom</option>
-              </select>
-            </label>
-
-            <div style={{ background: '#252525', padding: '16px', borderRadius: '8px', border: '1px solid #333' }}>
-              <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc' }}>Text Overlay Settings</h3>
-              
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-                <span>Overlay Text: <span style={{ fontSize: '0.75rem', color: '#888', fontWeight: 400 }}>Use [brackets] to highlight words in yellow</span></span>
-                <textarea value={text} onChange={e => setText(e.target.value)} style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff', minHeight: '60px', fontFamily: 'inherit', resize: 'vertical' }} placeholder="e.g. This is [highlighted] text!" />
-              </label>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem' }}>Font Family:</span>
-                  <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
-                    {availableFonts.length > 0 ? (
-                      availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
-                    ) : (
-                      <>
-                        <option value="Arial">Arial</option>
-                        <option value="Helvetica">Helvetica</option>
-                        <option value="Times New Roman">Times New Roman</option>
-                        <option value="Impact">Impact</option>
-                        <option value="Courier New">Courier New</option>
-                      </>
-                    )}
-                  </select>
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem' }}>Text Size:</span>
-                  <input type="number" value={textSize} onChange={e => setTextSize(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem' }}>Tracking Focus:</span>
-                  <select value={wfDetectionMode} onChange={e => setWfDetectionMode(e.target.value as 'face' | 'torso')} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
-                    <option value="face">Face Tracking</option>
-                    <option value="torso">Torso Tracking</option>
-                  </select>
-                </label>
+                  title="Refresh Preview"
+                >
+                  <svg className={isWf1PreviewLoading ? 'animate-spin' : ''} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem' }}>Text Color:</span>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input type="color" value={textColor} onChange={e => setTextColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-                    <span style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>{textColor}</span>
+              {/* Scrollable Body */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600 }}>Secondary Media:</span>
+                    <span style={{ fontSize: '0.75rem', color: '#888' }}>Images cycle 2s each · Videos play in full</span>
                   </div>
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem' }}>Background Color:</span>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input type="color" value={textBgColor} onChange={e => setTextBgColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-                    <span style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>{textBgColor}</span>
-                  </div>
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem' }}><span style={{ color: '#FFFF00' }}>[Highlight]</span> Color:</span>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input type="color" value={highlightColor} onChange={e => setHighlightColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-                    <span style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>{highlightColor}</span>
-                  </div>
-                </label>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem' }}>Position X (%):</span>
-                  <input type="number" min="0" max="100" value={textPosX} onChange={e => setTextPosX(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '0.85rem' }}>Position Y (%):</span>
-                  <input type="number" min="0" max="100" value={textPosY} onChange={e => setTextPosY(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-                </label>
-              </div>
-            </div>
-
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <span>Watermark Text:</span>
-              <input type="text" value={watermarkText} onChange={e => setWatermarkText(e.target.value)} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-            </label>
-
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                <span>Watermark Size:</span>
-                <input type="number" value={watermarkSize} onChange={e => setWatermarkSize(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                <span>Watermark Alpha (0-1):</span>
-                <input type="number" step="0.1" max="1" min="0" value={watermarkAlpha} onChange={e => setWatermarkAlpha(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-              </label>
-            </div>
-
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                <span>Watermark Top Margin:</span>
-                <input type="number" value={watermarkTop} onChange={e => setWatermarkTop(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                <span>Watermark Right Margin:</span>
-                <input type="number" value={watermarkRight} onChange={e => setWatermarkRight(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-              </label>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-              <button onClick={() => { 
-                setIsDialogOpen(false); 
-                setWorkflowStatus('idle'); 
-                setLogs([]); 
-                mediaItems.forEach(item => { if (item.previewUrl) URL.revokeObjectURL(item.previewUrl) });
-                setMediaItems([]); 
-              }} style={{ flex: 1, padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
-              <button 
-                onClick={handleRunWorkflow} 
-                disabled={workflowStatus === 'running' || mediaItems.length === 0} 
-                style={{ flex: 1, padding: '12px', background: workflowStatus === 'running' || mediaItems.length === 0 ? '#555' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: workflowStatus === 'running' || mediaItems.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
-              >
-                {workflowStatus === 'running' ? 'Running...' : 'Start Execution'}
-              </button>
-            </div>
-            {workflowStatus === 'complete' && (
-              <div style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#4ade80', padding: '12px', borderRadius: '8px', textAlign: 'center', marginTop: '8px' }}>
-                Workflow complete! The new clip is now in the Gallery.
-              </div>
-            )}
-            {workflowStatus === 'error' && (
-              <div style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', padding: '12px', borderRadius: '8px', textAlign: 'center', marginTop: '8px' }}>
-                Workflow failed. Check logs for details.
-              </div>
-            )}
-          </div>
-
-          {/* Preview / Logs panel */}
-          <div className="logs-view" style={{ background: '#121212', borderRadius: '12px', padding: '0', display: 'flex', flexDirection: 'column', border: '1px solid #333', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
-              <button 
-                onClick={() => setWf1Tab('preview')}
-                style={{ 
-                  flex: 1, padding: '12px', background: wf1Tab === 'preview' ? '#252525' : 'transparent',
-                  color: wf1Tab === 'preview' ? '#a78bfa' : '#666', border: 'none', borderBottom: wf1Tab === 'preview' ? '2px solid #a78bfa' : 'none',
-                  cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem'
-                }}
-              >
-                PREVIEW
-              </button>
-              <button 
-                onClick={() => setWf1Tab('logs')}
-                style={{ 
-                  flex: 1, padding: '12px', background: wf1Tab === 'logs' ? '#252525' : 'transparent',
-                  color: wf1Tab === 'logs' ? '#a78bfa' : '#666', border: 'none', borderBottom: wf1Tab === 'logs' ? '2px solid #a78bfa' : 'none',
-                  cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem'
-                }}
-              >
-                LOGS
-              </button>
-            </div>
-
-            <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%' }}>
-              {wf1Tab === 'preview' ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#252525', padding: '10px', overflow: 'auto' }}>
-                  {wf1PreviewUrl ? (
-                    <img 
-                      src={wf1PreviewUrl} 
-                      alt="Preview" 
-                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 0 40px rgba(0,0,0,0.5)' }} 
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: '#252525', border: '1px dashed #555', borderRadius: '8px', cursor: 'pointer', color: '#aaa', fontSize: '0.9rem' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Add images or videos…
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp,video/mp4,video/quicktime,video/x-matroska,video/webm,video/avi,.mp4,.mov,.mkv,.avi,.webm,.png,.jpg,.jpeg,.webp,.gif,.bmp"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const addedFiles = Array.from(e.target.files || []);
+                        const newItems: MediaItem[] = addedFiles.map(file => {
+                          const isVideo = file.type.startsWith('video/');
+                          const pUrl = !isVideo ? URL.createObjectURL(file) : null;
+                          return {
+                            id: Math.random().toString(36).substring(2, 9),
+                            file: file,
+                            previewUrl: pUrl,
+                            isVideo: isVideo,
+                            duration: 2, // default 2s for images
+                          };
+                        });
+                        setMediaItems(prev => [...prev, ...newItems]);
+                        e.target.value = '';
+                      }}
                     />
-                  ) : (
-                    <div style={{ color: '#444', textAlign: 'center' }}>
-                      <svg style={{ margin: '0 auto 12px', opacity: 0.2 }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                      <p>Add secondary media to generate preview</p>
-                    </div>
-                  )}
-                  
-                  {isWf1PreviewLoading && (
-                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                      <div className="animate-spin" style={{ width: '32px', height: '32px', border: '3px solid transparent', borderTopColor: '#a78bfa', borderRadius: '50%' }} />
+                  </label>
+                  {mediaItems.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                      {mediaItems.map((item) => (
+                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#1a1a1a', borderRadius: '6px', padding: '6px 10px', fontSize: '0.82rem' }}>
+                          <div style={{ width: '40px', height: '40px', background: '#000', borderRadius: '4px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {item.previewUrl ? <img src={item.previewUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ height: '100%', background: '#222' }} />}
+                          </div>
+                          
+                          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ color: '#ccc', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>{item.file.name}</span>
+                            <span style={{ color: '#666', fontSize: '0.75rem' }}>{formatSize(item.file.size)}</span>
+                          </div>
+
+                          {!item.isVideo && (
+                            <div style={{ display: 'flex', alignItems: 'center', background: '#252525', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}>
+                              <button onClick={() => setMediaItems(prev => prev.map(m => m.id === item.id ? { ...m, duration: Math.max(1, m.duration - 1) } : m))} style={{ background: '#333', color: '#fff', border: 'none', padding: '4px 8px', cursor: 'pointer', fontWeight: 'bold' }}>-</button>
+                              <div style={{ padding: '0 8px', color: '#fff', fontSize: '0.85rem', width: '20px', textAlign: 'center' }}>{item.duration}s</div>
+                              <button onClick={() => setMediaItems(prev => prev.map(m => m.id === item.id ? { ...m, duration: m.duration + 1 } : m))} style={{ background: '#333', color: '#fff', border: 'none', padding: '4px 8px', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
+                            </div>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+                              setMediaItems(prev => prev.filter(m => m.id !== item.id));
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Remove"
+                          >✕</button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
-              ) : (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px' }}>
-                  <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                    {logs.length === 0 ? <span style={{ color: '#555' }}>Logs will appear here during execution…</span> : logs.join('\n')}
-                    <div ref={logsEndRef} />
+
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <span style={{ fontWeight: 600 }}>Main Video Position:</span>
+                  <select value={mainPosition} onChange={e => setMainPosition(e.target.value)} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
+                    <option value="top">Top</option>
+                    <option value="bottom">Bottom</option>
+                  </select>
+                </label>
+
+                <div style={{ background: '#252525', padding: '16px', borderRadius: '8px', border: '1px solid #333' }}>
+                  <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc', fontWeight: 600 }}>TEXT OVERLAY</h3>
+                  
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#888' }}>Overlay Text: <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Use [brackets] to highlight</span></span>
+                    <textarea value={text} onChange={e => setText(e.target.value)} style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff', minHeight: '60px', fontFamily: 'inherit', resize: 'vertical' }} placeholder="e.g. This is [highlighted] text!" />
+                  </label>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#888' }}>Font Family:</span>
+                      <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
+                        {availableFonts.length > 0 ? (
+                          availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
+                        ) : (
+                          <>
+                            <option value="Arial">Arial</option>
+                            <option value="Helvetica">Helvetica</option>
+                            <option value="Times New Roman">Times New Roman</option>
+                            <option value="Impact">Impact</option>
+                            <option value="Courier New">Courier New</option>
+                          </>
+                        )}
+                      </select>
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#888' }}>Text Size ({textSize})</span>
+                      <input type="range" min="30" max="150" value={textSize} onChange={e => setTextSize(Number(e.target.value))} style={{ width: '100%' }} />
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#888' }}>Tracking Focus:</span>
+                      <select value={wfDetectionMode} onChange={e => setWfDetectionMode(e.target.value as 'face' | 'torso')} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
+                        <option value="face">Face</option>
+                        <option value="torso">Torso</option>
+                      </select>
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#888' }}>Pos Y ({textPosY}%)</span>
+                      <input type="range" min="0" max="100" value={textPosY} onChange={e => setTextPosY(Number(e.target.value))} style={{ width: '100%' }} />
+                    </label>
                   </div>
                 </div>
-              )}
+
+                <div style={{ background: '#252525', padding: '16px', borderRadius: '8px', border: '1px solid #333' }}>
+                  <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc', fontWeight: 600 }}>WATERMARK</h3>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                    <input type="text" value={watermarkText} onChange={e => setWatermarkText(e.target.value)} style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} placeholder="@Handle" />
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#888' }}>Size ({watermarkSize})</span>
+                      <input type="range" min="10" max="100" value={watermarkSize} onChange={e => setWatermarkSize(Number(e.target.value))} style={{ width: '100%' }} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#888' }}>Alpha ({watermarkAlpha})</span>
+                      <input type="range" min="0.1" max="1" step="0.1" value={watermarkAlpha} onChange={e => setWatermarkAlpha(Number(e.target.value))} style={{ width: '100%' }} />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* STICKY FOOTER */}
+              <div style={{ padding: '24px', borderTop: '1px solid #333', background: '#1a1a1a', display: 'flex', gap: '12px' }}>
+                <button onClick={() => { 
+                  setIsDialogOpen(false); 
+                  setWorkflowStatus('idle'); 
+                  setLogs([]); 
+                  mediaItems.forEach(item => { if (item.previewUrl) URL.revokeObjectURL(item.previewUrl) });
+                  setMediaItems([]); 
+                }} style={{ flex: 1, padding: '14px', background: '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
+                <button 
+                  onClick={handleRunWorkflow} 
+                  disabled={workflowStatus === 'running' || mediaItems.length === 0} 
+                  style={{ flex: 2, padding: '14px', background: workflowStatus === 'running' || mediaItems.length === 0 ? '#444' : 'linear-gradient(135deg, #3b82f6 0%, #7c3aed 100%)', color: '#fff', border: 'none', borderRadius: '10px', cursor: workflowStatus === 'running' || mediaItems.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1rem' }}
+                >
+                  {workflowStatus === 'running' ? 'Running...' : 'Run Workflow 1'}
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: Preview / Logs */}
+            <div style={{ background: '#0e0e0e', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+              <div style={{ display: 'flex', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+                <button 
+                  onClick={() => setWf1Tab('preview')}
+                  style={{ 
+                    flex: 1, padding: '16px', background: wf1Tab === 'preview' ? '#252525' : 'transparent',
+                    color: wf1Tab === 'preview' ? '#fff' : '#888', border: 'none', 
+                    borderBottom: wf1Tab === 'preview' ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                  }}
+                >
+                  Live Preview
+                </button>
+                <button 
+                  onClick={() => setWf1Tab('logs')}
+                  style={{ 
+                    flex: 1, padding: '16px', background: wf1Tab === 'logs' ? '#252525' : 'transparent',
+                    color: wf1Tab === 'logs' ? '#fff' : '#888', border: 'none', 
+                    borderBottom: wf1Tab === 'logs' ? '2px solid #10b981' : '2px solid transparent',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                  }}
+                >
+                  Execution Logs
+                </button>
+              </div>
+
+              <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                {wf1Tab === 'preview' ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', padding: '10px', overflow: 'hidden' }}>
+                    {wf1PreviewUrl ? (
+                      <img 
+                        src={wf1PreviewUrl} 
+                        alt="Preview" 
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                      />
+                    ) : (
+                      <div style={{ color: '#444', textAlign: 'center' }}>
+                        <svg style={{ margin: '0 auto 12px', opacity: 0.2 }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <p>Add secondary media to generate preview</p>
+                      </div>
+                    )}
+                    
+                    {isWf1PreviewLoading && (
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                        <div className="animate-spin" style={{ width: '32px', height: '32px', border: '3px solid transparent', borderTopColor: '#3b82f6', borderRadius: '50%' }} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '20px', fontFamily: '"Fira Code", monospace', fontSize: '12px', color: '#888', lineHeight: 1.6 }}>
+                      {logs.length === 0 ? <span style={{ color: '#333' }}>Waiting for logs…</span> : logs.join('\n')}
+                      <div ref={logsEndRef} />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
 
+
       {/* ── Workflow 2 Dialog ───────────────────────────────────────────────── */}
       {isDialog2Open && (
-        <div className="responsive-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', gap: '24px', zIndex: 1000 }}>
-          {/* Settings panel */}
-          <div className="responsive-dialog" style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '8px', gap: '12px' }}>
-                <button 
-                  onClick={() => setIsDialog2Open(false)} 
-                  style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
-                  title="Cancel"
-                >✕</button>
-                <h2 style={{ margin: 0, color: '#a78bfa' }}>Workflow 2</h2>
-              <button
-                onClick={() => refreshWf2Preview()}
-                disabled={isWf2PreviewLoading}
-                style={{ 
-                  background: 'none', border: 'none', color: isWf2PreviewLoading ? '#555' : '#a78bfa', cursor: isWf2PreviewLoading ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem'
-                }}
-              >
-                <svg className={isWf2PreviewLoading ? 'animate-spin' : ''} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                </svg>
-                {isWf2PreviewLoading ? 'Refreshing...' : 'Refresh'}
-              </button>
-            </div>
-
-            {/* Header image upload */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <span style={{ fontWeight: 600 }}>Header Image <span style={{ color: '#ef4444' }}>*</span></span>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: '#252525', border: '1px dashed #555', borderRadius: '8px', cursor: 'pointer', color: '#aaa', fontSize: '0.9rem' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                {wf2HeaderImage ? wf2HeaderImage.name : 'Upload header / profile image…'}
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                  const f = e.target.files?.[0];
-                  if (f) {
-                    setWf2HeaderImage(f);
-                    setWf2HeaderPreview(URL.createObjectURL(f));
-                  }
-                }} />
-              </label>
-              {wf2HeaderPreview && <img src={wf2HeaderPreview} style={{ width: '100%', maxHeight: '120px', objectFit: 'contain', borderRadius: '6px', border: '1px solid #333' }} />}
-            </div>
-
-            {/* ── Layout ── */}
-            <div style={{ background: '#252525', padding: '14px', borderRadius: '8px', border: '1px solid #333' }}>
-              <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc' }}>Layout</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Top Margin (px)</span>
-                  <input type="number" value={wf2TopMargin} onChange={e => setWf2TopMargin(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Padding (px)</span>
-                  <input type="number" value={wf2Padding} onChange={e => setWf2Padding(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Header Height (px)</span>
-                  <input type="number" value={wf2HeaderHeight} onChange={e => setWf2HeaderHeight(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-                </label>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Font</span>
-                  <select value={wf2FontName} onChange={e => setWf2FontName(e.target.value)} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
-                    {availableFonts.length > 0 ? (
-                      availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
-                    ) : (
-                      <>
-                        <option value="Arial">Arial</option>
-                        <option value="Helvetica">Helvetica</option>
-                        <option value="Impact">Impact</option>
-                        <option value="Times New Roman">Times New Roman</option>
-                        <option value="Courier New">Courier New</option>
-                      </>
-                    )}
-                  </select>
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Background Color</span>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input type="color" value={wf2BgColor} onChange={e => setWf2BgColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#ccc' }}>{wf2BgColor}</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* ── Story Text ── */}
-            <div style={{ background: '#252525', padding: '14px', borderRadius: '8px', border: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <span style={{ fontWeight: 600 }}>Story Text <span style={{ color: '#ef4444' }}>*</span></span>
-              <textarea value={wf2StoryText} onChange={e => setWf2StoryText(e.target.value)}
-                style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff', minHeight: '80px', fontFamily: 'inherit', resize: 'vertical' }}
-                placeholder="Wrap [words] in brackets to highlight them…" />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Size</span>
-                  <input type="number" value={wf2StorySize} onChange={e => setWf2StorySize(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Text Color</span>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <input type="color" value={wf2StoryColor} onChange={e => setWf2StoryColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#ccc' }}>{wf2StoryColor}</span>
-                  </div>
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#22DD66' }}>[Highlight] Color</span>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <input type="color" value={wf2HighlightColor} onChange={e => setWf2HighlightColor(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#22DD66' }}>{wf2HighlightColor}</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* ── Suffix Text 1 ── */}
-            <div style={{ background: '#252525', padding: '14px', borderRadius: '8px', border: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <span style={{ fontWeight: 600, color: '#aaa' }}>Suffix Text 1</span>
-              <input type="text" value={wf2SuffixText1} onChange={e => setWf2SuffixText1(e.target.value)}
-                style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#aaa' }}
-                placeholder="e.g. Sorry story too long…" />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Size</span>
-                  <input type="number" value={wf2Suffix1Size} onChange={e => setWf2Suffix1Size(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Color</span>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <input type="color" value={wf2Suffix1Color} onChange={e => setWf2Suffix1Color(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#ccc' }}>{wf2Suffix1Color}</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* ── Suffix Text 2 ── */}
-            <div style={{ background: '#252525', padding: '14px', borderRadius: '8px', border: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <span style={{ fontWeight: 600, color: '#22DD66' }}>Suffix Text 2</span>
-              <input type="text" value={wf2SuffixText2} onChange={e => setWf2SuffixText2(e.target.value)}
-                style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#22DD66' }}
-                placeholder="e.g. Part 1" />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Size</span>
-                  <input type="number" value={wf2Suffix2Size} onChange={e => setWf2Suffix2Size(Number(e.target.value))} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Color</span>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <input type="color" value={wf2Suffix2Color} onChange={e => setWf2Suffix2Color(e.target.value)} style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#22DD66' }}>{wf2Suffix2Color}</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* Render Settings */}
-            <div style={{ background: '#252525', padding: '14px', borderRadius: '8px', border: '1px solid #333', marginBottom: '8px' }}>
-              <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc' }}>Rendering</h3>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Video Cropping</span>
-                  <select 
-                    value={wf2CropMode} 
-                    onChange={e => setWf2CropMode(e.target.value as '9:8' | 'original')}
-                    style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}
+        <div className="wf-modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div className="wf-modal-container" style={{ background: '#1e1e1e', width: '96%', height: '94%', borderRadius: '16px', display: 'grid', gridTemplateColumns: '420px 1fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            
+            {/* Left Column: Settings */}
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', borderRight: '1px solid #333', background: '#121212' }}>
+              <div style={{ padding: '24px 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button 
+                    onClick={() => {
+                      setIsDialog2Open(false);
+                      setWf2Status('idle');
+                      setWf2Logs([]);
+                      if (wf2HeaderPreview) URL.revokeObjectURL(wf2HeaderPreview);
+                      setWf2HeaderPreview(null);
+                      setWf2HeaderImage(null);
+                    }} 
+                    style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                    title="Cancel"
                   >
-                    <option value="9:8">9:8 (Head Tracking)</option>
-                    <option value="original">Original (Fit Width)</option>
-                  </select>
-                </label>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>Workflow 2</h2>
+                </div>
                 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <input 
-                    type="checkbox" 
-                    id="wf2-auto-scale" 
-                    checked={wf2AutoScale} 
-                    onChange={e => setWf2AutoScale(e.target.checked)} 
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                  />
-                  <label htmlFor="wf2-auto-scale" style={{ fontSize: '0.9rem', cursor: 'pointer', color: '#ccc' }}>
-                    Auto-Scale to Fit (Ignore top margin to fit all)
+                <button
+                  onClick={() => refreshWf2Preview()}
+                  disabled={isWf2PreviewLoading}
+                  style={{ 
+                    background: 'rgba(167, 139, 250, 0.1)', border: '1px solid rgba(167, 139, 250, 0.3)', color: isWf2PreviewLoading ? '#555' : '#a78bfa', 
+                    cursor: isWf2PreviewLoading ? 'not-allowed' : 'pointer', borderRadius: '8px', padding: '8px', display: 'flex', alignItems: 'center'
+                  }}
+                  title="Refresh Preview"
+                >
+                  <svg className={isWf2PreviewLoading ? 'animate-spin' : ''} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Scrollable Body */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* Header image upload */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#1c1c1c', border: '1px solid #333', padding: '16px', borderRadius: '12px' }}>
+                  <span style={{ fontWeight: 600, color: '#eee' }}>Header Image <span style={{ color: '#ef4444' }}>*</span></span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: '#252525', border: '1px dashed #555', borderRadius: '8px', cursor: 'pointer', color: '#aaa', fontSize: '0.9rem' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    {wf2HeaderImage ? wf2HeaderImage.name : 'Upload header / profile image…'}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setWf2HeaderImage(f);
+                        setWf2HeaderPreview(URL.createObjectURL(f));
+                      }
+                    }} />
+                  </label>
+                  {wf2HeaderPreview && <img src={wf2HeaderPreview} style={{ width: '100%', maxHeight: '120px', objectFit: 'contain', borderRadius: '6px', border: '1px solid #333' }} />}
+                </div>
+
+                {/* Story Text */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#1c1c1c', border: '1px solid #333', padding: '16px', borderRadius: '12px' }}>
+                  <span style={{ fontWeight: 600, color: '#eee' }}>Story Text <span style={{ color: '#ef4444' }}>*</span></span>
+                  <textarea value={wf2StoryText} onChange={e => setWf2StoryText(e.target.value)}
+                    style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff', minHeight: '80px', fontFamily: 'inherit', resize: 'vertical' }}
+                    placeholder="Wrap [words] in brackets to highlight them…" />
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '8px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Text Size</span>
+                      <input type="number" value={wf2StorySize} onChange={e => setWf2StorySize(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '8px', color: '#fff' }} />
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Text Color</span>
+                      <label style={{ background: '#252525', padding: '6px 10px', borderRadius: '8px', border: '1px solid #444', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                        <input type="color" value={wf2StoryColor} onChange={e => setWf2StoryColor(e.target.value)} style={{ background: 'none', border: 'none', width: '24px', height: '24px', cursor: 'pointer' }} />
+                      </label>
+                    </div>
+                  </div>
+                  
+                  <div style={{ marginTop: '8px' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#22DD66', fontWeight: 600 }}>[Highlight] Color</span>
+                    <label style={{ background: '#252525', padding: '6px 10px', borderRadius: '8px', border: '1px solid #444', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginTop: '6px' }}>
+                      <input type="color" value={wf2HighlightColor} onChange={e => setWf2HighlightColor(e.target.value)} style={{ background: 'none', border: 'none', width: '24px', height: '24px', cursor: 'pointer' }} />
+                      <span style={{ fontSize: '0.8rem', color: '#22DD66', fontFamily: 'monospace' }}>{wf2HighlightColor}</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Suffix Texts */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#1c1c1c', border: '1px solid #333', padding: '16px', borderRadius: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#aaa', fontWeight: 600 }}>Suffix Text 1</span>
+                    <input type="text" value={wf2SuffixText1} onChange={e => setWf2SuffixText1(e.target.value)}
+                      style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}
+                      placeholder="e.g. Sorry story too long…" />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#22DD66', fontWeight: 600 }}>Suffix Text 2</span>
+                    <input type="text" value={wf2SuffixText2} onChange={e => setWf2SuffixText2(e.target.value)}
+                      style={{ padding: '8px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#22DD66' }}
+                      placeholder="e.g. Part 1" />
+                  </div>
+                </div>
+
+                {/* Layout & Font */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: '#1c1c1c', border: '1px solid #333', padding: '16px', borderRadius: '12px' }}>
+                  <h4 style={{ margin: 0, color: '#a78bfa', fontSize: '0.9rem', fontWeight: 600 }}>Layout & Style</h4>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#888' }}>Top Margin</span>
+                      <input type="number" value={wf2TopMargin} onChange={e => setWf2TopMargin(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '8px', color: '#fff' }} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#888' }}>Header H</span>
+                      <input type="number" value={wf2HeaderHeight} onChange={e => setWf2HeaderHeight(Number(e.target.value))} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '8px', color: '#fff' }} />
+                    </label>
+                  </div>
+
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Font Family</span>
+                    <select value={wf2FontName} onChange={e => setWf2FontName(e.target.value)} style={{ padding: '10px', background: '#252525', border: '1px solid #444', borderRadius: '8px', color: '#fff' }}>
+                      {availableFonts.length > 0 ? (
+                        availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
+                      ) : (
+                        <>
+                          <option value="Arial">Arial</option>
+                          <option value="Helvetica">Helvetica</option>
+                          <option value="Impact">Impact</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #333', paddingTop: '12px' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#eee' }}>Background Color</span>
+                    <label style={{ background: '#252525', padding: '6px 10px', borderRadius: '8px', border: '1px solid #444', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                      <input type="color" value={wf2BgColor} onChange={e => setWf2BgColor(e.target.value)} style={{ background: 'none', border: 'none', width: '24px', height: '24px', cursor: 'pointer' }} />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Rendering */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#1c1c1c', border: '1px solid #333', padding: '16px', borderRadius: '12px' }}>
+                  <h4 style={{ margin: 0, color: '#a78bfa', fontSize: '0.9rem', fontWeight: 600 }}>Rendering</h4>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Cropping Mode</span>
+                    <select value={wf2CropMode} onChange={e => setWf2CropMode(e.target.value as '9:8' | 'original')} style={{ padding: '8px', background: '#252525', border: '1px solid #444', borderRadius: '8px', color: '#fff' }}>
+                      <option value="9:8">9:8 (Head Tracking)</option>
+                      <option value="original">Original (Fit Width)</option>
+                    </select>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginTop: '4px' }}>
+                    <input type="checkbox" checked={wf2AutoScale} onChange={e => setWf2AutoScale(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                    <span style={{ fontSize: '0.9rem', color: '#ccc' }}>Auto-Scale to Fit</span>
                   </label>
                 </div>
               </div>
+
+              {/* Sticky Footer */}
+              <div style={{ padding: '24px', borderTop: '1px solid #333', background: '#1a1a1a', display: 'flex', gap: '12px' }}>
+                <button 
+                  onClick={() => {
+                    setIsDialog2Open(false);
+                    setWf2Status('idle');
+                    setWf2Logs([]);
+                    if (wf2HeaderPreview) URL.revokeObjectURL(wf2HeaderPreview);
+                    setWf2HeaderPreview(null);
+                    setWf2HeaderImage(null);
+                  }} 
+                  style={{ flex: 1, padding: '14px', background: '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  Close
+                </button>
+                <button 
+                  onClick={handleRunWorkflow2} 
+                  disabled={wf2Status === 'running' || !wf2HeaderImage || !wf2StoryText.trim()} 
+                  style={{ flex: 2, padding: '14px', background: wf2Status === 'running' || !wf2HeaderImage || !wf2StoryText.trim() ? '#444' : '#7c3aed', color: '#fff', border: 'none', borderRadius: '10px', cursor: wf2Status === 'running' ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1rem' }}
+                >
+                  {wf2Status === 'running' ? 'Running...' : 'Run Workflow 2'}
+                </button>
+              </div>
             </div>
 
-            {/* Action buttons */}
-            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-              <button onClick={() => { setIsDialog2Open(false); setWf2Status('idle'); setWf2Logs([]); if (wf2HeaderPreview) { URL.revokeObjectURL(wf2HeaderPreview); setWf2HeaderPreview(null); } setWf2HeaderImage(null); }} style={{ flex: 1, padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
-              <button
-                onClick={handleRunWorkflow2}
-                disabled={wf2Status === 'running' || !wf2HeaderImage || !wf2StoryText.trim()}
-                style={{ flex: 1, padding: '12px', background: wf2Status === 'running' || !wf2HeaderImage || !wf2StoryText.trim() ? '#555' : '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', cursor: wf2Status === 'running' ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
-              >
-                {wf2Status === 'running' ? 'Running…' : 'Start Workflow 2'}
-              </button>
-            </div>
-            {wf2Status === 'complete' && <div style={{ background: 'rgba(34,197,94,0.2)', color: '#4ade80', padding: '12px', borderRadius: '8px', textAlign: 'center' }}>Workflow 2 complete! Check the Gallery.</div>}
-            {wf2Status === 'error' && <div style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444', padding: '12px', borderRadius: '8px', textAlign: 'center' }}>Workflow 2 failed. Check logs.</div>}
-          </div>
+            {/* Right Column: Preview / Logs */}
+            <div style={{ background: '#0e0e0e', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+              <div style={{ display: 'flex', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+                <button 
+                  onClick={() => setWf2Tab('preview')}
+                  style={{ 
+                    flex: 1, padding: '16px', background: wf2Tab === 'preview' ? '#252525' : 'transparent',
+                    color: wf2Tab === 'preview' ? '#fff' : '#888', border: 'none', 
+                    borderBottom: wf2Tab === 'preview' ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                  }}
+                >
+                  Live Preview
+                </button>
+                <button 
+                  onClick={() => setWf2Tab('logs')}
+                  style={{ 
+                    flex: 1, padding: '16px', background: wf2Tab === 'logs' ? '#252525' : 'transparent',
+                    color: wf2Tab === 'logs' ? '#fff' : '#888', border: 'none', 
+                    borderBottom: wf2Tab === 'logs' ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                  }}
+                >
+                  Execution Logs
+                </button>
+              </div>
 
-          {/* Preview / Logs panel */}
-          <div className="logs-view" style={{ background: '#121212', borderRadius: '12px', padding: '0', display: 'flex', flexDirection: 'column', border: '1px solid #333', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
-              <button 
-                onClick={() => setWf2Tab('preview')}
-                style={{ 
-                  flex: 1, padding: '12px', background: wf2Tab === 'preview' ? '#252525' : 'transparent',
-                  color: wf2Tab === 'preview' ? '#a78bfa' : '#666', border: 'none', borderBottom: wf2Tab === 'preview' ? '2px solid #a78bfa' : 'none',
-                  cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem'
-                }}
-              >
-                PREVIEW
-              </button>
-              <button 
-                onClick={() => setWf2Tab('logs')}
-                style={{ 
-                  flex: 1, padding: '12px', background: wf2Tab === 'logs' ? '#252525' : 'transparent',
-                  color: wf2Tab === 'logs' ? '#a78bfa' : '#666', border: 'none', borderBottom: wf2Tab === 'logs' ? '2px solid #a78bfa' : 'none',
-                  cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem'
-                }}
-              >
-                LOGS
-              </button>
-            </div>
-
-            <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%' }}>
-              {wf2Tab === 'preview' ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#252525', padding: '10px', overflow: 'auto' }}>
-                  {wf2PreviewUrl ? (
-                    <img 
-                      src={wf2PreviewUrl} 
-                      alt="Preview" 
-                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 0 40px rgba(0,0,0,0.5)' }} 
-                    />
-                  ) : (
-                    <div style={{ color: '#444', textAlign: 'center' }}>
-                      <svg style={{ margin: '0 auto 12px', opacity: 0.2 }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                      <p>Enter story text to generate preview</p>
-                    </div>
-                  )}
-                  
-                  {isWf2PreviewLoading && (
-                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                      <div className="animate-spin" style={{ width: '32px', height: '32px', border: '3px solid transparent', borderTopColor: '#a78bfa', borderRadius: '50%' }} />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px' }}>
-                  <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                    {wf2Logs.length === 0 ? <span style={{ color: '#555' }}>Logs will appear here during execution…</span> : wf2Logs.join('\n')}
-                    <div ref={wf2LogsEndRef} />
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                {wf2Tab === 'preview' ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', position: 'relative', overflow: 'hidden' }}>
+                    {wf2PreviewUrl ? (
+                      <img 
+                        src={`${wf2PreviewUrl}${wf2PreviewUrl.includes('?') ? '&' : '?'}t=${Date.now()}`} 
+                        alt="Workflow 2 Preview" 
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                      />
+                    ) : (
+                      <div style={{ textAlign: 'center', color: '#444', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <svg style={{ margin: '0 auto 12px', opacity: 0.2 }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <p>Enter story text to generate preview</p>
+                      </div>
+                    )}
+                    
+                    {isWf2PreviewLoading && (
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                        <div className="animate-spin" style={{ width: '32px', height: '32px', border: '3px solid transparent', borderTopColor: '#a78bfa', borderRadius: '50%' }} />
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                      {wf2Logs.length === 0 ? <span style={{ color: '#555' }}>Waiting to start…</span> : wf2Logs.join('\n')}
+                      <div ref={wf2LogsEndRef} />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1667,251 +1619,293 @@ export const ClipDetailsPage: React.FC = () => {
 
       {/* ── Workflow Transcriber Dialog ── */}
       {isWftOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: '90%', height: '90%', background: '#1e1e1e', borderRadius: '12px', border: '1px solid #333', display: 'flex', overflow: 'hidden' }}>
+        <div className="wf-modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div className="wf-modal-container" style={{ background: '#1e1e1e', width: '96%', height: '94%', borderRadius: '16px', display: 'grid', gridTemplateColumns: '420px 1fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
             
             {/* Left Column: Settings */}
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', background: '#121212', flex: '0 0 320px', borderRight: '1px solid #333', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '8px', gap: '12px' }}>
-                <button onClick={() => setIsWftOpen(false)} style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}>&times;</button>
-                <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#fff' }}>Run Transcriber</h3>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', borderRight: '1px solid #333', background: '#121212' }}>
+              <div style={{ padding: '24px 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button 
+                    onClick={() => setIsWftOpen(false)} 
+                    style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                    title="Cancel"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>Run Transcriber</h2>
+                </div>
+                
                 <button
-                  onClick={refreshWftPreview}
+                  onClick={() => refreshWftPreview()}
                   disabled={isWftPreviewLoading}
-                  style={{ flex: 1, padding: '8px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: isWftPreviewLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                  style={{ 
+                    background: 'rgba(167, 139, 250, 0.1)', border: '1px solid rgba(167, 139, 250, 0.3)', color: isWftPreviewLoading ? '#555' : '#a78bfa', 
+                    cursor: isWftPreviewLoading ? 'not-allowed' : 'pointer', borderRadius: '8px', padding: '8px', display: 'flex', alignItems: 'center'
+                  }}
+                  title="Refresh Preview"
                 >
-                  {isWftPreviewLoading ? 'Refreshing...' : '🔄 Refresh Preview'}
+                  <svg className={isWftPreviewLoading ? 'animate-spin' : ''} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
                 </button>
               </div>
 
-              {/* TIKTOK STYLE SETTINGS */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#1a1a1a', padding: '16px', borderRadius: '8px' }}>
-                <h4 style={{ margin: 0, color: '#aaa', fontSize: '0.85rem', textTransform: 'uppercase' }}>Text Style</h4>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc' }}>
-                  Font Family
-                  <select value={wftFontFamily} onChange={e => { setWftFontFamily(e.target.value); setTimeout(refreshWftPreview, 100); }} style={{ padding: '8px', background: '#2D2D2D', border: '1px solid #444', borderRadius: '4px', color: '#fff', width: '100%' }}>
-                    {availableFonts.length > 0 ? (
-                      availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
-                    ) : (
-                      <>
-                        <option value="Arial">Arial</option>
-                        <option value="Helvetica">Helvetica</option>
-                        <option value="Impact">Impact</option>
-                        <option value="Times New Roman">Times New Roman</option>
-                      </>
-                    )}
-                  </select>
-                </label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc', flex: 1 }}>
-                    Size ({wftFontSize})
-                    <input type="range" min="30" max="150" value={wftFontSize} onChange={e => setWftFontSize(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
+              {/* Scrollable Body */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* TIKTOK STYLE SETTINGS */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: '#1c1c1c', border: '1px solid #333', padding: '16px', borderRadius: '12px' }}>
+                  <h4 style={{ margin: 0, color: '#a78bfa', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 5 5"/><path d="m5 5 5 5"/></svg>
+                    Text Style
+                  </h4>
+                  
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Font Family</span>
+                    <select value={wftFontFamily} onChange={e => { setWftFontFamily(e.target.value); setTimeout(refreshWftPreview, 100); }} style={{ background: '#252525', border: '1px solid #444', color: '#fff', padding: '10px', borderRadius: '8px', fontSize: '0.9rem' }}>
+                      {availableFonts.length > 0 ? (
+                        availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
+                      ) : (
+                        <>
+                          <option value="Arial">Arial</option>
+                          <option value="Helvetica">Helvetica</option>
+                          <option value="Impact">Impact</option>
+                          <option value="Times New Roman">Times New Roman</option>
+                        </>
+                      )}
+                    </select>
                   </label>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc', flex: 1 }}>
-                    Vert Position ({wftVerticalPosition}%)
-                    <input type="range" min="10" max="95" value={wftVerticalPosition} onChange={e => setWftVerticalPosition(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
-                  </label>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc', flex: 1 }}>
-                    Words/Caption ({wftWordsPerCaption})
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Font Size ({wftFontSize})</span>
+                      <input type="range" min="30" max="150" value={wftFontSize} onChange={e => setWftFontSize(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Vert Position ({wftVerticalPosition}%)</span>
+                      <input type="range" min="10" max="95" value={wftVerticalPosition} onChange={e => setWftVerticalPosition(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
+                    </label>
+                  </div>
+
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#aaa' }}>Words per Caption ({wftWordsPerCaption})</span>
                     <input type="range" min="1" max="8" value={wftWordsPerCaption} onChange={e => setWftWordsPerCaption(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
                   </label>
                 </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: '#1c1c1c', border: '1px solid #333', padding: '16px', borderRadius: '12px' }}>
+                  <h4 style={{ margin: 0, color: '#a78bfa', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                    Appearance
+                  </h4>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#888' }}>Spoken Word</span>
+                      <label style={{ background: '#252525', padding: '8px 12px', borderRadius: '8px', border: '1px solid #444', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                        <input type="color" value={wftSpokenWordColor} onChange={e => setWftSpokenWordColor(e.target.value)} onBlur={refreshWftPreview} style={{ background: 'none', border: 'none', width: '24px', height: '24px', cursor: 'pointer' }} />
+                      </label>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#888' }}>Other Words</span>
+                      <label style={{ background: '#252525', padding: '8px 12px', borderRadius: '8px', border: '1px solid #444', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                        <input type="color" value={wftOtherWordsColor} onChange={e => setWftOtherWordsColor(e.target.value)} onBlur={refreshWftPreview} style={{ background: 'none', border: 'none', width: '24px', height: '24px', cursor: 'pointer' }} />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid #333', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={wftUseBgBox} onChange={e => setWftUseBgBox(e.target.checked)} onBlur={refreshWftPreview} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                        <span style={{ fontSize: '0.9rem', color: '#eee' }}>Background Box</span>
+                      </label>
+                      <input type="color" value={wftBgColor} onChange={e => setWftBgColor(e.target.value)} onBlur={refreshWftPreview} style={{ background: 'none', border: 'none', width: '24px', height: '24px', cursor: 'pointer' }} disabled={!wftUseBgBox} />
+                    </div>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid #333', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#eee' }}>Outline</span>
+                      <input type="color" value={wftOutlineColor} onChange={e => setWftOutlineColor(e.target.value)} onBlur={refreshWftPreview} style={{ background: 'none', border: 'none', width: '24px', height: '24px', cursor: 'pointer' }} />
+                    </div>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#888' }}>Outline Width ({wftOutlineWidth})</span>
+                      <input type="range" min="0" max="10" step="0.5" value={wftOutlineWidth} onChange={e => setWftOutlineWidth(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
+                    </label>
+                  </div>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#1a1a1a', padding: '16px', borderRadius: '8px' }}>
-                <h4 style={{ margin: 0, color: '#aaa', fontSize: '0.85rem', textTransform: 'uppercase' }}>Colors</h4>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Spoken Word</span>
-                  <input type="color" value={wftSpokenWordColor} onChange={e => setWftSpokenWordColor(e.target.value)} onBlur={refreshWftPreview} style={{ width: '40px', height: '30px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }} />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Other Words</span>
-                  <input type="color" value={wftOtherWordsColor} onChange={e => setWftOtherWordsColor(e.target.value)} onBlur={refreshWftPreview} style={{ width: '40px', height: '30px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }} />
-                </div>
-                <div style={{ borderTop: '1px solid #333', margin: '8px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Bg Color</span>
-                  <input type="color" value={wftBgColor} onChange={e => setWftBgColor(e.target.value)} onBlur={refreshWftPreview} style={{ width: '40px', height: '30px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }} />
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#ccc', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={wftUseBgBox} onChange={e => setWftUseBgBox(e.target.checked)} onBlur={refreshWftPreview} />
-                  Fill Solid Box (Border=3)
-                </label>
-                <div style={{ borderTop: '1px solid #333', margin: '8px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Outline Color</span>
-                  <input type="color" value={wftOutlineColor} onChange={e => setWftOutlineColor(e.target.value)} onBlur={refreshWftPreview} style={{ width: '40px', height: '30px', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }} />
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', marginTop: 4 }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc', flex: 1 }}>
-                    Outline Width ({wftOutlineWidth})
-                    <input type="range" min="0" max="10" step="0.5" value={wftOutlineWidth} onChange={e => setWftOutlineWidth(Number(e.target.value))} onMouseUp={refreshWftPreview} style={{ width: '100%' }} />
-                  </label>
-                </div>
+              {/* Sticky Footer */}
+              <div style={{ padding: '24px', borderTop: '1px solid #333', background: '#1a1a1a', display: 'flex', gap: '12px' }}>
+                <button 
+                  onClick={() => setIsWftOpen(false)} 
+                  style={{ flex: 1, padding: '14px', background: '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleRunTranscriber}
+                  disabled={wftStatus === 'running'}
+                  style={{ flex: 2, padding: '14px', background: wftStatus === 'running' ? '#444' : '#10b981', color: '#fff', border: 'none', borderRadius: '10px', cursor: wftStatus === 'running' ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1rem' }}
+                >
+                  {wftStatus === 'running' ? 'Running...' : 'Generate Subtitles'}
+                </button>
               </div>
-
-              <div style={{ flex: 1 }} />
-
-              <button
-                onClick={handleRunTranscriber}
-                disabled={wftStatus === 'running'}
-                style={{ width: '100%', padding: '16px', background: wftStatus === 'running' ? '#444' : '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: wftStatus === 'running' ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}
-              >
-                {wftStatus === 'running' ? 'Processing...' : 'Generate Subtitles 🚀'}
-              </button>
             </div>
 
-            {/* Right Column: Dynamic Content (Preview vs Logs) */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0a0a0a', position: 'relative' }}>
-              
-              {/* Tabs */}
-              <div style={{ display: 'flex', background: '#121212', borderBottom: '1px solid #333' }}>
-                <button
+            {/* Right Column: Preview / Logs */}
+            <div style={{ background: '#0e0e0e', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+              <div style={{ display: 'flex', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+                <button 
                   onClick={() => setWftTab('preview')}
-                  style={{ flex: 1, padding: '16px', background: wftTab === 'preview' ? '#1a1a1a' : 'transparent', color: wftTab === 'preview' ? '#fff' : '#888', border: 'none', borderBottom: wftTab === 'preview' ? '2px solid #3b82f6' : '2px solid transparent', cursor: 'pointer', fontWeight: wftTab === 'preview' ? 'bold' : 'normal', transition: 'all 0.2s' }}
+                  style={{ 
+                    flex: 1, padding: '16px', background: wftTab === 'preview' ? '#252525' : 'transparent',
+                    color: wftTab === 'preview' ? '#fff' : '#888', border: 'none', 
+                    borderBottom: wftTab === 'preview' ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                  }}
                 >
-                  👁️ Live Preview
+                  Live Preview
                 </button>
-                <button
+                <button 
                   onClick={() => setWftTab('logs')}
-                  style={{ flex: 1, padding: '16px', background: wftTab === 'logs' ? '#1a1a1a' : 'transparent', color: wftTab === 'logs' ? '#fff' : '#888', border: 'none', borderBottom: wftTab === 'logs' ? '2px solid #10b981' : '2px solid transparent', cursor: 'pointer', fontWeight: wftTab === 'logs' ? 'bold' : 'normal', transition: 'all 0.2s' }}
+                  style={{ 
+                    flex: 1, padding: '16px', background: wftTab === 'logs' ? '#252525' : 'transparent',
+                    color: wftTab === 'logs' ? '#fff' : '#888', border: 'none', 
+                    borderBottom: wftTab === 'logs' ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                  }}
                 >
-                  📝 View Logs
+                  Execution Logs
                 </button>
               </div>
 
-              {/* Tab Content */}
-              {wftTab === 'preview' ? (
-                <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', overflow: 'hidden' }}>
-                  {isWftPreviewLoading ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', color: '#3b82f6' }}>
-                      <div className="spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                      <span style={{ fontWeight: 600 }}>Generating Preview...</span>
-                    </div>
-                  ) : wftPreviewUrl ? (
-                    <img 
-                      src={`http://${window.location.hostname}:5000${wftPreviewUrl}`} 
-                      alt="Transcriber Preview" 
-                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
-                    />
-                  ) : (
-                    <div style={{ color: '#555', textAlign: 'center' }}>
-                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ marginBottom: '12px', opacity: 0.5 }}>
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                      </svg>
-                      <p>Click Refresh to generate a preview</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ padding: '16px 24px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution Logs</span>
-                    {wftStatus === 'running' && <span style={{ fontSize: '0.75rem', color: '#10b981', animation: 'pulse 1.5s infinite' }}>● Running</span>}
-                    {wftStatus === 'error' && <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>❌ Error</span>}
-                    {wftStatus === 'complete' && <span style={{ fontSize: '0.75rem', color: '#4ade80' }}>✅ Complete</span>}
-                  </div>
-                  <div style={{ flex: 1, overflowY: 'auto', padding: '20px', fontFamily: '"Fira Code", "JetBrains Mono", monospace', fontSize: '13px', color: '#888', lineHeight: 1.6 }}>
-                    {wftLogs.length === 0 ? (
-                      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' }}>Waiting to start...</div>
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                {wftTab === 'preview' ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', position: 'relative', overflow: 'hidden' }}>
+                    {wftPreviewUrl ? (
+                      <img 
+                        src={`http://${window.location.hostname}:5000${wftPreviewUrl}${wftPreviewUrl.includes('?') ? '&' : '?'}t=${Date.now()}`} 
+                        alt="Transcriber Preview" 
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                      />
                     ) : (
-                      wftLogs.map((log, i) => (
-                        <div key={i} style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '4px', marginBottom: '4px', color: log.includes('[ERROR]') ? '#ef4444' : log.includes('SUCCESS') ? '#10b981' : log.includes('[Whisper]') ? '#8b5cf6' : '#888' }}>
-                          {log}
-                        </div>
-                      ))
+                      <div style={{ textAlign: 'center', color: '#444', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <svg style={{ margin: '0 auto 12px', opacity: 0.2 }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <p>Click Refresh to generate a preview</p>
+                      </div>
                     )}
-                    <div ref={wftLogsEndRef} />
+                    
+                    {isWftPreviewLoading && (
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                        <div className="animate-spin" style={{ width: '32px', height: '32px', border: '3px solid transparent', borderTopColor: '#a78bfa', borderRadius: '50%' }} />
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                      {wftLogs.length === 0 ? <span style={{ color: '#555' }}>Waiting to start…</span> : wftLogs.join('\n')}
+                      <div ref={wftLogsEndRef} />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            
           </div>
         </div>
       )}
 
       {/* ── Workflow 3 Dialog (Silence Removal) ── */}
       {isDialog3Open && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#1e1e1e', width: '100%', maxWidth: '900px', height: '90vh', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'minmax(350px, 1.2fr) 2fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
-            <div style={{ padding: '24px', borderRight: '1px solid #333', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '12px' }}>
-                <button onClick={() => setIsDialog3Open(false)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '4px' }} title="Cancel">
+        <div className="wf-modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div className="wf-modal-container" style={{ background: '#1e1e1e', width: '90%', maxWidth: '1200px', height: '80%', borderRadius: '16px', display: 'grid', gridTemplateColumns: '420px 1fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            
+            {/* Left Column: Settings */}
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', borderRight: '1px solid #333', background: '#121212' }}>
+              <div style={{ padding: '24px 24px 12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button 
+                  onClick={() => setIsDialog3Open(false)} 
+                  style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                  title="Cancel"
+                >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Remove Silences</h2>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>Remove Silences</h2>
               </div>
 
-              <p style={{ color: '#aaa', fontSize: '0.9rem', margin: 0 }}>Detect and cut out silent pauses from your video to make it snappy and engaging.</p>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <p style={{ color: '#aaa', fontSize: '0.9rem', margin: 0 }}>Detect and cut out silent pauses from your video to make it snappy and engaging.</p>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '8px' }}>
-                {/* Threshold */}
-                <div style={{ background: '#252525', padding: '16px', borderRadius: '12px', border: '1px solid #333' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Silence Threshold</span>
-                    <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>{minSilenceLen}ms</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Threshold */}
+                  <div style={{ background: '#1c1c1c', padding: '16px', borderRadius: '12px', border: '1px solid #333' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#eee' }}>Silence Threshold</span>
+                      <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>{minSilenceLen}ms</span>
+                    </div>
+                    <input
+                      type="range" min="100" max="2000" step="50"
+                      value={minSilenceLen}
+                      onChange={e => setMinSilenceLen(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#3b82f6' }}
+                    />
+                    <p style={{ fontSize: '0.75rem', color: '#777', margin: '8px 0 0' }}>Pauses longer than this will be removed.</p>
                   </div>
-                  <input
-                    type="range" min="100" max="2000" step="50"
-                    value={minSilenceLen}
-                    onChange={e => setMinSilenceLen(Number(e.target.value))}
-                    style={{ width: '100%', accentColor: '#3b82f6' }}
-                  />
-                  <p style={{ fontSize: '0.75rem', color: '#777', margin: '8px 0 0' }}>Pauses longer than this will be removed.</p>
-                </div>
 
-                {/* Keep */}
-                <div style={{ background: '#252525', padding: '16px', borderRadius: '12px', border: '1px solid #333' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Silence to Keep</span>
-                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>{keepSilenceLen}ms</span>
+                  {/* Keep */}
+                  <div style={{ background: '#1c1c1c', padding: '16px', borderRadius: '12px', border: '1px solid #333' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#eee' }}>Silence to Keep</span>
+                      <span style={{ color: '#10b981', fontWeight: 'bold' }}>{keepSilenceLen}ms</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="500" step="10"
+                      value={keepSilenceLen}
+                      onChange={e => setKeepSilenceLen(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#10b981' }}
+                    />
+                    <p style={{ fontSize: '0.75rem', color: '#777', margin: '8px 0 0' }}>Padding left between cuts for natural breathing room.</p>
                   </div>
-                  <input
-                    type="range" min="0" max="500" step="10"
-                    value={keepSilenceLen}
-                    onChange={e => setKeepSilenceLen(Number(e.target.value))}
-                    style={{ width: '100%', accentColor: '#10b981' }}
-                  />
-                  <p style={{ fontSize: '0.75rem', color: '#777', margin: '8px 0 0' }}>Padding left between cuts for natural breathing room.</p>
                 </div>
               </div>
 
-              {/* Action buttons */}
-              <div style={{ display: 'flex', gap: '12px', marginTop: 'auto', paddingTop: '12px' }}>
-                <button onClick={() => { setIsDialog3Open(false); setWf3Status('idle'); setWf3Logs([]); }} style={{ flex: 1, padding: '14px', background: '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
-                <button
-                  onClick={handleRunWorkflow3}
-                  disabled={wf3Status === 'running'}
-                  style={{ flex: 2, padding: '14px', background: wf3Status === 'running' ? '#444' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '10px', cursor: wf3Status === 'running' ? 'not-allowed' : 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                >
-                  {wf3Status === 'running' ? (
-                    <>
-                      <div style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                      Processing...
-                    </>
-                  ) : 'Start Removal'}
-                </button>
+              {/* Sticky Footer */}
+              <div style={{ padding: '24px', borderTop: '1px solid #333', background: '#1a1a1a', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button 
+                    onClick={() => { setIsDialog3Open(false); setWf3Status('idle'); setWf3Logs([]); }} 
+                    style={{ flex: 1, padding: '14px', background: '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleRunWorkflow3}
+                    disabled={wf3Status === 'running'}
+                    style={{ flex: 2, padding: '14px', background: wf3Status === 'running' ? '#444' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '10px', cursor: wf3Status === 'running' ? 'not-allowed' : 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    {wf3Status === 'running' ? (
+                      <>
+                        <div style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                        Processing...
+                      </>
+                    ) : 'Start Removal'}
+                  </button>
+                </div>
+                {wf3Status === 'complete' && <div style={{ color: '#10b981', fontSize: '0.9rem', textAlign: 'center', fontWeight: 600 }}>Success! Check the gallery.</div>}
+                {wf3Status === 'error' && <div style={{ color: '#ef4444', fontSize: '0.9rem', textAlign: 'center', fontWeight: 600 }}>Error. Check logs.</div>}
               </div>
-
-              {wf3Status === 'complete' && <div style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '12px', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(16,185,129,0.3)', fontSize: '0.9rem' }}>✅ Success! Check the gallery.</div>}
-              {wf3Status === 'error' && <div style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '12px', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(239,68,68,0.3)', fontSize: '0.9rem' }}>❌ Error. Check logs.</div>}
             </div>
 
-            {/* Logs panel */}
-            <div style={{ background: '#0e0e0e', display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div style={{ padding: '16px 24px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution Logs</span>
-                {wf3Status === 'running' && <span style={{ fontSize: '0.75rem', color: '#3b82f6', animation: 'pulse 1.5s infinite' }}>● Running</span>}
+            {/* Right Column: Logs */}
+            <div style={{ background: '#0e0e0e', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid #333', background: '#1a1a1a' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution Logs</span>
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px', fontFamily: '"Fira Code", "JetBrains Mono", monospace', fontSize: '13px', color: '#888', lineHeight: 1.6 }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '24px', fontFamily: '"Fira Code", monospace', fontSize: '13px', color: '#bbb', lineHeight: 1.6, background: '#000' }}>
                 {wf3Logs.length === 0 ? (
                   <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' }}>Waiting to start...</div>
                 ) : (
@@ -1930,24 +1924,46 @@ export const ClipDetailsPage: React.FC = () => {
       
       {/* ── Workflow 4 Dialog (TTS Hook) ── */}
       {isW4DialogOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#1e1e1e', width: '100%', maxWidth: '1000px', height: 'min(900px, 92vh)', borderRadius: '16px', display: 'grid', gridTemplateColumns: '1.2fr 1fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+        <div className="wf-modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div className="wf-modal-container" style={{ background: '#1e1e1e', width: '96%', height: '94%', borderRadius: '16px', display: 'grid', gridTemplateColumns: '420px 1fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
             
             {/* Left Column: Settings */}
-            <div style={{ borderRight: '1px solid #333', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minHeight: 0 }}>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '12px' }}>
-                  <button onClick={() => setIsW4DialogOpen(false)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '4px' }} title="Cancel">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', borderRight: '1px solid #333', background: '#121212' }}>
+              <div style={{ padding: '24px 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button 
+                    onClick={() => setIsW4DialogOpen(false)} 
+                    style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                    title="Cancel"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
-                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>TTS Hook Overlay</h2>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>TTS Hook Overlay</h2>
                 </div>
+                
+                <button
+                  onClick={() => refreshW4Preview()}
+                  disabled={isW4PreviewLoading}
+                  style={{ 
+                    background: 'rgba(167, 139, 250, 0.1)', border: '1px solid rgba(167, 139, 250, 0.3)', color: isW4PreviewLoading ? '#555' : '#a78bfa', 
+                    cursor: isW4PreviewLoading ? 'not-allowed' : 'pointer', borderRadius: '8px', padding: '8px', display: 'flex', alignItems: 'center'
+                  }}
+                  title="Refresh Preview"
+                >
+                  <svg className={isW4PreviewLoading ? 'animate-spin' : ''} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                </button>
+              </div>
 
+              {/* Scrollable Body */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
                 {/* SECTION: Audio / TTS */}
-                <div style={{ background: '#252525', borderRadius: '12px', border: '1px solid #333', padding: '16px' }}>
-                  <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', borderBottom: '1px solid #333', paddingBottom: '8px' }}>
-                      <button onClick={() => setW4UseTts(true)} style={{ background: 'none', border: 'none', color: w4UseTts ? '#3b82f6' : '#666', fontWeight: 'bold', cursor: 'pointer', borderBottom: w4UseTts ? '2px solid #3b82f6' : 'none', paddingBottom: '4px' }}>Text to Speech</button>
-                      <button onClick={() => setW4UseTts(false)} style={{ background: 'none', border: 'none', color: !w4UseTts ? '#3b82f6' : '#666', fontWeight: 'bold', cursor: 'pointer', borderBottom: !w4UseTts ? '2px solid #3b82f6' : 'none', paddingBottom: '4px' }}>Audio Upload</button>
+                <div style={{ background: '#1c1c1c', borderRadius: '12px', border: '1px solid #333', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', background: '#252525', borderRadius: '8px', padding: '4px' }}>
+                      <button onClick={() => setW4UseTts(true)} style={{ flex: 1, padding: '8px', background: w4UseTts ? '#333' : 'transparent', color: w4UseTts ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>TTS</button>
+                      <button onClick={() => setW4UseTts(false)} style={{ flex: 1, padding: '8px', background: !w4UseTts ? '#333' : 'transparent', color: !w4UseTts ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>Upload</button>
                   </div>
 
                   {w4UseTts ? (
@@ -1972,40 +1988,39 @@ export const ClipDetailsPage: React.FC = () => {
                           </div>
                       </div>
                   ) : (
-                      <div style={{ padding: '10px', background: '#1a1a1a', borderRadius: '8px', border: '1px dashed #444', textAlign: 'center' }}>
-                          <input type="file" accept="audio/*" onChange={e => setW4AudioFile(e.target.files?.[0] || null)} />
+                      <div style={{ padding: '16px', background: '#1a1a1a', borderRadius: '8px', border: '1px dashed #444', textAlign: 'center' }}>
+                          <input type="file" accept="audio/*" onChange={e => setW4AudioFile(e.target.files?.[0] || null)} style={{ fontSize: '0.8rem' }} />
                           {w4AudioFile && <p style={{ fontSize: '0.8rem', color: '#4ade80', margin: '8px 0 0' }}>Selected: {w4AudioFile.name}</p>}
                       </div>
                   )}
                   {w4UseTts && (
-                      <button onClick={playTtsSample} style={{ marginTop: '12px', width: '100%', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>Play Sample</button>
+                      <button onClick={playTtsSample} style={{ width: '100%', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>Play Sample</button>
                   )}
                 </div>
 
                 {/* SECTION: Captions Style */}
-                <div style={{ background: '#252525', borderRadius: '12px', border: '1px solid #333', padding: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                      <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#ccc' }}>🔥 Burn Captions</h3>
-                      <input type="checkbox" checked={w4BurnCaptions} onChange={e => setW4BurnCaptions(e.target.checked)} />
+                <div style={{ background: '#1c1c1c', borderRadius: '12px', border: '1px solid #333', padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#a78bfa', fontWeight: 600 }}>Burn Captions</h3>
+                      <input type="checkbox" checked={w4BurnCaptions} onChange={e => setW4BurnCaptions(e.target.checked)} style={{ width: '18px', height: '18px' }} />
                   </div>
                   {w4BurnCaptions && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.8rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              <span style={{ color: '#888' }}>Font</span>
-                              <select value={wftFontFamily} onChange={e => setWftFontFamily(e.target.value)} style={{ padding: '6px', background: '#1a1a1a', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
+                              <span style={{ fontSize: '0.75rem', color: '#888' }}>Font</span>
+                              <select value={wftFontFamily} onChange={e => setWftFontFamily(e.target.value)} style={{ padding: '8px', background: '#1a1a1a', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
                                   {availableFonts.length > 0 ? (
                                     availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
                                   ) : (
                                     <>
                                       <option value="Arial">Arial</option>
                                       <option value="Impact">Impact</option>
-                                      <option value="Bold">Bold</option>
                                     </>
                                   )}
                               </select>
                           </label>
                           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              <span style={{ color: '#888' }}>Vertical Pos ({wftVerticalPosition}%)</span>
+                              <span style={{ fontSize: '0.75rem', color: '#888' }}>Vertical Pos ({wftVerticalPosition}%)</span>
                               <input type="range" min="0" max="100" value={wftVerticalPosition} onChange={e => setWftVerticalPosition(Number(e.target.value))} />
                           </label>
                       </div>
@@ -2013,12 +2028,12 @@ export const ClipDetailsPage: React.FC = () => {
                 </div>
 
                 {/* SECTION: Media Overlays */}
-                <div style={{ background: '#252525', borderRadius: '12px', border: '1px solid #333', padding: '16px' }}>
-                  <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#ccc' }}>Media Swaps / Slideshow</h3>
+                <div style={{ background: '#1c1c1c', borderRadius: '12px', border: '1px solid #333', padding: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#a78bfa', fontWeight: 600 }}>Media Swaps / Slideshow</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                          <label style={{ flex: 1, padding: '8px', background: '#1a1a1a', border: '1px dashed #444', borderRadius: '8px', textAlign: 'center', cursor: 'pointer', fontSize: '0.85rem' }}>
-                              + Add Images/Videos
+                          <label style={{ flex: 1, padding: '10px', background: '#252525', border: '1px dashed #555', borderRadius: '8px', textAlign: 'center', cursor: 'pointer', fontSize: '0.85rem', color: '#aaa' }}>
+                              + Add Items
                               <input type="file" multiple accept="image/*,video/*" style={{ display: 'none' }} onChange={e => {
                                   const files = Array.from(e.target.files || []);
                                   const newItems = files.map(f => ({
@@ -2028,33 +2043,34 @@ export const ClipDetailsPage: React.FC = () => {
                                   setW4MediaItems(prev => [...prev, ...newItems]);
                               }} />
                           </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
-                              <input type="checkbox" checked={w4FillScreen} onChange={e => setW4FillScreen(e.target.checked)} />
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#ccc', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={w4FillScreen} onChange={e => setW4FillScreen(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                               Fill Screen
                           </label>
                       </div>
 
                       {w4MediaItems.length > 0 && (
-                          <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                               {w4MediaItems.map((m, idx) => (
-                                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#1a1a1a', padding: '8px', borderRadius: '8px', border: '1px solid #333' }}>
-                                      <div style={{ width: '40px', height: '40px', background: '#000', borderRadius: '4px', overflow: 'hidden' }}>
+                                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#252525', padding: '8px', borderRadius: '8px', border: '1px solid #333' }}>
+                                      <div style={{ width: '40px', height: '40px', background: '#000', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}>
                                           {!m.isVideo && <img src={m.id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                                          {m.isVideo && <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎬</div>}
+                                          {m.isVideo && <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: '#555' }}>VIDEO</div>}
                                       </div>
                                       <div style={{ flex: 1, fontSize: '0.8rem', overflow: 'hidden' }}>
-                                          <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.file.name}</div>
+                                          <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#eee' }}>{m.file.name}</div>
                                           {!m.isVideo && (
-                                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                                                  <span>Duration:</span>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', color: '#888' }}>
+                                                  <span>Dur:</span>
                                                   <input type="number" step="0.5" value={m.duration} onChange={e => {
                                                       const val = Number(e.target.value);
                                                       setW4MediaItems(prev => prev.map((it, i) => i === idx ? { ...it, duration: val } : it));
-                                                  }} style={{ width: '45px', background: '#252525', border: '1px solid #444', color: '#fff', borderRadius: '4px', padding: '2px 4px' }} />
+                                                  }} style={{ width: '40px', background: '#1a1a1a', border: '1px solid #444', color: '#fff', borderRadius: '4px', padding: '2px 4px' }} />
+                                                  <span>s</span>
                                               </div>
                                           )}
                                       </div>
-                                      <button onClick={() => setW4MediaItems(prev => prev.filter((_, i) => i !== idx))} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                                      <button onClick={() => setW4MediaItems(prev => prev.filter((_, i) => i !== idx))} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>✕</button>
                                   </div>
                               ))}
                           </div>
@@ -2068,9 +2084,9 @@ export const ClipDetailsPage: React.FC = () => {
                 </div>
 
                 {/* SECTION: Background & Sticker */}
-                <div style={{ background: '#252525', borderRadius: '12px', border: '1px solid #333', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ background: '#1c1c1c', borderRadius: '12px', border: '1px solid #333', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Background Frame Position ({w4BgFramePercent}%)</span>
+                      <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Background Frame Pos ({w4BgFramePercent}%)</span>
                       <input type="range" min="0" max="100" step="1" value={w4BgFramePercent} onChange={e => setW4BgFramePercent(Number(e.target.value))} />
                   </label>
 
@@ -2079,16 +2095,16 @@ export const ClipDetailsPage: React.FC = () => {
                       <input type="range" min="0" max="25" step="1" value={w4BgBlur} onChange={e => setW4BgBlur(Number(e.target.value))} />
                   </label>
 
-                  <div style={{ padding: '12px', background: '#1a1a1a', borderRadius: '8px', border: '1px solid #333' }}>
-                      <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: '#888', textTransform: 'uppercase' }}>Sticker (Headshot)</h4>
+                  <div style={{ padding: '12px', background: '#252525', borderRadius: '8px', border: '1px solid #333' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: '#a78bfa', textTransform: 'uppercase', fontWeight: 600 }}>Sticker (Headshot)</h4>
                       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
-                          <input type="file" accept="image/*" onChange={e => setW4Sticker(e.target.files?.[0] || null)} style={{ fontSize: '0.75rem', flex: 1 }} />
+                          <input type="file" accept="image/*" onChange={e => setW4Sticker(e.target.files?.[0] || null)} style={{ fontSize: '0.75rem', flex: 1, color: '#aaa' }} />
                           {w4Sticker && (
                               <button onClick={() => setW4Sticker(null)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '12px' }}>✕</button>
                           )}
                       </div>
                       {w4Sticker && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid #333', paddingTop: '12px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid #444', paddingTop: '12px' }}>
                               <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#888' }}>
                                       <span>X Pos</span>
@@ -2105,7 +2121,7 @@ export const ClipDetailsPage: React.FC = () => {
                               </label>
                               <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#888' }}>
-                                      <span>Sticker Scale</span>
+                                      <span>Scale</span>
                                       <span>{w4StickerScale}x</span>
                                   </div>
                                   <input type="range" min="0.1" max="5.0" step="0.1" value={w4StickerScale} onChange={e => setW4StickerScale(Number(e.target.value))} />
@@ -2116,58 +2132,85 @@ export const ClipDetailsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* ACTION BUTTONS: Sticky Footer */}
-              <div style={{ padding: '20px 24px', borderTop: '1px solid #333', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#1e1e1e' }}>
+              {/* Sticky Footer */}
+              <div style={{ padding: '24px', borderTop: '1px solid #333', background: '#1a1a1a', display: 'flex', gap: '12px' }}>
                 <button 
                     onClick={() => handleRunWorkflow4(true)} 
                     disabled={w4Status === 'running'}
-                    style={{ padding: '14px', background: '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}
+                    style={{ flex: 1, padding: '14px', background: '#333', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}
                 >
-                    Generate Separately
+                    Separate
                 </button>
                 <button 
                     onClick={() => handleRunWorkflow4(false)} 
                     disabled={w4Status === 'running'}
-                    style={{ padding: '14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}
+                    style={{ flex: 2, padding: '14px', background: w4Status === 'running' ? '#444' : '#10b981', color: '#fff', border: 'none', borderRadius: '10px', cursor: w4Status === 'running' ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1rem' }}
                 >
-                    {w4Status === 'running' ? 'Processing...' : 'Generate & Prepend'}
+                    {w4Status === 'running' ? 'Running...' : 'Generate'}
                 </button>
               </div>
             </div>
 
             {/* Right Column: Preview / Logs */}
             <div style={{ background: '#0e0e0e', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-                <div style={{ display: 'flex', background: '#1a1a1a' }}>
-                    <button onClick={() => setW4Tab('preview')} style={{ flex: 1, padding: '12px', background: w4Tab === 'preview' ? '#252525' : 'transparent', color: w4Tab === 'preview' ? '#fff' : '#666', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Preview</button>
-                    <button onClick={() => setW4Tab('logs')} style={{ flex: 1, padding: '12px', background: w4Tab === 'logs' ? '#252525' : 'transparent', color: w4Tab === 'logs' ? '#fff' : '#666', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Logs</button>
-                </div>
+              <div style={{ display: 'flex', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+                <button 
+                  onClick={() => setW4Tab('preview')}
+                  style={{ 
+                    flex: 1, padding: '16px', background: w4Tab === 'preview' ? '#252525' : 'transparent',
+                    color: w4Tab === 'preview' ? '#fff' : '#888', border: 'none', 
+                    borderBottom: w4Tab === 'preview' ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                  }}
+                >
+                  Live Preview
+                </button>
+                <button 
+                  onClick={() => setW4Tab('logs')}
+                  style={{ 
+                    flex: 1, padding: '16px', background: w4Tab === 'logs' ? '#252525' : 'transparent',
+                    color: w4Tab === 'logs' ? '#fff' : '#888', border: 'none', 
+                    borderBottom: w4Tab === 'logs' ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s'
+                  }}
+                >
+                  Execution Logs
+                </button>
+              </div>
 
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', overflow: 'hidden' }}>
-                    {w4Tab === 'preview' ? (
-                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', borderRadius: '8px', border: '1px solid #222', position: 'relative' }}>
-                             {isW4PreviewLoading && (
-                                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <div className="spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                                </div>
-                             )}
-                             {w4PreviewUrl ? (
-                                <img src={w4PreviewUrl} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt="W4 Preview" />
-                             ) : (
-                                <div style={{ color: '#444', textAlign: 'center' }}>
-                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ marginBottom: '12px', opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                    <p>Preview will update automatically</p>
-                                </div>
-                             )}
-                        </div>
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                {w4Tab === 'preview' ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', position: 'relative', overflow: 'hidden' }}>
+                    {w4PreviewUrl ? (
+                      <img 
+                        src={w4PreviewUrl.startsWith('blob:') ? w4PreviewUrl : `${w4PreviewUrl}${w4PreviewUrl.includes('?') ? '&' : '?'}t=${Date.now()}`} 
+                        alt="Workflow 4 Preview" 
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                      />
                     ) : (
-                        <div style={{ width: '100%', height: '100%', overflowY: 'auto', padding: '20px', fontFamily: 'monospace', fontSize: '13px', color: '#888', textAlign: 'left' }}>
-                            {w4Logs.length === 0 ? "Waiting for activity..." : w4Logs.map((log, i) => (
-                                <div key={i} style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '4px', marginBottom: '4px', color: log.includes('[ERROR]') ? '#ef4444' : log.includes('SUCCESS') ? '#10b981' : '#888' }}>{log}</div>
-                            ))}
-                            <div ref={w4LogsEndRef} />
-                        </div>
+                      <div style={{ textAlign: 'center', color: '#444', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <svg style={{ margin: '0 auto 12px', opacity: 0.2 }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <p>Click Refresh to generate a preview</p>
+                      </div>
                     )}
-                </div>
+                    
+                    {isW4PreviewLoading && (
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                        <div className="animate-spin" style={{ width: '32px', height: '32px', border: '3px solid transparent', borderTopColor: '#a78bfa', borderRadius: '50%' }} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, overflowY: 'auto', background: '#000', borderRadius: '8px', padding: '16px', fontFamily: 'monospace', fontSize: '0.85rem', color: '#bbb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                      {w4Logs.length === 0 ? <span style={{ color: '#555' }}>Waiting to start…</span> : w4Logs.map((log, i) => (
+                          <div key={i} style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '4px', marginBottom: '4px', color: log.includes('[ERROR]') ? '#ef4444' : log.includes('SUCCESS') ? '#10b981' : '#888' }}>{log}</div>
+                      ))}
+                      <div ref={w4LogsEndRef} />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2228,11 +2271,11 @@ export const ClipDetailsPage: React.FC = () => {
       {/* Refine Progress Overlay */}
       {refineProcessStatus !== 'idle' && !isRefineEditorOpen && (() => {
         const STAGES = [
-          { id: 'downloading', icon: '📥', label: 'Downloading' },
-          { id: 'transcribing', icon: '🎤', label: 'Transcribing' },
-          { id: 'analyzing', icon: '🤖', label: 'AI Analysis' },
-          { id: 'clipping', icon: '✂️', label: 'Clipping' },
-          { id: 'organizing', icon: '📁', label: 'Organizing' },
+          { id: 'downloading', icon: '', label: 'Downloading' },
+          { id: 'transcribing', icon: '', label: 'Transcribing' },
+          { id: 'analyzing', icon: '', label: 'AI Analysis' },
+          { id: 'clipping', icon: '', label: 'Clipping' },
+          { id: 'organizing', icon: '', label: 'Organizing' },
         ];
         const currentStage = refineProgress?.stage || (refineProcessStatus === 'complete' ? 'done' : '');
         const activeIdx = currentStage === 'done' ? STAGES.length : STAGES.findIndex(s => s.id === currentStage);
@@ -2241,7 +2284,7 @@ export const ClipDetailsPage: React.FC = () => {
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 1200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', gap: '24px' }}>
             {/* Title */}
             <h2 style={{ margin: 0, fontSize: '1.5rem', color: refineProcessStatus === 'error' ? '#ef4444' : refineProcessStatus === 'complete' ? '#4ade80' : '#fbbf24' }}>
-              {refineProcessStatus === 'complete' ? '✅ Refinement Complete!' : refineProcessStatus === 'error' ? '❌ Refinement Failed' : '✍️ Refining Clip…'}
+              {refineProcessStatus === 'complete' ? 'Refinement Complete!' : refineProcessStatus === 'error' ? 'Refinement Failed' : 'Refining Clip…'}
             </h2>
 
             {/* Progress Bar */}

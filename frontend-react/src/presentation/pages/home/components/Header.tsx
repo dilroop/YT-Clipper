@@ -94,13 +94,21 @@ export const Header: React.FC<Props> = () => {
 
 
     {/* Settings Modal */}
-    <div className="modal" style={{ display: isSettingsOpen ? 'flex' : 'none', opacity: isSettingsOpen ? 1 : 0 }} onClick={e => { if (e.target === e.currentTarget) setSettingsOpen(false); }}>
-      <div className="modal-content">
-        <div className="modal-header" style={{ justifyContent: 'flex-start', gap: '12px' }}>
-          <button className="modal-close" onClick={() => setSettingsOpen(false)} style={{ position: 'static' }}>✕</button>
-          <h2 style={{ margin: 0 }}>Settings</h2>
+    <div className="wf-modal-overlay" style={{ 
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, 
+      display: isSettingsOpen ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', padding: '24px' 
+    }} onClick={e => { if (e.target === e.currentTarget) setSettingsOpen(false); }}>
+      <div className="wf-modal-container" style={{ 
+        background: '#1e1e1e', width: '100%', maxWidth: '600px', maxHeight: '90vh', borderRadius: '16px', 
+        display: 'flex', flexDirection: 'column', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' 
+      }}>
+        <div style={{ padding: '24px 24px 12px', display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '12px', borderBottom: '1px solid #333' }}>
+          <button onClick={() => setSettingsOpen(false)} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px', display: 'flex' }} title="Cancel">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>Global Settings</h2>
         </div>
-        <div className="modal-body settings-body" style={{ padding: '0 20px', maxHeight: '60vh', overflowY: 'auto' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
           {configDraft ? (
             <div className="settings-form" style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '16px 0' }}>
               
@@ -300,7 +308,7 @@ export const Header: React.FC<Props> = () => {
 
               {/* ── AI Providers ─────────────────────────────────────────── */}
               <div className="setting-section">
-                <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem' }}>🤖 AI Providers</h3>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem' }}>AI Providers</h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px', fontStyle: 'italic' }}>
                   API keys are stored locally on the server. Select your active provider on the video panel.
                 </p>
@@ -308,7 +316,7 @@ export const Header: React.FC<Props> = () => {
                 {/* OpenAI */}
                 <div style={{ background: '#111', borderRadius: '10px', padding: '14px', marginBottom: '14px', border: '1px solid #222' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '1.1rem' }}>🧠</span>
+                    <span style={{ fontSize: '1.1rem' }}></span>
                     <strong style={{ fontSize: '1rem' }}>OpenAI</strong>
                   </div>
                   <div className="form-group" style={{ marginBottom: '12px' }}>
@@ -342,7 +350,7 @@ export const Header: React.FC<Props> = () => {
                 {/* DeepSeek */}
                 <div style={{ background: '#111', borderRadius: '10px', padding: '14px', border: '1px solid #222' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '1.1rem' }}>🔮</span>
+                    <span style={{ fontSize: '1.1rem' }}></span>
                     <strong style={{ fontSize: '1rem' }}>DeepSeek</strong>
                   </div>
                   <div className="form-group" style={{ marginBottom: '12px' }}>
@@ -377,8 +385,18 @@ export const Header: React.FC<Props> = () => {
             <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px 20px' }}>Loading settings...</p>
           )}
         </div>
-        <div className="modal-footer">
-          <button className="save-btn" onClick={handleSaveSettings} style={{ width: '100%', background: '#ff0000', color: '#fff', border: 'none', padding: '14px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer' }}>Save Settings</button>
+        <div style={{ padding: '24px', borderTop: '1px solid #333', background: '#1a1a1a' }}>
+          <button 
+            onClick={handleSaveSettings} 
+            style={{ 
+              width: '100%', background: '#ff0000', color: '#fff', border: 'none', padding: '14px', 
+              borderRadius: '10px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', transition: 'background 0.2s' 
+            }}
+            onMouseOver={e => e.currentTarget.style.background = '#cc0000'}
+            onMouseOut={e => e.currentTarget.style.background = '#ff0000'}
+          >
+            Save Settings
+          </button>
         </div>
       </div>
     </div>

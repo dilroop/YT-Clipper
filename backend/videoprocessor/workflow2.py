@@ -107,6 +107,52 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int, emoji_fon
     dummy = Image.new("RGBA", (1, 1))
     draw = ImageDraw.Draw(dummy)
 
+    def _measure_word(w: str) -> int:
+        width = 0
+        for char in w:
+            f = emoji_font if is_char_emoji(char) and emoji_font else font
+            bbox = draw.textbbox((0, 0), char, font=f)
+            width += int(bbox[2] - bbox[0])
+            if width == 0 and is_char_emoji(char):
+                width += int(f.size)
+        return width
+
+    for paragraph in text.split("\n"):
+        if not paragraph.strip():
+            result_lines.append("")
+            continue
+            
+        words = paragraph.split(" ")
+        current_line: list[str] = []
+        current_width = 0
+        
+        space_width = _measure_word(" ")
+
+        for word in words:
+            word_width = _measure_word(word)
+            
+            if current_width + (space_width if current_line else 0) + word_width > max_width:
+                if current_line:
+                    result_lines.append(" ".join(current_line))
+                    current_line = [word]
+                    current_width = word_width
+                else:
+                    # Single word too wide, just add it and move on
+                    result_lines.append(word)
+                    current_line = []
+                    current_width = 0
+            else:
+                if current_line:
+                    current_width += space_width
+                current_line.append(word)
+                current_width += word_width
+        
+        if current_line:
+            result_lines.append(" ".join(current_line))
+            
+    return "\n".join(result_lines)
+
+
 def render_text_block(
     text: str,
     font: ImageFont.FreeTypeFont,

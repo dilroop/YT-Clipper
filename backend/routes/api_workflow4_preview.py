@@ -210,4 +210,5 @@ async def generate_workflow4_preview(
     except Exception as e:
         import traceback
         traceback.print_exc()
+        print(f"[PREVIEW ERROR] Workflow 4 failed: {str(e)}")
         raise Exception(f"W4 Preview Gen Failed: {str(e)}")
