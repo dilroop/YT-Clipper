@@ -187,31 +187,17 @@ async def generate_workflow4_preview(
         ]
 
         sub_burner = SubtitleBurner(config=config)
-        ass_path = str(TEMP_DIR / f"w4_prev_{uuid.uuid4().hex[:8]}.ass")
-        sub_burner.create_ass_subtitles(dummy_words, ass_path, clip_start_time=0.0, video_width=vid_width, video_height=vid_height)
-
-        # Apply ASS via FFMPEG onto the base image as a 1-second video snippet and extract a frame from 1.7s (hitting EXAMPLE)
-        # Create a loop input
-        vid_loop_path = str(TEMP_DIR / f"w4_prev_loop_{uuid.uuid4().hex[:8]}.mp4")
-        proc2 = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-v", "error", "-loop", "1", "-i", base_prev_path,
-            "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", vid_loop_path
-        )
-        await proc2.communicate()
-
         final_prev_path = str(TEMP_DIR / f"w4_prev_final_{uuid.uuid4().hex[:8]}.png")
-        sub_filter = f"ass='{ass_path}'" 
         
-        proc3 = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-v", "error", "-ss", "1.7", "-i", vid_loop_path,
-            "-vf", sub_filter,
-            "-frames:v", "1", "-update", "1", final_prev_path
+        # Switch to PIL-based rendering for 100% font reliability in previews
+        sub_burner.burn_preview_to_image(
+            image_path=Path(base_prev_path),
+            output_path=Path(final_prev_path),
+            words=dummy_words,
+            current_time=1.7
         )
-        await proc3.communicate()
 
-        background_tasks.add_task(os.remove, ass_path)
         background_tasks.add_task(os.remove, base_prev_path)
-        background_tasks.add_task(os.remove, vid_loop_path)
         background_tasks.add_task(os.remove, bg_frame_path)
         if preview_media_path and "w4_prev_med_" in preview_media_path:
              background_tasks.add_task(os.remove, preview_media_path)

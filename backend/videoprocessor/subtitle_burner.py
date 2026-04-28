@@ -215,12 +215,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         # Escape subtitle path for ffmpeg filter
         # Need to escape special characters for ffmpeg filter syntax
-        escaped_subtitle_path = str(sub_path.absolute()).replace('\\', '\\\\').replace(':', '\\:')
+        def escape_ffmpeg_filter_path(p):
+            return str(p).replace('\\', '/').replace(':', '\\:').replace("'", "'\\\\\\''")
+            
+        escaped_subtitle_path = escape_ffmpeg_filter_path(sub_path.absolute())
+        escaped_fonts_dir = escape_ffmpeg_filter_path(FONTS_DIR)
 
         cmd = [
             'ffmpeg',
             '-i', str(v_path),
-            '-vf', f"subtitles=filename='{escaped_subtitle_path}'",
+            '-vf', f"subtitles=filename='{escaped_subtitle_path}':fontsdir='{escaped_fonts_dir}'",
             '-c:v', 'libx264',
             '-c:a', 'copy',  # Copy audio without re-encoding
             '-preset', 'medium',
@@ -456,3 +460,91 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             if not (w['end'] <= clip_start_time or w['start'] >= clip_end_time)
         ]
         return ' '.join(clip_words)
+    def burn_preview_to_image(self, image_path: Path, output_path: Path, words: List[Dict], current_time: float):
+        """Render captions onto an image using Pillow (reliable for previews)."""
+        from PIL import Image, ImageDraw
+        from backend.videoprocessor.font_utils import get_font, measure_text_with_fallback, draw_text_with_fallback, get_emoji_font
+        
+        # 1. Load image
+        img = Image.open(image_path).convert("RGBA")
+        width, height = img.size
+        draw = ImageDraw.Draw(img)
+        
+        # 2. Styling from config
+        f_name = self.config.get('font_family', 'Arial')
+        f_size = self.config.get('font_size', 80)
+        v_pos_percent = self.config.get('vertical_position', 80)
+        use_bg_box = self.config.get('use_background_box', False)
+        bg_color = self.config.get('bg_color', '#000000')
+        text_color = self.config.get('other_words_color', '#FFFFFF')
+        spoken_color = self.config.get('spoken_word_color', '#FFFF00')
+        outline_color = self.config.get('outline_color', '#000000')
+        outline_width = self.config.get('outline_width', 3)
+
+        def hex_to_rgba(h, alpha=255):
+            h = h.lstrip('#')
+            if len(h) == 6:
+                return tuple(int(h[i:i+2], 16) for i in (0, 2, 4)) + (alpha,)
+            return (255, 255, 255, alpha)
+
+        bg_rgba = hex_to_rgba(bg_color, alpha=160)
+        text_rgba = hex_to_rgba(text_color)
+        spoken_rgba = hex_to_rgba(spoken_color)
+        out_rgba = hex_to_rgba(outline_color)
+        
+        # 3. Load Font
+        font = get_font(f_name, f_size)
+        emoji_font = get_emoji_font(f_size)
+        
+        # 4. Find active caption block
+        # Group words into blocks based on words_per_caption logic (simplified)
+        wpc = self.config.get('words_per_caption', 5)
+        blocks = []
+        for i in range(0, len(words), wpc):
+            blocks.append(words[i:i + wpc])
+            
+        active_block = []
+        for block in blocks:
+            if not block: continue
+            if block[0]['start'] <= current_time <= block[-1]['end']:
+                active_block = block
+                break
+        
+        if not active_block:
+            # Fallback: find the closest upcoming block or just the first one
+            active_block = blocks[0] if blocks else []
+
+        if not active_block:
+            img.save(output_path)
+            return
+
+        # 5. Measure and Draw
+        # We'll draw them on one line for simplicity in preview
+        line_text = " ".join([w['word'] for w in active_block])
+        tw, th = measure_text_with_fallback(line_text, font, emoji_font=emoji_font, stroke_width=outline_width)
+        
+        x = (width - tw) // 2
+        y = int(v_pos_percent * height / 100) - (th // 2)
+        
+        # Background box
+        if use_bg_box:
+            pad = 20
+            draw.rectangle([x - pad, y - pad, x + tw + pad, y + th + pad], fill=bg_rgba)
+        
+        # Line drawing logic with highlighting
+        curr_x = x
+        for i, w in enumerate(active_block):
+            is_active = w['start'] <= current_time <= w['end']
+            fill = spoken_rgba if is_active else text_rgba
+            
+            # Add space if not first word
+            txt = w['word']
+            if i > 0:
+                txt = " " + txt
+                
+            curr_x = draw_text_with_fallback(
+                draw, (curr_x, y), txt, font, fill,
+                emoji_font=emoji_font, stroke_width=int(outline_width), stroke_fill=out_rgba
+            )
+
+        img.save(output_path)

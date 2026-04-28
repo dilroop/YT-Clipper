@@ -29,6 +29,7 @@ async def get_transcriber_preview(
     try:
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
         THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
+        from backend.core.constants import FONTS_DIR
 
         upload_dir = BASE_DIR / "ToUpload"
         video_dir = upload_dir / project / format
@@ -86,39 +87,45 @@ async def get_transcriber_preview(
             video_height=height
         )
 
-        preview_filename = f"transcriber_preview_{session_id}.png"
+        preview_filename = "workflowTranscriberPreview.png"
         preview_path = THUMBNAILS_DIR / preview_filename
 
-        # Extract single frame at 0.25 (where EXAMPLE is active) & burn subtitle!
-        # -ss must be input option for speed, but wait, ffmpeg ASS filter needs timestamps to match.
-        # If we use -ss as an input option, ASS filter sees video starting at 0, 
-        # so ASS timestamp 0.2-0.3 corresponds to the video frame now.
-        # Actually, simpler: We generate 1 second of video and take a frame, or just do:
-        # ffmpeg -y -ss 00:00:00.250 -i input.mp4 -vframes 1 -vf "ass=temp.ass" output.png
-        # Wait, if we use output -ss, we process the whole file up to 0.25 but correctly match ASS timestamps!
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", str(main_video_path),
-            "-vf", f"ass={str(temp_ass_path).replace(os.sep, '/')}",
-            "-ss", "00:00:00.250",
-            "-vframes", "1",
-            str(preview_path)
-        ]
-        
-        process = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        if process.returncode != 0:
-            print("[PREVIEW ERROR FFMPEG]:", process.stderr)
+        if preview_path.exists():
+            try:
+                os.remove(preview_path)
+            except:
+                pass
 
-        if not preview_path.exists():
-            # If the video was shorter than 0.25s, fallback to normal frame extraction
-            cmd_fallback = [
-                "ffmpeg", "-y",
-                "-i", str(main_video_path),
-                "-vf", f"ass={str(temp_ass_path).replace(os.sep, '/')}",
-                "-vframes", "1",
-                str(preview_path)
+        # Extract single frame at 0.25 (where EXAMPLE is active) & burn subtitle!
+        # Switch to PIL-based rendering for 100% font reliability in previews
+        temp_frame_path = TEMP_DIR / f"raw_frame_{session_id}.png"
+        
+        extract_cmd = [
+            "ffmpeg", "-y", "-i", str(main_video_path),
+            "-ss", "00:00:00.250", "-vframes", "1", str(temp_frame_path)
+        ]
+        subprocess.run(extract_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        if not temp_frame_path.exists():
+             # Fallback if 0.25 is too far
+             extract_cmd = [
+                "ffmpeg", "-y", "-i", str(main_video_path),
+                "-vframes", "1", str(temp_frame_path)
             ]
-            subprocess.run(cmd_fallback, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+             subprocess.run(extract_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        if temp_frame_path.exists():
+            burner.burn_preview_to_image(
+                image_path=temp_frame_path,
+                output_path=preview_path,
+                words=dummy_words,
+                current_time=0.25
+            )
+            try: os.remove(temp_frame_path)
+            except: pass
+        else:
+            # Absolute fallback: just a blank image or error
+            raise Exception("Failed to extract preview frame")
 
         try:
             if temp_ass_path.exists():
@@ -128,7 +135,8 @@ async def get_transcriber_preview(
 
         return {
             "success": True,
-            "preview_url": f"/thumbnails/{preview_filename}"
+            "preview_url": f"/thumbnails/{preview_filename}",
+            "timestamp": time.time()
         }
 
     except Exception as e:
