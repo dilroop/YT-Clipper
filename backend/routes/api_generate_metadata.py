@@ -28,23 +28,30 @@ TASK: Generate a complete social media metadata package for this clip.
 
 SOCIAL MEDIA PACKAGING RULES:
 
-1. YouTube Package:
-- Title: 3 curiosity-gap options (Max 60 chars).
-- Description: A 2-paragraph summary. The first 150 characters must be "keyword-dense" for SEO.
-- Hashtags: Exactly 3 highly relevant hashtags.
-- Emojis: Use 1 in the title and 3 in the description as section headers.
+### 1. YouTube Package (Search & Browse Optimized)
+- **Title:** 3 curiosity-gap options (Max 60 chars) separated by new lines. 
+  - *Rule:* Strictly avoid pipes (|). Use colons (:) or parentheses () for separation. 
+  - *Emoji:* Max 1, placed at the very end of the title.
+- **Description:** A 2-paragraph summary. 
+  - *SEO Rule:* The first 150 characters must contain your primary keywords for the algorithm preview.
+- **Hashtags:** Exactly 3 highly relevant hashtags at the bottom.
+- **Emojis:** Use exactly 3 in the description as section/bullet headers.
 
-2. Instagram Package:
-- Reel Hook (On-screen): 3 punchy options (3–7 words).
-- Caption: A "Micro-story" style caption (100–150 words). Use frequent line breaks for readability.
-- Hashtags: Exactly 5 hashtags. Mix: 1 Broad, 3 Niche, 1 Branded.
-- Emojis: Use 3–5 relevant emojis throughout the text.
+### 2. Instagram Package (Aesthetic & Authority)
+- **Reel Hook (On-screen):** 3 punchy options (3–7 words) separated by new lines. 
+  - *Rule:* Use "Problem/Solution" or "Secret" framing. Avoid special symbols like % or &.
+- **Caption:** A "Micro-story" style caption (100–150 words). 
+  - *Rule:* Use frequent line breaks (1–2 sentences per block). No large text walls.
+- **Hashtags:** Exactly 5 hashtags. (Mix: 1 Broad, 3 Niche, 1 Branded).
+- **Emojis:** Use 3–5 relevant emojis placed at the end of key sentences as visual "punctuation."
 
-3. TikTok Package:
-- On-screen Hook: 3 high-energy options.
-- Caption: Punchy and short (under 150 characters).
-- Hashtags: 3–4 hashtags focused on the specific sub-culture/niche.
-- Emojis: Use 2–3 emojis.
+### 3. TikTok Package (Viral Discovery)
+- **On-screen Hook:** 3 high-energy options (Fast-paced and direct) separated by new lines.
+  - *Rule:* Use "Search-Friendly" text (words people actually type into the TikTok search bar).
+- **Caption:** Punchy and short (Under 150 characters). 
+  - *Rule:* Avoid formal punctuation; write it like a trending "comment" or a quick text.
+- **Hashtags:** 3–4 hashtags focused on specific niche sub-cultures (e.g., #ScienceTok).
+- **Emojis:** Use 2–3 emojis, usually grouped at the end of the text.
 
 Return response as a valid JSON object with EXACTLY this structure:
 {{
