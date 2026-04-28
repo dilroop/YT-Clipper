@@ -28,7 +28,13 @@ export const Header: React.FC<Props> = () => {
     }
   }, [isSettingsOpen]);
 
-
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSettingsOpen) setSettingsOpen(false);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isSettingsOpen]);
 
   const handleSaveSettings = async () => {
     if (configDraft) {
@@ -52,11 +58,9 @@ export const Header: React.FC<Props> = () => {
     });
   };
 
-
-
-  return (
-    <>
-    <header>
+    return (
+      <>
+      <header>
       <div className="header-left">
         <a href="/" className="title-link"><h1>YTClipper</h1></a>
       </div>
@@ -92,9 +96,9 @@ export const Header: React.FC<Props> = () => {
     {/* Settings Modal */}
     <div className="modal" style={{ display: isSettingsOpen ? 'flex' : 'none', opacity: isSettingsOpen ? 1 : 0 }} onClick={e => { if (e.target === e.currentTarget) setSettingsOpen(false); }}>
       <div className="modal-content">
-        <div className="modal-header">
-          <h2>Settings</h2>
-          <button className="modal-close" onClick={() => setSettingsOpen(false)}>✕</button>
+        <div className="modal-header" style={{ justifyContent: 'flex-start', gap: '12px' }}>
+          <button className="modal-close" onClick={() => setSettingsOpen(false)} style={{ position: 'static' }}>✕</button>
+          <h2 style={{ margin: 0 }}>Settings</h2>
         </div>
         <div className="modal-body settings-body" style={{ padding: '0 20px', maxHeight: '60vh', overflowY: 'auto' }}>
           {configDraft ? (

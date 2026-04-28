@@ -208,6 +208,21 @@ export const ClipDetailsPage: React.FC = () => {
   }, [logs]);
 
   useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsDialogOpen(false);
+        setIsDialog2Open(false);
+        setIsDialog3Open(false);
+        setIsWftOpen(false);
+        setIsW4DialogOpen(false);
+        setIsRefineEditorOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
+  useEffect(() => {
     if (wf2LogsEndRef.current) wf2LogsEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [wf2Logs]);
 
@@ -940,7 +955,7 @@ export const ClipDetailsPage: React.FC = () => {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   </button>
                 </div>
-                <p style={{ margin: 0, lineHeight: 1.5, fontSize: '1.05rem', fontWeight: 500, color: '#efefef' }}>
+                <p style={{ margin: 0, lineHeight: 1.5, fontSize: '1.05rem', fontWeight: 500, color: '#efefef', whiteSpace: 'pre-wrap' }}>
                   {clip?.info_data?.clip?.[activePlatform]?.title || (activePlatform === 'youtube' ? (clip?.info_data?.clip?.title || clip?.info_data?.title || 'No Title Generated') : `No ${activePlatform} title generated.`)}
                 </p>
               </div>
@@ -1099,7 +1114,12 @@ export const ClipDetailsPage: React.FC = () => {
         <div className="responsive-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', gap: '24px', zIndex: 1000 }}>
           {/* Dialog Form */}
           <div className="responsive-dialog" style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '8px', gap: '12px' }}>
+              <button 
+                onClick={() => setIsDialogOpen(false)} 
+                style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
+                title="Cancel"
+              >✕</button>
               <h2 style={{ margin: 0 }}>Workflow Settings</h2>
               <button
                 onClick={() => refreshWfPreview()}
@@ -1385,8 +1405,13 @@ export const ClipDetailsPage: React.FC = () => {
         <div className="responsive-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', gap: '24px', zIndex: 1000 }}>
           {/* Settings panel */}
           <div className="responsive-dialog" style={{ background: '#1e1e1e', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h2 style={{ margin: 0, color: '#a78bfa' }}>Workflow 2</h2>
+              <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '8px', gap: '12px' }}>
+                <button 
+                  onClick={() => setIsDialog2Open(false)} 
+                  style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
+                  title="Cancel"
+                >✕</button>
+                <h2 style={{ margin: 0, color: '#a78bfa' }}>Workflow 2</h2>
               <button
                 onClick={() => refreshWf2Preview()}
                 disabled={isWf2PreviewLoading}
@@ -1647,9 +1672,9 @@ export const ClipDetailsPage: React.FC = () => {
             
             {/* Left Column: Settings */}
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', background: '#121212', flex: '0 0 320px', borderRight: '1px solid #333', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#fff' }}>Run Transcriber</h3>
+              <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '8px', gap: '12px' }}>
                 <button onClick={() => setIsWftOpen(false)} style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}>&times;</button>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#fff' }}>Run Transcriber</h3>
               </div>
 
               <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
@@ -1818,11 +1843,11 @@ export const ClipDetailsPage: React.FC = () => {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: '#1e1e1e', width: '100%', maxWidth: '900px', height: '90vh', borderRadius: '16px', display: 'grid', gridTemplateColumns: 'minmax(350px, 1.2fr) 2fr', border: '1px solid #333', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
             <div style={{ padding: '24px', borderRight: '1px solid #333', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Remove Silences</h2>
-                <button onClick={() => setIsDialog3Open(false)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '12px' }}>
+                <button onClick={() => setIsDialog3Open(false)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '4px' }} title="Cancel">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Remove Silences</h2>
               </div>
 
               <p style={{ color: '#aaa', fontSize: '0.9rem', margin: 0 }}>Detect and cut out silent pauses from your video to make it snappy and engaging.</p>
@@ -1911,17 +1936,11 @@ export const ClipDetailsPage: React.FC = () => {
             {/* Left Column: Settings */}
             <div style={{ borderRight: '1px solid #333', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minHeight: 0 }}>
               <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '12px' }}>
+                  <button onClick={() => setIsW4DialogOpen(false)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '4px' }} title="Cancel">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
                   <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>TTS Hook Overlay</h2>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => refreshW4Preview()} disabled={isW4PreviewLoading} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}>
-                          <svg className={isW4PreviewLoading ? 'animate-spin' : ''} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                          Refresh
-                      </button>
-                      <button onClick={() => setIsW4DialogOpen(false)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '4px' }}>
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                      </button>
-                  </div>
                 </div>
 
                 {/* SECTION: Audio / TTS */}

@@ -1,4 +1,4 @@
-import React, { useReducer, useCallback, useRef, useState } from 'react';
+import React, { useReducer, useCallback, useRef, useState, useEffect } from 'react';
 import type { Clip, TranscriptWord } from '../../../domain/types';
 import {
   editorReducer,
@@ -93,16 +93,24 @@ export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, vi
     alert("Audio playback failed. Please check if the source video exists in Downloads.");
   };
 
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
   return (
     <div className="cse-container">
       {/* ── Header ── */}
-      <div className="cse-header">
-        <h2 className="cse-title">Clip Script Editor</h2>
-        <button className="cse-close-btn" onClick={onClose} aria-label="Close">
+      <div className="cse-header" style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '16px' }}>
+        <button className="cse-close-btn" onClick={onClose} aria-label="Close" style={{ margin: 0 }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
+        <h2 className="cse-title" style={{ margin: 0 }}>Clip Script Editor</h2>
       </div>
 
       {/* ── Body ── */}
