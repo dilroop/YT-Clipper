@@ -64,108 +64,23 @@ import unicodedata
 
 # --- Global Constants & Package Setup -----------------------------------------
 try:
-    from backend.core.constants import BASE_DIR
+    from backend.core.constants import BASE_DIR, FONTS_DIR
+    from backend.videoprocessor.font_utils import (
+        get_font, get_emoji_font, draw_text_with_fallback, is_char_emoji
+    )
 except (ImportError, ModuleNotFoundError):
     # Fallback for standalone script execution
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
     sys.path.append(str(BASE_DIR))
-    from backend.core.constants import BASE_DIR
+    from backend.core.constants import BASE_DIR, FONTS_DIR
+    from backend.videoprocessor.font_utils import (
+        get_font, get_emoji_font, draw_text_with_fallback, is_char_emoji
+    )
 
 # Sibling imports depend on being in the same package context or directory in sys.path
 from video_cropper import VideoCropper
 import tempfile
 import re
-
-EMOJI_RE = re.compile(
-    r'['
-    r'\U00002100-\U000027BF' # Symbols, arrows, dingbats
-    r'\U00002B00-\U00002BFF' # Misc symbols and arrows
-    r'\U0001F000-\U0001F6FF' # Emoticons, transport, symbols
-    r'\U0001F900-\U0001F9FF' # Supplemental symbols
-    r'\U0001FA70-\U0001FAFF' # Symbols-a
-    r'\U0000FE00-\U0000FE0F' # Variation selectors
-    r']', flags=re.UNICODE
-)
-
-def is_char_emoji(char: str) -> bool:
-    """Check if a character is likely an emoji or special symbol."""
-    if EMOJI_RE.search(char):
-        return True
-    cat = unicodedata.category(char)
-    # Catch Symbols (S*) and Symbols, Other (So), including some Punctuation (P*) that looks like emojis
-    if cat.startswith('S'):
-         return True
-    # Anything in the Private Use Area or highly special
-    if '\U0001F000' <= char <= '\U0001FFFF':
-        return True
-    return False
-
-_EMOJI_FONT_CACHE = {}
-# Known bitmap sizes supported by Apple Color Emoji on macOS
-_SUPPORTED_EMOJI_SIZES = [160, 96, 64, 52, 48, 40, 32, 20]
-
-def get_emoji_font(font_size: int) -> ImageFont.FreeTypeFont | None:
-    if font_size in _EMOJI_FONT_CACHE:
-        return _EMOJI_FONT_CACHE[font_size]
-        
-    # Priority 1: Custom Samsung or other font in assets
-    custom_path = BASE_DIR / "assets" / "fonts" / "custom_emoji.ttf"
-    # Priority 2: Mac standard
-    mac_path = Path("/System/Library/Fonts/Apple Color Emoji.ttc")
-    
-    for path in [custom_path, mac_path]:
-        if not path.exists():
-            continue
-            
-        # Strategy: Try the requested size first.
-        # If it fails (common with Apple's bitmap-only TTC), try supported fallback sizes.
-        try_sizes = [font_size]
-        if "Apple Color Emoji" in str(path):
-            # Sort fallbacks to find the closest one that is >= or just closest
-            # We prefer slightly larger to avoid pixelation, Pillow will scale it.
-            fallbacks = sorted(_SUPPORTED_EMOJI_SIZES, key=lambda s: abs(s - font_size))
-            try_sizes.extend(fallbacks)
-
-        for s in try_sizes:
-            try:
-                font = ImageFont.truetype(str(path), s)
-                _EMOJI_FONT_CACHE[font_size] = font
-                return font
-            except Exception:
-                continue
-    return None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Font helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_font(font_path: str | None, font_size: int) -> ImageFont.FreeTypeFont:
-    """Return a Pillow font, trying the user path then common system paths."""
-    font_map = {
-        "Arial":           "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "Helvetica":       "/System/Library/Fonts/Helvetica.ttc",
-        "Times New Roman": "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
-        "Impact":          "/System/Library/Fonts/Supplemental/Impact.ttf",
-        "Courier New":     "/System/Library/Fonts/Supplemental/Courier New.ttf",
-    }
-    candidates = [
-        font_path,
-        font_map.get(font_path or "", None),
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "C:\\Windows\\Fonts\\arialbd.ttf",
-        "C:\\Windows\\Fonts\\arial.ttf",
-    ]
-    for path in candidates:
-        if path and os.path.exists(path):
-            try:
-                return ImageFont.truetype(path, font_size)
-            except Exception:
-                continue
-    print("[WARNING] Could not load a TrueType font — falling back to default.")
-    return ImageFont.load_default()
 
 
 def hex_to_rgb(hex_code: str) -> tuple[int, int, int]:
@@ -192,65 +107,6 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int, emoji_fon
     dummy = Image.new("RGBA", (1, 1))
     draw = ImageDraw.Draw(dummy)
 
-    def _get_w(s: str) -> int:
-        total = 0
-        for char in s:
-            f = emoji_font if is_char_emoji(char) and emoji_font else font
-            try:
-                bbox = draw.textbbox((0, 0), char, font=f)
-                w = int(bbox[2] - bbox[0])
-                if w == 0 and is_char_emoji(char):
-                    w = int(f.size) # Fallback for zero-width emoji bboxes
-                total += w
-            except Exception:
-                w, _ = draw.textsize(char, font=f) # type: ignore
-                total += int(w)
-        return total
-
-    for paragraph in text.split("\n"):
-        words = paragraph.split()
-        if not words:
-            result_lines.append("")
-            continue
-        current_line: list[str] = []
-        for word in words:
-            test_line = " ".join(current_line + [word])
-            line_w = _get_w(test_line)
-            if line_w <= max_width or not current_line:
-                current_line.append(word)
-            else:
-                result_lines.append(" ".join(current_line))
-                current_line = [word]
-        if current_line:
-            result_lines.append(" ".join(current_line))
-    return "\n".join(result_lines)
-
-
-def _draw_text_with_fallback(draw, pos, text, font, fill, emoji_font=None, **kwargs):
-    """Draw text character by character, switching to emoji_font if needed."""
-    x, y = pos
-    for char in text:
-        use_font = font
-        is_emoji = is_char_emoji(char)
-        if is_emoji and emoji_font:
-            use_font = emoji_font
-            # embedded_color=True is required for color emojis on Mac/PIL
-            draw.text((int(x), int(y)), char, font=use_font, embedded_color=True, **kwargs)
-        else:
-            draw.text((int(x), int(y)), char, font=use_font, fill=fill, **kwargs)
-        
-        # Advance X
-        try:
-            bbox = draw.textbbox((x, y), char, font=use_font)
-            w = bbox[2] - bbox[0]
-            if w == 0 and is_emoji:
-                 w = use_font.size
-        except Exception:
-            w, _ = draw.textsize(char, font=use_font)  # type: ignore
-        x += w
-    return x
-
-
 def render_text_block(
     text: str,
     font: ImageFont.FreeTypeFont,
@@ -276,9 +132,11 @@ def render_text_block(
     def _measure_line(line: str) -> int:
         lw = 0
         for char in line:
-            f = emoji_font if EMOJI_RE.search(char) and emoji_font else font
+            f = emoji_font if is_char_emoji(char) and emoji_font else font
             bbox = draw_m.textbbox((0, 0), char, font=f)
             lw += int(bbox[2] - bbox[0])
+            if lw == 0 and is_char_emoji(char):
+                lw += int(f.size)
         return lw
 
     line_widths = [_measure_line(l) for l in lines]
@@ -298,7 +156,7 @@ def render_text_block(
         elif align == "right":
             lx = img_w - line_widths[i]
             
-        _draw_text_with_fallback(draw, (lx, i * lh + v_pad), line, font, (color[0], color[1], color[2], 255), emoji_font=emoji_font)
+        draw_text_with_fallback(draw, (lx, i * lh + v_pad), line, font, (color[0], color[1], color[2], 255), emoji_font=emoji_font)
         
     return np.array(img)
 
@@ -462,7 +320,7 @@ def render_text_block_highlighted(
             if i and not no_space:
                 x += space_w
             fill = (hr, hg, hb, 255) if is_hl else (r, g, b, 255)
-            x = _draw_text_with_fallback(draw, (x, y), wd, font, fill, emoji_font=emoji_font)
+            x = draw_text_with_fallback(draw, (x, y), wd, font, fill, emoji_font=emoji_font)
 
     return np.array(img)
 

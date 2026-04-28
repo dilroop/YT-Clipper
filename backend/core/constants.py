@@ -23,6 +23,10 @@ CLIPS_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR = BASE_DIR / "ToUpload"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# Fonts directory
+FONTS_DIR = BASE_DIR / "fonts"
+FONTS_DIR.mkdir(exist_ok=True)
+
 # Log file path
 LOG_FILE = BASE_DIR / "logs" / "ytclipper.log"
 LOG_FILE.parent.mkdir(exist_ok=True)

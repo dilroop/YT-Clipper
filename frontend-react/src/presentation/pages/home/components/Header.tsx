@@ -12,6 +12,7 @@ export const Header: React.FC<Props> = () => {
   const navigate = useNavigate();
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [configDraft, setConfigDraft] = useState<AppConfig | null>(null);
+  const [customFonts, setCustomFonts] = useState<string[]>([]);
 
 
 
@@ -20,6 +21,10 @@ export const Header: React.FC<Props> = () => {
       VideoRepository.getConfig().then((data: AppConfig) => {
         setConfigDraft(data);
       }).catch((e: any) => console.error("Failed to fetch config:", e));
+
+      VideoRepository.getFonts().then(fonts => {
+        setCustomFonts(fonts.map(f => f.name));
+      }).catch(err => console.error("Failed to load custom fonts:", err));
     }
   }, [isSettingsOpen]);
 
@@ -121,9 +126,14 @@ export const Header: React.FC<Props> = () => {
                       value={configDraft.caption_settings?.font_family || 'Arial'}
                       onChange={e => updateDraft('caption_settings', 'font_family', e.target.value)}
                     >
-                      <option value="Montserrat-Bold">Montserrat Bold</option>
-                      <option value="Impact">Impact</option>
-                      <option value="Arial">Arial</option>
+                      <optgroup label="Custom Project Fonts">
+                        {customFonts.map(f => <option key={f} value={f}>{f}</option>)}
+                      </optgroup>
+                      <optgroup label="Standard Fonts">
+                        <option value="Montserrat-Bold">Montserrat Bold</option>
+                        <option value="Impact">Impact</option>
+                        <option value="Arial">Arial</option>
+                      </optgroup>
                     </select>
                   </div>
                 </div>

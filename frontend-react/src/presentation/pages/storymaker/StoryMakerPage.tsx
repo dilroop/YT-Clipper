@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toPng } from 'html-to-image';
+import { VideoRepository } from '../../../data/VideoRepository';
 
 // ─────────────────────────────────────────────
 // Types
@@ -172,8 +173,8 @@ const defaultContent = (): StoryContent => ({
 // Helpers
 // ─────────────────────────────────────────────
 
-function loadGoogleFont(fontName: string) {
-  if (!fontName || ['Arial', 'Impact', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana'].includes(fontName)) return;
+function loadGoogleFont(fontName: string, customFonts: string[] = []) {
+  if (!fontName || ['Arial', 'Impact', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana'].includes(fontName) || customFonts.includes(fontName)) return;
   const id = `gf-${fontName.replace(/\s/g, '-')}`;
   if (document.getElementById(id)) return;
   const link = document.createElement('link');
@@ -556,12 +557,13 @@ interface TextStyleEditorProps {
   value: TextElementStyle;
   onChange: (v: TextElementStyle) => void;
   hidePosition?: boolean;
+  customFonts?: string[];
 }
 
-const TextStyleEditor: React.FC<TextStyleEditorProps> = ({ label, value, onChange, hidePosition }) => {
+const TextStyleEditor: React.FC<TextStyleEditorProps> = ({ label, value, onChange, hidePosition, customFonts = [] }) => {
   const [open, setOpen] = useState(false);
   const up = (k: keyof TextElementStyle, v: any) => {
-    if (k === 'font') loadGoogleFont(v);
+    if (k === 'font') loadGoogleFont(v, customFonts);
     onChange({ ...value, [k]: v });
   };
 
@@ -595,19 +597,24 @@ const TextStyleEditor: React.FC<TextStyleEditorProps> = ({ label, value, onChang
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <label style={labelStyle}>Font (preset)
               <select
-                value={PRESET_FONTS.includes(value.font) ? value.font : 'Custom'}
+                value={PRESET_FONTS.includes(value.font) || customFonts.includes(value.font) ? value.font : 'Custom'}
                 onChange={e => {
                   if (e.target.value !== 'Custom') up('font', e.target.value);
                 }}
                 style={selectStyle}
               >
-                {!PRESET_FONTS.includes(value.font) && <option value="Custom">Custom Font...</option>}
-                {PRESET_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                {!PRESET_FONTS.includes(value.font) && !customFonts.includes(value.font) && <option value="Custom">Custom Font...</option>}
+                <optgroup label="Custom Project Fonts">
+                  {customFonts.map(f => <option key={f} value={f}>{f}</option>)}
+                </optgroup>
+                <optgroup label="Preset Google Fonts">
+                  {PRESET_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                </optgroup>
                 <option value="Custom">Custom Font...</option>
               </select>
             </label>
             <label style={labelStyle}>Custom Google Font
-              <input style={inputStyle} value={value.font} onChange={e => up('font', e.target.value)} placeholder="e.g. Bebas Neue" onBlur={e => loadGoogleFont(e.target.value)} />
+              <input style={inputStyle} value={value.font} onChange={e => up('font', e.target.value)} placeholder="e.g. Bebas Neue" onBlur={e => loadGoogleFont(e.target.value, customFonts)} />
             </label>
           </div>
 
@@ -743,6 +750,8 @@ export const StoryMakerPage: React.FC = () => {
   const navigate = useNavigate();
   const previewRef = useRef<HTMLDivElement | null>(null);
 
+  const [customFonts, setCustomFonts] = useState<string[]>([]);
+
   const [content, setContent] = useState<StoryContent>(() => defaultContent());
   const [currentStyle, setCurrentStyle] = useState<StoryStyle>(() => loadSavedCurrentStyle());
   const [savedStyles, setSavedStyles] = useState<StoryStyle[]>(() => {
@@ -797,15 +806,22 @@ export const StoryMakerPage: React.FC = () => {
     try { localStorage.setItem(WATERMARK_KEY, content.watermarkText); } catch {}
   }, [content.watermarkText]);
 
+  // Fetch custom fonts
+  useEffect(() => {
+    VideoRepository.getFonts().then(fonts => {
+      setCustomFonts(fonts.map(f => f.name));
+    }).catch(err => console.error("Failed to load custom fonts:", err));
+  }, []);
+
   // Load Google fonts from saved styles
   useEffect(() => {
     savedStyles.forEach(s => {
-      loadGoogleFont(s.alert.font);
-      loadGoogleFont(s.title.font);
-      loadGoogleFont(s.description.font);
-      loadGoogleFont(s.footer1.font);
-      loadGoogleFont(s.footer2.font);
-      loadGoogleFont(s.watermark.font);
+      loadGoogleFont(s.alert.font, customFonts);
+      loadGoogleFont(s.title.font, customFonts);
+      loadGoogleFont(s.description.font, customFonts);
+      loadGoogleFont(s.footer1.font, customFonts);
+      loadGoogleFont(s.footer2.font, customFonts);
+      loadGoogleFont(s.watermark.font, customFonts);
     });
   }, [savedStyles]);
 
@@ -842,7 +858,7 @@ export const StoryMakerPage: React.FC = () => {
     const name = prompt('Name this style:', currentStyle.name) || currentStyle.name;
     // Preserve current style name for next time, just update id for uniqueness
     const newStyle = { ...currentStyle, id: Date.now().toString(), name };
-    loadGoogleFont(newStyle.title.font);
+    loadGoogleFont(newStyle.title.font, customFonts);
     setSavedStyles(prev => [...prev, newStyle]);
     // Keep current style as-is (do not reset) so user can keep tweaking
     setCurrentStyle(s => ({ ...s, name }));
@@ -942,19 +958,19 @@ export const StoryMakerPage: React.FC = () => {
               <div>
                 <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Alert Text</p>
                 <input style={inputStyle} value={content.alertText} onChange={e => updContent('alertText', e.target.value)} placeholder="BREAKING 🚨" />
-                <TextStyleEditor label="Alert" value={currentStyle.alert} onChange={v => updStyle('alert', v)} hidePosition />
+                <TextStyleEditor label="Alert" value={currentStyle.alert} onChange={v => updStyle('alert', v)} hidePosition customFonts={customFonts} />
               </div>
 
               <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
                 <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Title Text</p>
                 <textarea style={textareaStyle} value={content.titleText} onChange={e => updContent('titleText', e.target.value)} placeholder="Your main headline..." />
-                <TextStyleEditor label="Title" value={currentStyle.title} onChange={v => updStyle('title', v)} hidePosition />
+                <TextStyleEditor label="Title" value={currentStyle.title} onChange={v => updStyle('title', v)} hidePosition customFonts={customFonts} />
               </div>
 
               <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
                 <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Description Text</p>
                 <textarea style={textareaStyle} value={content.descriptionText} onChange={e => updContent('descriptionText', e.target.value)} placeholder="Supporting details..." />
-                <TextStyleEditor label="Description" value={currentStyle.description} onChange={v => updStyle('description', v)} hidePosition />
+                <TextStyleEditor label="Description" value={currentStyle.description} onChange={v => updStyle('description', v)} hidePosition customFonts={customFonts} />
               </div>
 
               <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
@@ -1004,12 +1020,12 @@ export const StoryMakerPage: React.FC = () => {
               <div>
                 <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Footer 1</p>
                 <input style={inputStyle} value={content.footer1Text} onChange={e => updContent('footer1Text', e.target.value)} placeholder="Source name..." />
-                <TextStyleEditor label="Footer 1" value={currentStyle.footer1} onChange={v => updStyle('footer1', v)} />
+                <TextStyleEditor label="Footer 1" value={currentStyle.footer1} onChange={v => updStyle('footer1', v)} customFonts={customFonts} />
               </div>
               <div style={{ borderTop: '1px solid #333', paddingTop: 16 }}>
                 <p style={{ ...labelStyle, marginBottom: 6, color: '#cc0000' }}>Footer 2</p>
                 <input style={inputStyle} value={content.footer2Text} onChange={e => updContent('footer2Text', e.target.value)} placeholder="Date / Location..." />
-                <TextStyleEditor label="Footer 2" value={currentStyle.footer2} onChange={v => updStyle('footer2', v)} />
+                <TextStyleEditor label="Footer 2" value={currentStyle.footer2} onChange={v => updStyle('footer2', v)} customFonts={customFonts} />
               </div>
             </div>
           </SectionCard>
@@ -1043,7 +1059,7 @@ export const StoryMakerPage: React.FC = () => {
                   <input type="range" min={0} max={60} value={currentStyle.watermark.padding} onChange={e => updWatermark('padding', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />
                 </label>
                 <label style={labelStyle}>Google Font
-                  <input style={inputStyle} value={currentStyle.watermark.font} onChange={e => updWatermark('font', e.target.value)} onBlur={e => loadGoogleFont(e.target.value)} placeholder="e.g. Roboto" />
+                  <input style={inputStyle} value={currentStyle.watermark.font} onChange={e => updWatermark('font', e.target.value)} onBlur={e => loadGoogleFont(e.target.value, customFonts)} placeholder="e.g. Roboto" />
                 </label>
                 <label style={labelStyle}>Size: {currentStyle.watermark.fontSize}px
                   <input type="range" min={8} max={36} value={currentStyle.watermark.fontSize} onChange={e => updWatermark('fontSize', Number(e.target.value))} style={{ width: '100%', accentColor: '#cc0000' }} />

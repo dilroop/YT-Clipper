@@ -19,3 +19,4 @@ from . import api_workflow_transcriber
 from . import api_workflow_transcriber_preview
 from . import api_workflow4
 from . import api_workflow4_preview
+from . import api_fonts

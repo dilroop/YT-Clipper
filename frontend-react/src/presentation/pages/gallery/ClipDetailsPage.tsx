@@ -159,6 +159,15 @@ export const ClipDetailsPage: React.FC = () => {
   const [w4StickerScale, setW4StickerScale] = useState(1.0);
   const [w4BurnCaptions, setW4BurnCaptions] = useState(true);
   
+  // Dynamic fonts
+  const [availableFonts, setAvailableFonts] = useState<{name: string, filename: string | null}[]>([]);
+
+  useEffect(() => {
+    VideoRepository.getFonts()
+      .then(fonts => setAvailableFonts(fonts))
+      .catch(err => console.error('Failed to load fonts:', err));
+  }, []);
+  
   // Voices for W4
   const KOKORO_VOICES = [
     "af_heart", "af_alloy", "af_aoede", "af_bella", "af_jessica", "af_kore", "af_nicole", "af_nova", "af_river", "af_sky", "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael", "am_onyx", "am_puck", "am_santa", "bf_alice", "bf_emma", "bf_isabella", "bf_lily", "bm_daniel", "bm_fable", "bm_george", "bm_lewis"
@@ -1193,11 +1202,17 @@ export const ClipDetailsPage: React.FC = () => {
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <span style={{ fontSize: '0.85rem' }}>Font Family:</span>
                   <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
-                    <option value="Arial">Arial</option>
-                    <option value="Helvetica">Helvetica</option>
-                    <option value="Times New Roman">Times New Roman</option>
-                    <option value="Impact">Impact</option>
-                    <option value="Courier New">Courier New</option>
+                    {availableFonts.length > 0 ? (
+                      availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
+                    ) : (
+                      <>
+                        <option value="Arial">Arial</option>
+                        <option value="Helvetica">Helvetica</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Impact">Impact</option>
+                        <option value="Courier New">Courier New</option>
+                      </>
+                    )}
                   </select>
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1425,11 +1440,17 @@ export const ClipDetailsPage: React.FC = () => {
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <span style={{ fontSize: '0.75rem', color: '#888' }}>Font</span>
                   <select value={wf2FontName} onChange={e => setWf2FontName(e.target.value)} style={{ padding: '6px', background: '#1e1e1e', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
-                    <option value="Arial">Arial</option>
-                    <option value="Helvetica">Helvetica</option>
-                    <option value="Impact">Impact</option>
-                    <option value="Times New Roman">Times New Roman</option>
-                    <option value="Courier New">Courier New</option>
+                    {availableFonts.length > 0 ? (
+                      availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
+                    ) : (
+                      <>
+                        <option value="Arial">Arial</option>
+                        <option value="Helvetica">Helvetica</option>
+                        <option value="Impact">Impact</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Courier New">Courier New</option>
+                      </>
+                    )}
                   </select>
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1646,7 +1667,18 @@ export const ClipDetailsPage: React.FC = () => {
                 <h4 style={{ margin: 0, color: '#aaa', fontSize: '0.85rem', textTransform: 'uppercase' }}>Text Style</h4>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc' }}>
                   Font Family
-                  <input type="text" value={wftFontFamily} onChange={e => setWftFontFamily(e.target.value)} onBlur={refreshWftPreview} onKeyDown={(e) => e.key==='Enter' && refreshWftPreview()} style={{ padding: '8px', background: '#2D2D2D', border: '1px solid #444', borderRadius: '4px', color: '#fff', width: '100%' }} />
+                  <select value={wftFontFamily} onChange={e => { setWftFontFamily(e.target.value); setTimeout(refreshWftPreview, 100); }} style={{ padding: '8px', background: '#2D2D2D', border: '1px solid #444', borderRadius: '4px', color: '#fff', width: '100%' }}>
+                    {availableFonts.length > 0 ? (
+                      availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
+                    ) : (
+                      <>
+                        <option value="Arial">Arial</option>
+                        <option value="Helvetica">Helvetica</option>
+                        <option value="Impact">Impact</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                      </>
+                    )}
+                  </select>
                 </label>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
                   <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem', color: '#ccc', flex: 1 }}>
@@ -1942,7 +1974,15 @@ export const ClipDetailsPage: React.FC = () => {
                           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               <span style={{ color: '#888' }}>Font</span>
                               <select value={wftFontFamily} onChange={e => setWftFontFamily(e.target.value)} style={{ padding: '6px', background: '#1a1a1a', border: '1px solid #444', borderRadius: '6px', color: '#fff' }}>
-                                  <option value="Arial">Arial</option><option value="Impact">Impact</option><option value="Bold">Bold</option>
+                                  {availableFonts.length > 0 ? (
+                                    availableFonts.map(f => <option key={f.name} value={f.name}>{f.name}</option>)
+                                  ) : (
+                                    <>
+                                      <option value="Arial">Arial</option>
+                                      <option value="Impact">Impact</option>
+                                      <option value="Bold">Bold</option>
+                                    </>
+                                  )}
                               </select>
                           </label>
                           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -2123,7 +2163,7 @@ export const ClipDetailsPage: React.FC = () => {
             videoId={refineVideoId}
             project={refineProject}
             showBurnCaptionsToggle={true}
-            initialBurnCaptions={clip.info_data?.clip?.burn_captions !== false}
+            initialBurnCaptions={false}
             onClose={() => setIsRefineEditorOpen(false)}
             onSave={async (updatedClip: Clip) => {
               try {

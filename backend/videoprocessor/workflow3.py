@@ -28,125 +28,26 @@ from moviepy import VideoFileClip, concatenate_videoclips, ImageClip, CompositeV
 
 # --- Global Constants & Package Setup -----------------------------------------
 try:
-    from backend.core.constants import BASE_DIR
+    from backend.core.constants import BASE_DIR, FONTS_DIR
+    from backend.videoprocessor.font_utils import (
+        get_font, get_emoji_font, draw_text_with_fallback, measure_text_with_fallback,
+        is_char_emoji
+    )
 except (ImportError, ModuleNotFoundError):
     # Fallback for standalone script execution
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
     sys.path.append(str(BASE_DIR))
-    from backend.core.constants import BASE_DIR
-
-# ─── Emoji Support ────────────────────────────────────────────────────────────
-EMOJI_RE = re.compile(
-    r'['
-    r'\U00002100-\U000027BF' # Symbols, arrows, dingbats
-    r'\U00002B00-\U00002BFF' # Misc symbols and arrows
-    r'\U0001F000-\U0001F6FF' # Emoticons, transport, symbols
-    r'\U0001F900-\U0001F9FF' # Supplemental symbols
-    r'\U0001FA70-\U0001FAFF' # Symbols-a
-    r'\U0000FE00-\U0000FE0F' # Variation selectors
-    r']', flags=re.UNICODE
-)
-
-def is_char_emoji(char: str) -> bool:
-    """Check if a character is likely an emoji or special symbol."""
-    if EMOJI_RE.search(char):
-        return True
-    cat = unicodedata.category(char)
-    if cat.startswith('S'):
-         return True
-    if '\U0001F000' <= char <= '\U0001FFFF':
-        return True
-    return False
-
-_EMOJI_FONT_CACHE = {}
-# Known bitmap sizes supported by Apple Color Emoji on macOS
-_SUPPORTED_EMOJI_SIZES = [160, 96, 64, 52, 48, 40, 32, 20]
-
-def get_emoji_font(font_size: int) -> ImageFont.FreeTypeFont | None:
-    if font_size in _EMOJI_FONT_CACHE:
-        return _EMOJI_FONT_CACHE[font_size]
-        
-    custom_path = BASE_DIR / "assets" / "fonts" / "custom_emoji.ttf"
-    mac_path = Path("/System/Library/Fonts/Apple Color Emoji.ttc")
-    
-    for path in [custom_path, mac_path]:
-        if not path.exists():
-            continue
-            
-        try_sizes = [font_size]
-        if "Apple Color Emoji" in str(path):
-            fallbacks = sorted(_SUPPORTED_EMOJI_SIZES, key=lambda s: abs(s - font_size))
-            try_sizes.extend(fallbacks)
-
-        for s in try_sizes:
-            try:
-                font = ImageFont.truetype(str(path), s)
-                _EMOJI_FONT_CACHE[font_size] = font
-                return font
-            except Exception:
-                continue
-    return None
-
-def _draw_text_with_fallback(draw, pos, text, font, fill, emoji_font=None, **kwargs):
-    """Draw text character by character, switching to emoji_font if needed."""
-    x, y = pos
-    for char in text:
-        use_font = font
-        is_emoji = is_char_emoji(char)
-        if is_emoji and emoji_font:
-            use_font = emoji_font
-            draw.text((int(x), int(y)), char, font=use_font, embedded_color=True, **kwargs)
-        else:
-            draw.text((int(x), int(y)), char, font=use_font, fill=fill, **kwargs)
-        
-        try:
-            bbox = draw.textbbox((x, y), char, font=use_font)
-            w = bbox[2] - bbox[0]
-            if w == 0 and is_emoji:
-                 w = use_font.size
-        except Exception:
-            try:
-                w, _ = draw.textsize(char, font=use_font) # type: ignore
-            except:
-                w = use_font.size
-        x += w
-    return x
-
-def _measure_text_with_fallback(text: str, font, emoji_font=None, **kwargs) -> tuple[int, int]:
-    """Measure text width and height with emoji fallback."""
-    dummy = Image.new("RGBA", (1, 1))
-    draw = ImageDraw.Draw(dummy)
-    lines = text.split('\n')
-    max_w = 0
-    try:
-        bbox = draw.textbbox((0, 0), "Ag", font=font)
-        lh = int(bbox[3] - bbox[1])
-    except:
-        w, h = draw.textsize("Ag", font=font) # type: ignore
-        lh = int(h)
-    
-    for ln in lines:
-        cur_x = 0
-        for char in ln:
-            use_font = font
-            if is_char_emoji(char) and emoji_font: use_font = emoji_font
-            try:
-                bbox = draw.textbbox((cur_x, 0), char, font=use_font)
-                w = bbox[2] - bbox[0]
-                if w == 0 and is_char_emoji(char): w = use_font.size
-            except:
-                try: w, _ = draw.textsize(char, font=use_font) # type: ignore
-                except: w = use_font.size
-            cur_x += w
-        max_w = max(max_w, cur_x)
-    total_h = len(lines) * lh + (len(lines) - 1) * 10
-    return int(max_w), int(total_h)
+    from backend.core.constants import BASE_DIR, FONTS_DIR
+    from backend.videoprocessor.font_utils import (
+        get_font, get_emoji_font, draw_text_with_fallback, measure_text_with_fallback,
+        is_char_emoji
+    )
 
 def render_text(text: str, font: ImageFont.FreeTypeFont, text_color=(255, 255, 255, 255), padding=20) -> np.ndarray:
     """Render text with emoji support for workflow3."""
     text = text.replace('\\n', '\n')
     emoji_font = get_emoji_font(font.size)
-    text_w, text_h = _measure_text_with_fallback(text, font, emoji_font=emoji_font)
+    text_w, text_h = measure_text_with_fallback(text, font, emoji_font=emoji_font)
     
     canvas_w = text_w + padding * 2
     canvas_h = text_h + padding * 2
@@ -163,10 +64,10 @@ def render_text(text: str, font: ImageFont.FreeTypeFont, text_color=(255, 255, 2
         lh = int(h)
         
     for i, ln in enumerate(lines):
-        lw, _ = _measure_text_with_fallback(ln, font, emoji_font=emoji_font)
+        lw, _ = measure_text_with_fallback(ln, font, emoji_font=emoji_font)
         x = padding + (text_w - lw) // 2
         y = padding + i * (lh + 10)
-        _draw_text_with_fallback(draw, (x, y), ln, font, text_color, emoji_font=emoji_font)
+        draw_text_with_fallback(draw, (x, y), ln, font, text_color, emoji_font=emoji_font)
         
     return np.array(img)
 
@@ -260,10 +161,7 @@ def remove_silences(input_path: str, output_path: str, threshold_ms: int, keep_m
         from moviepy import vfx
         print(f"[INFO] Adding text overlay: '{text}'")
         try:
-            # Simple Arial fallback for Mac
-            font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"
-            if not os.path.exists(font_path): font_path = None
-            font = ImageFont.truetype(font_path, font_size) if font_path else ImageFont.load_default()
+            font = get_font(None, font_size)
         except:
             font = ImageFont.load_default()
             

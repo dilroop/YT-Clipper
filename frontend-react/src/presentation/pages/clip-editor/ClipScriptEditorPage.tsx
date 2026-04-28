@@ -23,7 +23,7 @@ export const ClipScriptEditorPage: React.FC<Props> = ({ clip, fullTranscript, vi
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlayingIdx, setIsPlayingIdx] = useState<number | null>(null);
   const currentPlayingRef = useRef<{ start: number; end: number } | null>(null);
-  const [burnCaptions, setBurnCaptions] = useState(initialBurnCaptions ?? true);
+  const [burnCaptions, setBurnCaptions] = useState(initialBurnCaptions ?? false);
 
   const formatTime = (secs: number) => {
     const h = Math.floor(secs / 3600);

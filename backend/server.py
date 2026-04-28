@@ -52,7 +52,8 @@ from backend.routes import (
     api_local_video,
     websocket,
     api_workflow_transcriber,
-    api_workflow_transcriber_preview
+    api_workflow_transcriber_preview,
+    api_fonts
 )
 
 # Initialize logging (redirects stdout/stderr)
@@ -81,8 +82,11 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "frontend-react")), na
 app.mount("/clips", StaticFiles(directory=str(BASE_DIR / "ToUpload")), name="clips")
 
 # Mount thumbnails folder for local video previews
-from backend.core.constants import THUMBNAILS_DIR
+from backend.core.constants import THUMBNAILS_DIR, FONTS_DIR
 app.mount("/thumbnails", StaticFiles(directory=str(THUMBNAILS_DIR)), name="thumbnails")
+
+# Mount fonts folder for frontend access
+app.mount("/fonts", StaticFiles(directory=str(FONTS_DIR)), name="fonts")
 
 # Include all routers
 app.include_router(pages.router)
@@ -103,6 +107,7 @@ app.include_router(api_generate_metadata.router)
 app.include_router(api_local_video.router)
 app.include_router(api_workflow_transcriber.router)
 app.include_router(api_workflow_transcriber_preview.router)
+app.include_router(api_fonts.router)
 from backend.routes import api_workflow4, api_workflow4_preview
 app.include_router(api_workflow4.router)
 app.include_router(api_workflow4_preview.router)

@@ -13,6 +13,8 @@ import os
 import tempfile
 from typing import List, Dict, Optional
 from PIL import Image, ImageDraw, ImageFont
+from backend.core.constants import FONTS_DIR
+from backend.videoprocessor.font_utils import get_font
 
 
 class SubtitleBurner:
@@ -388,21 +390,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             out_rgba = (0, 0, 0, alpha)
 
         # Attempt to load font
-        try:
-            font_paths = [
-                f"/System/Library/Fonts/Supplemental/{font_name}.ttf",
-                f"/System/Library/Fonts/{font_name}.ttf",
-                "/System/Library/Fonts/Supplemental/Arial.ttf"  # Fallback
-            ]
-            font = None
-            for fp in font_paths:
-                if Path(fp).exists():
-                    font = ImageFont.truetype(fp, font_size)
-                    break
-            if not font:
-                font = ImageFont.load_default()
-        except:
-            font = ImageFont.load_default()
+        font = get_font(font_name, font_size)
 
         # Calculate bounding box for text
         bbox = draw.textbbox((0, 0), text, font=font, stroke_width=int(out_width))

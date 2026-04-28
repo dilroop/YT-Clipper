@@ -690,4 +690,10 @@ export class VideoRepository {
     }
     return response.json();
   }
+
+  static async getFonts(): Promise<{ name: string; filename: string | null }[]> {
+    const response = await fetch(`${this.API_BASE}/fonts`);
+    if (!response.ok) throw new Error('Failed to fetch fonts');
+    return response.json();
+  }
 }
